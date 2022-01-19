@@ -8,3 +8,5 @@
 	returnvariable="taskList"/>
 
 <cfdump var="#taskList#"/>
+
+<cfdump var="#cgi#"/>
