@@ -12,6 +12,9 @@ level 4          :    #216e39;
 
 section {
     margin: 50px 0;
+    position: relative;
+    width: 95%;
+    left: 2.5%;
 }
 
 .flex-wrap {
@@ -53,6 +56,10 @@ section {
 
 [data-count="1"] {
     fill: #216e39;
+}
+
+[data-count="2"] {
+    fill: red;
 }
 
 @media screen and (max-width: 768px) {
