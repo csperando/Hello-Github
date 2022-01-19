@@ -1,0 +1,26 @@
+
+* {
+    margin: 0;
+    padding: 0;
+    position: relative;
+    box-sizing: border-box;
+    font-family: 'helvetica';
+
+}
+
+.center {
+    text-align: center;
+}
+
+.title {
+    font-weight: bold;
+    padding: 20px;
+}
+
+.spacer {
+    margin-bottom: 50px;
+}
+
+#wheels-debug-area {
+    display: none;
+}

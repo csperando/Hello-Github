@@ -1,0 +1,184 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>lucee.heroku</groupId>
+  <artifactId>lucee.heroku</artifactId>
+  <version>1.9.0</version>
+  <name>Lucee Heroku Application Template</name>
+  <packaging>pom</packaging>
+
+  <properties>
+    <lucee.version>5.3.8.206</lucee.version>
+    <mysqlconnector.version>8.0.25</mysqlconnector.version>
+    <webapprunner.version>9.0.27.1</webapprunner.version>
+    <mvnclean.version>3.1.0</mvnclean.version>
+    <mvndep.version>3.2.0</mvndep.version>
+    <tuckeyurl.version>4.0.4</tuckeyurl.version>
+    <apachefelix.version>7.0.0</apachefelix.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.lucee</groupId>
+      <artifactId>lucee</artifactId>
+      <version>${lucee.version}</version>
+    </dependency>
+  </dependencies>
+
+  <repositories>
+    <repository>
+      <id>central</id>
+      <url>https://repo1.maven.org/maven2</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+
+  <pluginRepositories>
+    <pluginRepository>
+      <id>central</id>
+      <name>Maven Plugin Repository</name>
+      <url>https://repo1.maven.org/maven2</url>
+      <layout>default</layout>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+      <releases>
+        <updatePolicy>never</updatePolicy>
+      </releases>
+    </pluginRepository>
+  </pluginRepositories>
+
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>${mvnclean.version}</version>
+        <configuration>
+          <fileset>
+            <directory>webroot/WEB-INF/lucee-server</directory>
+            <includes>
+              <include>**/*</include>
+            </includes>
+            <excludes>
+              <exclude>*.xml</exclude>
+              <exclude>**/lucee-server.xml</exclude>
+            </excludes>
+            <followSymlinks>false</followSymlinks>
+          </fileset>
+          <filesets>
+            <fileset>
+              <directory>webroot/WEB-INF</directory>
+              <includes>
+                <include>**/*</include>
+              </includes>
+              <excludes>
+                <exclude>*.xml</exclude>
+                <exclude>**/lucee-web.xml.cfm</exclude>
+              </excludes>
+              <followSymlinks>false</followSymlinks>
+            </fileset>
+          </filesets>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>${mvndep.version}</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+
+                <artifactItem>
+                  <groupId>com.github.jsimone</groupId>
+                  <artifactId>webapp-runner</artifactId>
+                  <version>${webapprunner.version}</version>
+                  <destFileName>webapp-runner.jar</destFileName>
+                  <overWrite>false</overWrite>
+                  <outputDirectory>${project.build.directory}</outputDirectory>
+                </artifactItem>
+
+                <artifactItem>
+                  <groupId>org.tuckey</groupId>
+                  <artifactId>urlrewritefilter</artifactId>
+                  <version>${tuckeyurl.version}</version>
+                  <destFileName>urlrewritefilter.jar</destFileName>
+                  <overWrite>false</overWrite>
+                  <outputDirectory>webroot/WEB-INF/lib</outputDirectory>
+                </artifactItem>
+
+                <artifactItem>
+                  <groupId>mysql</groupId>
+                  <artifactId>mysql-connector-java</artifactId>
+                  <version>${mysqlconnector.version}</version>
+                  <destFileName>mysql-connector.jar</destFileName>
+                  <overWrite>false</overWrite>
+                  <outputDirectory>webroot/WEB-INF/lib</outputDirectory>
+                </artifactItem>
+
+                <artifactItem>
+                  <groupId>org.lucee</groupId>
+                  <artifactId>lucee</artifactId>
+                  <version>${lucee.version}</version>
+                  <destFileName>lucee.jar</destFileName>
+                  <overWrite>true</overWrite>
+                  <outputDirectory>webroot/WEB-INF/lib</outputDirectory>
+                </artifactItem>
+
+                <artifactItem>
+                  <groupId>org.apache.felix</groupId>
+                  <artifactId>org.apache.felix.framework</artifactId>
+                  <version>${apachefelix.version}</version>
+                  <destFileName>osgi.jar</destFileName>
+                  <overWrite>false</overWrite>
+                  <outputDirectory>webroot/WEB-INF/lib</outputDirectory>
+                </artifactItem>
+
+              </artifactItems>
+            </configuration>
+          </execution>
+
+          <execution>
+            <id>copy-lucee-deps</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>webroot/WEB-INF/lucee-server/bundles</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.0.0</version>
+        <executions>
+          <execution>
+            <phase>generate-sources</phase>
+            <configuration>
+              <target>
+                <echo file="Procfile" message="web: java $JAVA_OPTS -jar target/webapp-runner.jar --port $PORT webroot "/>
+              </target>
+            </configuration>
+            <goals>
+              <goal>run</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+    </plugins>
+  </build>
+</project>
