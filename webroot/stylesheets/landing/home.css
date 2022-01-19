@@ -14,19 +14,22 @@ section {
     margin: 50px 0;
 }
 
-.graph-wrap {
+.flex-wrap {
     position: relative;
     width: 95%;
     left: 2.5%;
     display: flex;
     align-items: center;
     justify-content: center;
+}
 
+.graphic {
     /* from github */
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
-    padding-top: 8px;
-    padding-bottom: 8px;
+    /* padding-top: 8px;
+    padding-bottom: 8px; */
+    padding: 8px;
     border: 1px solid #d0d7de;
     box-sizing: border-box;
     word-wrap: break-word;
@@ -46,6 +49,10 @@ section {
 
 .ContributionCalendar-label {
     font-size: 9px;
+}
+
+[data-count="1"] {
+    fill: #216e39;
 }
 
 @media screen and (max-width: 768px) {
