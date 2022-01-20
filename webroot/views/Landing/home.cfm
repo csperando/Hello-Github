@@ -5,9 +5,9 @@
 <cfoutput>
 <main>
 
-	<h1 class="title center">Github ASCII Art</h1>
+	<section id="header">
+		<h1 class="title center">Github ASCII Art</h1>
 
-	<section>
 		<div>
 			<div>
 				<div class="flex-wrap">
@@ -30,7 +30,8 @@
 										y="#currentDow*15#"
 										class="ContributionCalendar-day"
 										rx="2" ry="2"
-										data-count="#message[currentDow+1][week+1]#"
+										<!--- data-count="#message[currentDow+1][week+1]#" --->
+										data-count="#message[currentDow+1][(week%53)+1]#"
 										data-date="#day#"
 										data-level="0"
 										title="#day#"></rect>
@@ -75,8 +76,16 @@
 
 	<br>
 
-	<section>
-		<h2 class="title center">How it Works</h2>
+	<section id="my-process-so-far">
+		<h2 class="title center">My Process So Far</h2>
+
+		<br>
+		<p>
+			Step one was to recreate the graphic as a proof of concept and to test various dates to verify the logic
+			behind the process. Most of the work done here will not be used in the finished product.
+		</p>
+
+		<br><br>
 
 		<div>
 			<div>
@@ -164,7 +173,8 @@
 		<p>
 			The Github graphic always starts each column with <b>Sunday</b>. So, starting from <b style="color:blue">today</b>,
 			subtract 365 days and then find the previous Sunday. This will be the first rectangle in the github graphic and our
-			<b style="color:green">origin point</b>.
+			<b style="color:green">origin point</b>. May also have to find the next Sunday if the previous results in more than
+			53 weeks in the graphic.
 		</p>
 
 		<br>
@@ -174,6 +184,9 @@
 			The first 52 columns represents the entire year prior to the current week, and the last possibly incomplete
 			column represents the current week.
 		</p>
+
+		<!--- <br>
+		<cfdump var="#message#"/> --->
 
 		<br>
 		<p>
@@ -469,35 +482,77 @@
 			</div>
 		</div>
 
-		<cfset today = dateFormat(Now(), 'yyyy-mm-dd')/>
-		<cfset yearAgo = dateFormat(Now()-365, 'yyyy-mm-dd')/>
-		<!---
-			projectstart - yearago = graphic offset
-		--->
-		<cfset startOffset = dow[DateFormat(yearAgo, 'ddd')]/>
-		<cfset firstSunday = dateFormat(yearAgo - startOffset, 'yyyy-mm-dd')/>
-		<cfset totalDays = today - firstSunday/>
-
 	</section>
 
 	<br>
 
-	<section>
-		<h3>Automating Everything</h3>
+	<section id="automating-everything">
+		<h3 class="title center">Automating Everything</h3>
 
 		<br>
 		<p>
 			Now in practice, we aren't generating the entire svg image for ourselves like we did in the above demonstrations.
-			We only want to retrieve the value of our message array for the day (true or false), and use that to trigger
-			a commit to our git repo or do nothing.
+			This was simply to verify that the algorithm would work for various inputs. We only want to retrieve the
+			value of our message array for the day (true or false), and use that to trigger a commit to our
+			git repo or do nothing.
 		</p>
 
 		<br>
 		<p>
-			As you can see in the graphic above, today (the <span style="color:red">red</span> rect) is the only data point that 
-			matters.
+			As you can see in the graphic above, today (the <span style="color:red">red</span> rect) is the only data point that
+			we need to worry about. So using the method above we find the corresponding row and column values from our message
+			array.
 		</p>
 
+		<br>
+		<p>
+			<b>row = current day of the week + 1</b><br>
+			<b>col = (today - projectStartSunday) / 7) % 53 + 1</b><br>
+		</p>
+
+		<cfset projectStart = dateFormat(now()-30, 'yyyy-mm-dd')/>
+		<cfset projectStartOffset = dow[DateFormat(projectStart, 'ddd')]/>
+		<cfset projectStartSunday = dateFormat(projectStart-projectStartOffset, 'yyyy-mm-dd')/>
+
+		<cfset currentDow = dow[dateFormat(today, 'ddd')]/>
+		<cfset row = currentDow + 1/>
+		<cfset col = floor((today - projectStartSunday)/7)%53 + 1/>
+		<cfset commitValue = (col GT 0) ? message[row][col] : 0/>
+
+		<br>
+		<p>
+			So let's say our project started on #projectStart#. That means for today (#today#) we need to retrieve
+			the value from our message at row #row# and column #col#.<br>
+			This value is
+			<cfif message[row][col]>
+				<b>TRUE</b>. So we need to make a commit today.
+			<cfelse>
+				<b>FALSE</b>. So we do not need to make a commit today.
+			</cfif>
+		</p>
+
+		<br>
+		<p>
+			So once a day we need to determine if the message value is true, and if it is true then we need to alter
+			a file so that there is something to commit. This can be very easily accompliched with &lt;cffile&gt; and
+			&lt;cfschedule&gt;. Use &lt;cfschedule&gt; to create and run a scheduled task, and within that task use
+			&lt;cffile&gt; to alter a text file with the current date if passed a value of true, or nothing if false.
+		</p>
+
+		<br>
+		<p>
+			Now all that is left to do is execute the git statements. Let's say we modified a text file named <em>"commit.txt"</em>.
+			Then we can simply run: <br>
+			<b>git add commit.txt</b><br>
+			<b>git commit -m "daily hello git commit"</b><br>
+			<b>git push</b>
+		</p>
+
+		<br>
+		<p>
+			...<br>
+			But how do I do that with Lucee? This is where I am stuck...
+		</p>
 	</section>
 
 </main>

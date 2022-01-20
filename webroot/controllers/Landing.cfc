@@ -36,9 +36,12 @@ component extends="controller" {
 
 		// get parameters to display a demo of the complete message
 		today = dateFormat(Now(), 'yyyy-mm-dd');
-		yearAgo = dateFormat(Now()-365, 'yyyy-mm-dd');
+		yearAgo = dateFormat(today-365, 'yyyy-mm-dd');
 		startOffset = dow[DateFormat(yearAgo, 'ddd')];
 		firstSunday = dateFormat(yearAgo - startOffset, 'yyyy-mm-dd');
+		if(((today-firstSunday)/7)%53 EQ 0) {
+			firstSunday = dateFormat(yearAgo + (7 - startOffset), 'yyyy-mm-dd');
+		}
 		totalDays = today - firstSunday;
 
 		// these value will be used in loop to create rects
