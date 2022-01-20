@@ -319,7 +319,7 @@
 
 									<cfset row = currentDow + 1/>
 									<cfset col = floor((day - projectStartSunday)/7) + 1/>
-									<cfif col GT 0>
+									<cfif col GT 0 AND day GE projectStart>
 										<cfset commitValue = message[row][col]/>
 									<cfelse>
 										<cfset commitValue = 0/>
@@ -542,8 +542,8 @@
 		<br>
 		<p>
 			Now all that is left to do is execute the git statements. Let's say we modified a text file named <em>"commit.txt"</em>.
-			Then we can simply run: <br>
-			<b>git add commit.txt</b><br>
+			Then we can simply run: <br><br>
+			<b>git add path/commit.txt</b><br>
 			<b>git commit -m "daily hello git commit"</b><br>
 			<b>git push</b>
 		</p>

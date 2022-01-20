@@ -24,7 +24,7 @@ component extends="controller" {
 	];
 
 	projectStart = server.system.environment.startDate;
-	projectStart = '2021-09-07';
+	// projectStart = test other dates here
 	projectStartOffset = dow[DateFormat(projectStart, 'ddd')];
 	projectStartSunday = dateFormat(projectStart-projectStartOffset, 'yyyy-mm-dd');
 
@@ -36,6 +36,7 @@ component extends="controller" {
 
 		// get parameters to display a demo of the complete message
 		today = dateFormat(Now(), 'yyyy-mm-dd');
+		// today = test other dates here
 		yearAgo = dateFormat(today-365, 'yyyy-mm-dd');
 		startOffset = dow[DateFormat(yearAgo, 'ddd')];
 		firstSunday = dateFormat(yearAgo - startOffset, 'yyyy-mm-dd');
