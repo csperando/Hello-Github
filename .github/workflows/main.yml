@@ -1,0 +1,26 @@
+name: Hello
+
+on:
+  schedule:
+  - cron: "30 8,17 * * *"
+  
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+
+  updateLog:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+
+      - name: update log
+        run: date +%s > log.txt
+
+      - name: Commit log
+        run: |
+          git config --global user.name csperando
+          git config --global user.email csperando@gmail.com
+          git commit -am "Automated action"
+          git push
