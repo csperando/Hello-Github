@@ -22,5 +22,6 @@ jobs:
         run: |
           git config --global user.name csperando
           git config --global user.email csperando@gmail.com
+          git add log.txt
           git commit -am "Automated action"
           git push
