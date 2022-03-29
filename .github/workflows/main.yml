@@ -1,8 +1,9 @@
 name: Hello
 
 on:
+  # Every day at 5:30PM and 8:30AM
   schedule:
-  - cron: "30 8,17 * * *"
+    - cron: "36 13,22 * * *"
   
   workflow_dispatch:
 
