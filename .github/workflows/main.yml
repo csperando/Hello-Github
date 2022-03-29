@@ -1,19 +1,17 @@
 name: Hello
 
 on:
-  # Every day at 5:30PM and 8:30AM
+  # Every 30 minutes
   schedule:
     - cron: "*/30 * * * *"
   
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
 
   updateLog:
     runs-on: ubuntu-latest
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v3
 
       - name: update log
