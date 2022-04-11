@@ -2,8 +2,8 @@ name: Hello
 
 on:
   # Every 30 minutes
-  schedule:
-    - cron: "*/30 * * * *"
+#   schedule:
+#     - cron: "*/30 * * * *"
   push:
   
   workflow_dispatch:
