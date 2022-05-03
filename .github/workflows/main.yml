@@ -19,6 +19,7 @@ jobs:
         run: date +%s > log.txt
 
       - name: Commit log
+        shell: cmd
         run: |
           set /a num=(%random%%10)+1
           echo %num%
