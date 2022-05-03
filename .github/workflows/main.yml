@@ -3,7 +3,7 @@ name: Hello
 on:
   # Every 30 minutes
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "0 */12 * * *"
   push:
   
   workflow_dispatch:
@@ -19,13 +19,9 @@ jobs:
         run: date +%s > log.txt
 
       - name: Commit log
-        shell: cmd
         run: |
-          set /a num=(%random%%10)+1
-          echo %num%
-          for /l %i in (0, 1, %num%) do (
-            git config --global user.name csperando
-            git config --global user.email csperando@gmail.com
-            git add log.txt
-            git commit -am "Automated action"
-            git push)
+          git config --global user.name csperando
+          git config --global user.email csperando@gmail.com
+          git add log.txt
+          git commit -am "Automated action"
+          git push
