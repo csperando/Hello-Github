@@ -1,9 +1,9 @@
 name: Hello
 
 on:
-  # Every 5 hours
+  # Cron Syntax Reference: https://en.wikipedia.org/wiki/Cron#Overview
   schedule:
-    - cron: "0 */5 * * *"
+    - cron: "30 * * * *"
   push:
   
   workflow_dispatch:
