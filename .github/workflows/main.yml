@@ -3,7 +3,7 @@ name: Hello
 on:
   # Cron Syntax Reference: https://en.wikipedia.org/wiki/Cron#Overview
   schedule:
-    - cron: "30 * * * 1-5"
+    - cron: "*/60 */5 * * *"
   push:
   
   workflow_dispatch:
