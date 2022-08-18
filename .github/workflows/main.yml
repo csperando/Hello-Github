@@ -15,24 +15,20 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: update log
-        run: date +%s > log.txt
-
-      - name: Commit log
-        run: |
-          # git config --global user.name csperando
-          # git config --global user.email csperando@gmail.com
-          # git add log.txt
-          # git commit -am "Automated action"
-          # git push
-          
+      - name: Update and Commit Log 
+        run: |         
           let n=$((RANDOM %= 10))
           echo "N = $n"
           for(( i=0; i<=$n; i++))
           do
-            echo -n "$i"
+            git config --global user.name csperando
+            git config --global user.email csperando@gmail.com
+            
+            date +%s > log.txt
+            git add log.txt
+            git commit -am "Automated action"
+            git push
+            
             sleep 1
           done
-          
-          echo "Done."
           
