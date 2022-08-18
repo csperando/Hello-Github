@@ -26,7 +26,7 @@ jobs:
           # git commit -am "Automated action"
           # git push
           
-          let n = $((RANDOM %= 10))
+          let n=$((RANDOM %= 10))
           for i in {0..$(n)}
           do
             echo $(i)
