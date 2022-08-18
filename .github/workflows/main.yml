@@ -28,8 +28,11 @@ jobs:
           
           let n=$((RANDOM %= 10))
           echo "N = $n"
-          for i in {0..n}
+          for(( i=0; i<=$n; i++))
           do
-            echo $i
+            echo -n "$i"
+            sleep 1
           done
+          
+          echo "Done."
           
