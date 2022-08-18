@@ -29,6 +29,6 @@ jobs:
           let n=$((RANDOM %= 10))
           for i in {0..n}
           do
-            echo $(i)
+            echo i
           done
           
