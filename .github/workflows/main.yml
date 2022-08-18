@@ -20,6 +20,7 @@ jobs:
 
       - name: Commit log
         run: |
+          echo $(RANDOM %= 10)
           git config --global user.name csperando
           git config --global user.email csperando@gmail.com
           git add log.txt
