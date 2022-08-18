@@ -20,9 +20,15 @@ jobs:
 
       - name: Commit log
         run: |
-          echo $((RANDOM %= 10))
-          git config --global user.name csperando
-          git config --global user.email csperando@gmail.com
-          git add log.txt
-          git commit -am "Automated action"
-          git push
+          let n = $((RANDOM %= 10))
+          let i = 1
+          while [ i < n ]; do
+            i++
+            date +%s > log.txt
+            git config --global user.name csperando
+            git config --global user.email csperando@gmail.com
+            git add log.txt
+            git commit -am "Automated action"
+            git push
+          done
+          
