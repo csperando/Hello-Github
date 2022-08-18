@@ -27,7 +27,7 @@ jobs:
           # git push
           
           let n=$((RANDOM %= 10))
-          for i in {0..$(n)}
+          for i in {0..n}
           do
             echo $(i)
           done
