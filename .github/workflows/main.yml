@@ -17,9 +17,9 @@ jobs:
 
       - name: Update and Commit Log 
         run: |         
-          let n=$((RANDOM %= 10))
+          let n=$(( (RANDOM % 5) + 1 ))
           echo "N = $n"
-          for(( i=0; i<=$n; i++))
+          for(( i=1; i<=n; i++))
           do
             git config --global user.name csperando
             git config --global user.email csperando@gmail.com
@@ -29,6 +29,6 @@ jobs:
             git commit -am "Automated action"
             git push
             
-            sleep 1
+            sleep 2
           done
           
