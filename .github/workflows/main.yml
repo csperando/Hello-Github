@@ -29,6 +29,6 @@ jobs:
             git commit -am "Automated action"
             git push
             
-#             sleep 2
-#           done
+            sleep 2
+          done
           
