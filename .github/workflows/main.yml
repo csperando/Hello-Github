@@ -2,8 +2,8 @@ name: Hello
 
 on:
   # Cron Syntax Reference: https://en.wikipedia.org/wiki/Cron#Overview
-  # schedule:
-  #  - cron: "*/60 */12 * * 1-5"
+  schedule:
+   - cron: "*/60 */12 * * 1-5"
   push:
   
   workflow_dispatch:
