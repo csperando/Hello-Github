@@ -23,11 +23,8 @@ jobs:
           npm install
           npm run build
 
-      # - name: Copy CNAME to dist/
-      #   run: |
-      #     cd ..
-      #     cp "./CNAME" "./vue/dist/CNAME"
-      #     cd vue
+      - name: Copy CNAME to dist/
+        run: cp CNAME vue/dist/CNAME
 
       - name: Force commit updated dist
         run: |
