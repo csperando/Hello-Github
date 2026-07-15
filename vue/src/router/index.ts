@@ -15,7 +15,7 @@ const router = createRouter({
         errorRoute,
         notFoundRoute,
     ],
-    history: createWebHistory("/"),
+    history: createWebHistory("/Hello-Github/"),
     scrollBehavior(to) {
         if (to.hash) {
             return { el: to.hash, behavior: "smooth" };
