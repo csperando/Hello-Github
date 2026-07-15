@@ -31,7 +31,7 @@ jobs:
 
       - name: Force commit updated dist
         run: |
-          git add dist -f
+          git add vue/dist -f
           git add CNAME -f
           git commit -m "actions automated commit build dist/"
 
@@ -44,10 +44,10 @@ jobs:
         if: ${{ steps.exists.outputs.EXISTS }}
         run: |
           echo "Pushing changes to existing branch."
-          git push origin `git subtree split --prefix=dist/ main`:gh-pages --force
+          git push origin `git subtree split --prefix=vue/dist/ main`:gh-pages --force
 
       - name: Create gh-pages branch
         if: ${{ !steps.exists.outputs.EXISTS }}
         run: |
           echo "The branch gh-pages does not exist. Creating initial subtree from dist/."
-          git subtree push --prefix dist/ origin gh-pages
+          git subtree push --prefix vue/dist/ origin gh-pages
