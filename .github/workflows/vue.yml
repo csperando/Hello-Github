@@ -25,7 +25,9 @@ jobs:
 
       - name: Copy CNAME to dist/
         run: |
-          cp "../CNAME" "./dist/CNAME"
+          cd ..
+          cp "./CNAME" "./vue/dist/CNAME"
+          cd vue
 
       - name: Force commit updated dist
         run: |
