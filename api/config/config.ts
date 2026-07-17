@@ -3,9 +3,7 @@ import assert from "assert";
 import path from "path";
 
 // TODO - review
-dotenv.config({
-    path: path.resolve(__dirname, "../../.env"),
-});
+dotenv.config();
 
 const {
     REST_NODE_ENV,
