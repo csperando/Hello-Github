@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  ECR_REPOSITORY: commitment-api
+  DOCKERHUB_REPOSITORY: commitment-api
 
 jobs:
   test:
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     outputs:
-      registry: ${{ steps.ecr-login.outputs.registry }}
+      registry: docker.io
       image: ${{ steps.build.outputs.image }}
     steps:
       - name: Checkout repo
@@ -52,41 +52,34 @@ jobs:
         with:
           token: ${{ secrets.token }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Login to ECR
-        id: ecr-login
-        uses: aws-actions/amazon-ecr-login@v2
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build, tag, and push
         id: build
-        env:
-          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
         run: |
-          IMAGE="$REGISTRY/$ECR_REPOSITORY"
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/$DOCKERHUB_REPOSITORY"
           docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" api
           docker push "$IMAGE:${{ github.sha }}"
           docker push "$IMAGE:latest"
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_SSH_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -e
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ needs.build-and-push.outputs.registry }}
-            sudo docker pull ${{ needs.build-and-push.outputs.image }}:latest
-            sudo systemctl restart commitment-api
-            sudo systemctl status commitment-api --no-pager
+  # deploy:
+  #   needs: build-and-push
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Deploy over SSH
+  #       uses: appleboy/ssh-action@v1.0.3
+  #       with:
+  #         host: ${{ secrets.EC2_HOST }}
+  #         username: ${{ secrets.EC2_SSH_USER }}
+  #         key: ${{ secrets.EC2_SSH_KEY }}
+  #         script: |
+  #           set -e
+  #           echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+  #           sudo docker pull ${{ needs.build-and-push.outputs.image }}:latest
+  #           sudo systemctl restart commitment-api
+  #           sudo systemctl status commitment-api --no-pager

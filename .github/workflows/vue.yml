@@ -1,6 +1,10 @@
 name: Vue
 run-name: Build Vite Application
-on: [push]
+on:
+  push:
+    branches: [main]
+    paths:
+      - "vue/**"
 
 jobs:
   Build-and-Push:
