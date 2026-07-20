@@ -1,0 +1,20 @@
+# Dockerfile for the rest api
+
+FROM node:20-alpine AS builder
+WORKDIR /api
+COPY api/package.json api/package-lock.json ./
+RUN npm ci
+COPY api .
+COPY .env .
+RUN npm run build
+
+FROM node:20-alpine
+WORKDIR /api
+ENV NODE_ENV=production
+COPY api/package.json api/package-lock.json ./
+COPY .env .
+RUN npm ci --omit=dev
+COPY --from=builder /api/dist ./dist
+
+EXPOSE 3000
+CMD ["node", "dist/index.js"]
