@@ -32,7 +32,9 @@ jobs:
 
       - name: Create .env from secrets
         run: |
-          echo ${{ secrets.DOT_ENV }} >> .env
+          cat <<'EOF' > .env
+          ${{ secrets.DOT_ENV }}
+          EOF
 
       - name: Install dependencies
         run: npm ci
@@ -65,7 +67,9 @@ jobs:
       - name: Generate .env file
         id: env
         run: |
-          echo ${{ secrets.DOT_ENV }} >> .env
+          cat <<'EOF' > .env
+          ${{ secrets.DOT_ENV }}
+          EOF
 
       - name: Build, tag, and push
         id: build
