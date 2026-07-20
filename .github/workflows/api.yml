@@ -71,7 +71,7 @@ jobs:
         id: build
         run: |
           IMAGE="${{ secrets.DOCKER_USERNAME }}/$DOCKER_REPOSITORY"
-          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" . --no-cache
           docker push "$IMAGE:${{ github.sha }}"
           docker push "$IMAGE:latest"
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"

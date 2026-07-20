@@ -1,6 +1,5 @@
 import * as dotenv from "dotenv";
 import assert from "assert";
-import path from "path";
 
 // TODO - review
 dotenv.config();
