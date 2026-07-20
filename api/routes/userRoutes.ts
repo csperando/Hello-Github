@@ -4,8 +4,7 @@ import { iResponse } from "../models/response";
 
 const router = Router();
 
-router.all("*", [], async (req: Request, res: Response, next: NextFunction) => {
-    // stuff here
+router.all("/{*splat}", [], async (req: Request, res: Response, next: NextFunction) => {
     next();
 });
 
