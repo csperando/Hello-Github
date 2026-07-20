@@ -33,7 +33,6 @@ jobs:
       - name: Create .env from secrets
         run: |
           echo ${{ secrets.DOT_ENV }} >> .env
-          cp ./.env ./api/.env
 
       - name: Install dependencies
         run: npm ci
