@@ -65,7 +65,7 @@ jobs:
       - name: Generate .env file
         id: env
         run: |
-          echo "test"
+          echo ${{ secrets.DOT_ENV }} >> .env
 
       - name: Build, tag, and push
         id: build
