@@ -1,6 +1,6 @@
 import { Router, NextFunction, Request, Response } from "express";
 
-// import { iApiResponse } from "../models/apiResponse";
+import { iResponse } from "../models/response";
 
 const router = Router();
 
@@ -9,11 +9,34 @@ router.all("*", [], async (req: Request, res: Response, next: NextFunction) => {
     next();
 });
 
-
-router.post("/test", async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * Create new user
+ */
+router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // pg pool ...
-        res.status(200).send("test");
+        const response: iResponse = {
+            success: false,
+            status: 403,
+        }
+
+        res.status(403).json(response);
+
+    } catch(err) {
+        next(err);
+    }
+});
+
+/**
+ * Get all users
+ */
+router.get("/", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const response: iResponse = {
+            success: false,
+            status: 403,
+        }
+
+        res.status(403).json(response);
 
     } catch(err) {
         next(err);

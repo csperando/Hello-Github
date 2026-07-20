@@ -1,10 +1,11 @@
 import express, { Request, Response } from "express";
+import { iResponse } from "../models/response";
 
 const router = express.Router();
 
-router.all("/", async (req: Request, res: Response) => {
-    res.status(200);
-    res.send("'Commits for Good' REST API is up and running.");
+router.get("/", async (req: Request, res: Response) => {
+    const response: iResponse = { success: true, status: 200 };
+    res.status(200).json(response);
 });
 
 export default router;
