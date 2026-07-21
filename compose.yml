@@ -1,4 +1,10 @@
 services:
+  api:
+    image: csperando/commitment-api:latest
+    restart: unless-stopped
+    expose:
+      - 3000
+
   nginx:
     build:
       context: ./deploy
@@ -10,11 +16,4 @@ services:
     #   - ./ssl:/etc/nginx/ssl
     depends_on:
       - api
-
-  api:
-    build:
-      context: .
-      dockerfile: ./deploy/Dockerfile.api
-    expose:
-      - 3000
     
