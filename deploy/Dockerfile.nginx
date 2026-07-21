@@ -1,0 +1,2 @@
+FROM nginx:stable-alpine3.24-perl
+COPY nginx/conf.d /etc/nginx/conf.d
