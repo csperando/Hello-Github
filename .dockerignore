@@ -5,3 +5,5 @@ coverage/
 *.test.ts
 test/
 deploy/
+*.pem
+*.key
