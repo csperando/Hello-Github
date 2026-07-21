@@ -4,20 +4,5 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    expose:
-      - 3000
-
-  nginx:
-    image: csperando/commitment-nginx:latest
-    build:
-      context: ./deploy
-      dockerfile: Dockerfile.nginx
-    restart: unless-stopped
-    volumes:
-      - ./ssl:/etc/nginx/ssl
     ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      - api
-    
+      - "127.0.0.1:3000:3000"
