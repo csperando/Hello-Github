@@ -102,6 +102,12 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
+            cd /home/ec2-user
+            echo "${{ secrets.DOCKER_TOKEN }}" | sudo docker login --username ${{ secrets.DOCKER_USERNAME }} --password-stdin
+            sudo docker compose pull
+            sudo docker compose up -d --remove-orphans
+            sudo docker image prune -f
+
             sudo mkdir -p /etc/nginx/ssl
             sudo cp /home/ec2-user/deploy/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf
             sudo cp /home/ec2-user/ssl/api.commitsforgood.com.pem /etc/nginx/ssl/
@@ -111,9 +117,3 @@ jobs:
             sudo nginx -t
             sudo systemctl enable nginx
             sudo systemctl restart nginx
-
-            cd /home/ec2-user
-            echo "${{ secrets.DOCKER_TOKEN }}" | sudo docker login --username ${{ secrets.DOCKER_USERNAME }} --password-stdin
-            sudo docker compose pull
-            sudo docker compose up -d
-            sudo docker image prune -f
