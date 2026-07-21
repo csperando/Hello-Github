@@ -28,12 +28,11 @@ jobs:
           npm run build
 
       - name: Copy CNAME to dist/
-        run: cp CNAME vue/dist/CNAME
+        run: cp vue/CNAME vue/dist/CNAME
 
       - name: Force commit updated dist
         run: |
           git add vue/dist -f
-          git add CNAME -f
           git commit -m "actions automated commit build dist/"
 
       - name: Check if gh-pages exists
