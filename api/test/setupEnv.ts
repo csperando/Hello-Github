@@ -1,3 +1,5 @@
+// TODO - not sure if I want to keep this or not
+
 process.env.REST_NODE_ENV = "test";
 process.env.REST_PORT = "0";
 process.env.POSTGRESS_HOST = "localhost";

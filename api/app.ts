@@ -8,10 +8,10 @@ const app = express();
 app.use(cors);
 
 // routes
-app.use("/{*splat}", (req: Request, res: Response, next: NextFunction) => {
-    logger.info(req);
-    next();
-});
+// app.use("/{*splat}", (req: Request, res: Response, next: NextFunction) => {
+//     logger.info(req);
+//     next();
+// });
 
 router(app);
 
