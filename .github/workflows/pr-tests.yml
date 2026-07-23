@@ -1,0 +1,61 @@
+name: PR Tests
+run-name: Run tests
+
+on:
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+jobs:
+  vue:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vue
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Use Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: vue/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: |
+          echo "TODO"
+          # npm run test:unit
+  
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Use Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: api/package-lock.json
+
+      - name: Create .env from secrets
+        run: |
+          cat <<'EOF' > .env
+          ${{ secrets.DOT_ENV }}
+          EOF
+
+      - name: Install dependencies
+        run: npm ci --omit=dev
+
+      - name: Run tests
+        run: npm test
