@@ -40,40 +40,35 @@ Never edit a migration that's already been applied anywhere (local, staging, pro
 "fix" it. Write a new migration instead. Migration files are an append-only log of what happened to
 the schema, not a snapshot you're allowed to rewrite.
 
-## Linking to the live Supabase project (one-time, per machine)
+## Pushing migrations to production (self-hosted Postgres)
 
-The CLI needs to know which remote project `db push`/`db diff --linked`/`migration repair` target.
-This requires an interactive login, so it's a step you run yourself, not something scriptable here:
+Production is a self-hosted Postgres container (`db` service in the repo-root `compose.yml`), not
+a hosted Supabase project — there's nothing to `supabase link` to. `db push` supports pushing to
+any Postgres via `--db-url`, so no linking/login is needed:
 
-```
-npx supabase login                        # opens a browser, stores an access token locally
-npx supabase link --project-ref <ref>     # <ref> is in your dashboard URL: supabase.com/dashboard/project/<ref>
-```
+1. Open a tunnel to the EC2 host's loopback-bound Postgres port:
+   ```
+   ssh -L 5433:localhost:5432 ec2-user@<EC2_HOST>
+   ```
+2. Push directly by connection string:
+   ```
+   npx supabase db push --db-url "postgresql://<user>:<password>@localhost:5433/<database>"
+   ```
 
-`link` will prompt for the database password (same value as `POSTGRES_PASSWORD` in `.env`).
+`db:diff --linked` no longer applies (no linked project) — use plain `npm run db:diff` (local vs.
+migration files) instead.
 
-## Migration history was backfilled, not created fresh
+## Migration history note (historical context)
 
-`users` and `eo_bmf` existed in the live database *before* this CLI setup — they were originally
-created by hand-running loose `.sql` files. `20260723222210_create_users.sql` and
-`20260723222211_create_eo_bmf.sql` are those same table definitions, now captured as proper
-migrations (the users migration additionally adds a `set_updated_at()` trigger the original hand-run
-SQL didn't have).
-
-Because the tables already exist remotely, the CLI's remote tracking table
-(`supabase_migrations.schema_migrations`) doesn't know about these two migrations yet. Running
-`db push` as-is would try to `CREATE TABLE` something that already exists and fail. After linking,
-reconcile history once with:
-
-```
-npx supabase db diff --linked                                              # confirm no drift first
-npx supabase migration repair --status applied 20260723222210 20260723222211
-npx supabase migration list                                                # sanity check: both sides match
-```
-
-`migration repair` only writes rows into the tracking table — it does not execute any SQL from the
-migration files. Every migration created *after* this point is a normal one: write it, test it
-locally with `db:reset`, then `db push` for real.
+`users` and `eo_bmf` originally existed in a *hosted* Supabase project before this CLI setup existed
+— they were created by hand-running loose `.sql` files, and `20260723222210_create_users.sql` /
+`20260723222211_create_eo_bmf.sql` are those same table definitions captured as proper migrations
+after the fact (the users migration additionally adds a `set_updated_at()` trigger the original
+hand-run SQL didn't have). That reconciliation (`migration repair --status applied ...`) was a
+one-time fixup against the *old* hosted project's tracking table and doesn't apply to the
+self-hosted container: it starts empty, so both migrations apply cleanly via a normal `db push`.
+Every migration from here on is a normal one: write it, test locally with `db:reset`, then `db push`
+for real.
 
 ## Conventions
 

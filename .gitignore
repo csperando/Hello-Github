@@ -1,5 +1,6 @@
 node_modules/
 .env
+pgdata/
 .playwright-mcp/
 .claude/
 *dist/
