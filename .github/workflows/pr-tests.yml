@@ -29,8 +29,7 @@ jobs:
 
       - name: Run tests
         run: |
-          echo "TODO"
-          # npm run test:unit
+          npm run test:unit
   
   api:
     runs-on: ubuntu-latest
@@ -54,8 +53,12 @@ jobs:
           ${{ secrets.DOT_ENV }}
           EOF
 
-      - name: Install dependencies
-        run: npm ci --omit=dev
+      - name: Build
+        run: |
+          npm ci --omit=dev
+          npm run build
 
       - name: Run tests
-        run: npm test
+        run: |
+          npm ci
+          npm test
