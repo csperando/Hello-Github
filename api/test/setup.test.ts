@@ -2,8 +2,8 @@ import { iResponse } from "../models/response";
 import server from "./server";
 import request from "supertest";
 
-afterAll(async () => {
-    await server.close();
+afterAll(() => {
+    server.close();
 });
 
 describe("Basic tests", () => {

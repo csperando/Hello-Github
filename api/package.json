@@ -4,8 +4,8 @@
     "description": "",
     "main": "index.js",
     "scripts": {
-        "test": "jest --coverage --testPathIgnorePatterns=tests/integration/*",
-        "test:all": "jest",
+        "test": "jest --config jest.unit.config.js --coverage --detectOpenHandles",
+        "test:all": "jest --config jest.config.js --detectOpenHandles",
         "build": "npx tsc",
         "start": "node dist/index.js",
         "dev": "ts-node-dev index.ts"

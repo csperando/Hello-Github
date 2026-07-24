@@ -1,8 +1,8 @@
 import server from "../server";
 import pool from "../../config/db";
 
-afterAll(async () => {
-    await server.close();
+afterAll(() => {
+    server.close();
 });
 
 describe("Postgres config tests", () => {
