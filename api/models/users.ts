@@ -1,6 +1,6 @@
 
 export interface iUser {
-    id: Number;
+    id: String; // uuid
 
     github_id: Number;
     github_username: String;
