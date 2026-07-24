@@ -90,7 +90,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_SSH_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "compose.yml,.env,ssl/*,deploy/nginx/conf.d/*,deploy/backup-db.sh"
+          source: "compose.yml,.env,ssl/*,deploy/nginx/conf.d/*,db/backup-db.sh"
           target: "/home/ec2-user"
 
       - name: Install nginx config, pull, and restart
