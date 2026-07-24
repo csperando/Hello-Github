@@ -116,7 +116,7 @@ jobs:
             # deploy/ gets wiped below on every deploy - copy the backup script out first so its
             # cron schedule (registered manually, once, on the host) keeps working.
             mkdir -p /home/ec2-user/scripts
-            cp /home/ec2-user/deploy/backup-db.sh /home/ec2-user/scripts/backup-db.sh
+            cp /home/ec2-user/db/backup-db.sh /home/ec2-user/scripts/backup-db.sh
             chmod +x /home/ec2-user/scripts/backup-db.sh
 
             rm -rf /home/ec2-user/ssl /home/ec2-user/deploy
