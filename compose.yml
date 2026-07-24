@@ -11,15 +11,12 @@ services:
         condition: service_healthy
 
   db:
-    image: postgres:17-alpine
+    build: csperando/commitment-db:latest
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # the postgres image expects POSTGRES_DB; the app's own env var is POSTGRES_DATABASE
-      POSTGRES_DB: ${POSTGRES_DATABASE}
+    env_file:
+      - .env
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
+      - ./db/pgdata:/var/lib/postgresql/data
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:

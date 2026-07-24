@@ -1,0 +1,15 @@
+FROM postgres:17-alpine
+
+ENV POSTGRES_USER=${POSTGRES_USER}
+ENV POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+ENV POSTGRES_DB=${POSTGRES_DATABASE}
+
+# initialization scripts
+COPY db/init.sql /docker-entrypoint-initdb.d/
+
+ENV POSTGRES_DB=${POSTGRES_DATABASE}
+
+EXPOSE 5432
+
+HEALTHCHECK --interval=5s --timeout=5s --start-period=10s --retries=10 \
+  CMD pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB || exit 1
