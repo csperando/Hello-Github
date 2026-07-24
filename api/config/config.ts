@@ -2,7 +2,7 @@ import * as dotenv from "dotenv";
 import assert from "assert";
 
 // TODO - review
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const {
     REST_NODE_ENV,

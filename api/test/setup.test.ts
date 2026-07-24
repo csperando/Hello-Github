@@ -16,5 +16,11 @@ describe("Basic tests", () => {
         const body: iResponse = JSON.parse(res.text);
         expect(body.success).toBe(true);
         expect(body.status).toBe(200);
-    })
+    });
+
+    it("Should have a healthcheck endpoint for docker", async () => {
+        const res = await request(server).get("/healthz");
+        const body: iResponse = JSON.parse(res.text);
+        expect(body.status).toBe("healthy");
+    });
 });
