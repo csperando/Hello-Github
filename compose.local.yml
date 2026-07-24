@@ -17,8 +17,10 @@ services:
       context: .
       dockerfile: ./deploy/Dockerfile.db
     restart: unless-stopped
-    env_file:
-      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DATABASE}
     volumes:
       - ./db/pgdata:/var/lib/postgresql/data
     ports:

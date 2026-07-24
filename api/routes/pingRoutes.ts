@@ -8,4 +8,12 @@ router.get("/", async (req: Request, res: Response) => {
     res.status(200).json(response);
 });
 
+router.get("/healthz", async (req: Request, res: Response) => {
+    res.status(200).json({
+        status: 'healthy',
+        uptime: process.uptime(),
+        timestamp: Date.now()
+    });
+});
+
 export default router;
