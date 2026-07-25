@@ -1,6 +1,7 @@
 import { Router, NextFunction, Request, Response } from "express";
 import { iResponse } from "../models/response";
 import { UserService } from "../services/users.service";
+import { requireAuth, requireRole } from "../middleware/auth.middleware";
 import { logger } from "../config/logger";
 
 const router = Router();
@@ -14,7 +15,7 @@ router.all("/{*splat}", [], async (req: Request, res: Response, next: NextFuncti
 /**
  * Get all users
  */
-router.get("/", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/", requireAuth, requireRole("admin"), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const users = await userService.getAllUsers();
         const response: iResponse = { success: true, status: 200, data: users };
@@ -28,7 +29,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
 /**
  * Get user by id
  */
-router.get("/:userId", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/:userId", requireAuth, requireRole("admin"), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = (req.params.userId) as string || "0";
         const users = await userService.getUserById(userId);
@@ -50,7 +51,7 @@ router.get("/:userId", async (req: Request, res: Response, next: NextFunction) =
 /**
  * Get user by id
  */
-router.get("/gh/:ghId", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/gh/:ghId", requireAuth, requireRole("admin"), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const ghId = (req.params.ghId) as string || "0";
         const users = await userService.getUserByGitHubId(parseInt(ghId));
