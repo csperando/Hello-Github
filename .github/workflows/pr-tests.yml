@@ -53,12 +53,12 @@ jobs:
           ${{ secrets.DOT_ENV }}
           EOF
 
-      - name: Build
-        run: |
-          npm ci --omit=dev
-          npm run build
-
       - name: Run tests
         run: |
           npm ci
           npm test
+
+      - name: Build
+        run: |
+          npm ci --omit=dev
+          npm run build

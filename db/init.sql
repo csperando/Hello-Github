@@ -1,4 +1,4 @@
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- OAuth Identity
@@ -30,14 +30,14 @@ CREATE TABLE users (
     last_login_at TIMESTAMPTZ
 );
 
-CREATE UNIQUE INDEX idx_users_github_id
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_github_id
     ON users(github_id);
 
 -- IRS Exempt Organizations Business Master File (EO BMF) extract
 -- Source: https://www.irs.gov/charities-non-profits/exempt-organizations-business-master-file-extract-eo-bmf
 -- Column widths sized from observed data (AK/CA/NY/TX, ~490k rows) with headroom.
 
-create table eo_bmf (
+create table if not exists eo_bmf (
     id                  bigserial primary key,
     ein                 varchar(9)  not null,               -- Employer Identification Number, zero-padded
     name                varchar(100) not null,
@@ -73,5 +73,5 @@ create table eo_bmf (
     constraint uq_eo_bmf_ein unique (ein)
 );
 
-create index idx_eo_bmf_state on eo_bmf (state);
-create index idx_eo_bmf_zip on eo_bmf (zip);
+create index if not exists idx_eo_bmf_state on eo_bmf (state);
+create index if not exists idx_eo_bmf_zip on eo_bmf (zip);
