@@ -6,16 +6,19 @@ export const editorRoute = {
     path: "/editor",
     name: "Editor",
     component: EditorView,
+    meta: { requiresAuth: true },
 };
 
 export const checkoutRoute = {
     path: "/checkout",
     name: "Checkout",
     component: CheckoutView,
+    meta: { requiresAuth: true },
 };
 
 export const dashboardRoute = {
     path: "/dashboard",
     name: "Dashboard",
     component: DashboardView,
+    meta: { requiresAuth: true },
 };
