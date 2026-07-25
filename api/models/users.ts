@@ -25,3 +25,12 @@ export interface iUser {
     updated_at?: String;
     last_login_at?: String;
 }
+
+export interface iGitHubUpsertInput {
+    github_id: Number;
+    github_username: String;
+    github_email: String;
+    github_node_id?: String;
+    github_profile_url?: String;
+    avatar_url?: String;
+}
