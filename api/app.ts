@@ -1,3 +1,4 @@
+/// <reference path="./types/express.d.ts" />
 import express, { Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { logger } from "./config/logger";
