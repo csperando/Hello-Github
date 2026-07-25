@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
+import cookieParser from "cookie-parser";
 import { logger } from "./config/logger";
+import { config } from "./config/config";
 import cors from "./config/cors";
 import router from "./routes";
 import { iResponse } from "./models/response";
@@ -7,6 +9,7 @@ import { iResponse } from "./models/response";
 const app = express();
 
 app.use(cors);
+app.use(cookieParser(config.SESSION_SECRET));
 
 // routes
 router(app);
