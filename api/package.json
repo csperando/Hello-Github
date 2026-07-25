@@ -11,7 +11,7 @@
         "dev": "ts-node-dev index.ts"
     },
     "keywords": [],
-    "author": "",
+    "author": "Coleman Sperando",
     "license": "ISC",
     "type": "commonjs",
     "devDependencies": {
