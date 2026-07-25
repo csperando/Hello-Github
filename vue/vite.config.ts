@@ -18,4 +18,10 @@ export default defineConfig({
         },
     },
     base: "/",
+    server: {
+        // pinned + strict: port 5173 is durably occupied by an unrelated project on this machine,
+        // and a silently-drifting port breaks the OAuth callback redirect (FRONTEND_URL must match)
+        port: 5176,
+        strictPort: true,
+    },
 })
