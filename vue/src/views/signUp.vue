@@ -6,6 +6,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import CharityListItem from '@/components/ui/CharityListItem.vue'
 import StepProgress from '@/components/ui/StepProgress.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
+import { githubLoginUrl } from '@/services/api'
 
 interface Charity {
   name: string
@@ -30,10 +31,7 @@ const publicOptIn = ref(true)
 
 function connect() {
   connecting.value = true
-  setTimeout(() => {
-    connecting.value = false
-    step.value = 2
-  }, 900)
+  window.location.href = githubLoginUrl()
 }
 
 function togglePublic() {
@@ -66,9 +64,7 @@ const firstName = computed(() => {
   <div style="font-family:'IBM Plex Sans',sans-serif;background:oklch(14% 0.012 250);color:oklch(96% 0.004 250);min-height:100vh;display:flex;flex-direction:column;background-image:radial-gradient(oklch(100% 0 0 / 0.045) 1px, transparent 1px);background-size:22px 22px;">
 
     <!-- NAV -->
-    <AppNavbar>
-      <template #actions>already have an account? <a href="#">sign in</a></template>
-    </AppNavbar>
+    <AppNavbar />
 
     <!-- MAIN -->
     <main style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px clamp(20px,4vw,48px) 60px;">
