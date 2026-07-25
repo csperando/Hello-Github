@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "vue/**"
+      - ".github/workflows/vue.yml"
+  workflow_dispatch:
 
 jobs:
   Build-and-Push:
@@ -29,6 +31,9 @@ jobs:
 
       - name: Copy CNAME to dist/
         run: cp vue/CNAME vue/dist/CNAME
+
+      - name: Add 404.html fallback for SPA history-mode routing
+        run: cp vue/dist/index.html vue/dist/404.html
 
       - name: Force commit updated dist
         run: |
