@@ -1,18 +1,16 @@
 import express, { Request, Response } from "express";
 import cookieParser from "cookie-parser";
-import { sign } from "cookie-signature";
 import request from "supertest";
 
 import { config } from "../../config/config";
 import { requireAuth } from "../../middleware/auth.middleware";
+import { signedSidCookie } from "../helpers";
 
 const testApp = express();
 testApp.use(cookieParser(config.SESSION_SECRET));
 testApp.get("/protected", requireAuth, (req: Request, res: Response) => {
     res.status(200).json({ success: true, status: 200, data: [req.user] });
 });
-
-const signedSidCookie = (userId: string) => `sid=s:${sign(userId, config.SESSION_SECRET)}`;
 
 describe("requireAuth middleware", () => {
     it("rejects a request with no session cookie", async () => {
