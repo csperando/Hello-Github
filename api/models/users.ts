@@ -1,3 +1,5 @@
+export const ROLES = ["admin", "user"] as const;
+export type Role = typeof ROLES[number];
 
 export interface iUser {
     id: String; // uuid
@@ -13,7 +15,7 @@ export interface iUser {
     name?: String;
     bio?: String;
 
-    role?: String;
+    role?: Role;
     is_active?: Boolean;
 
     access_token?: String;
