@@ -3,7 +3,7 @@
 # REST_PORT := 3000
 # VUE_PORT := 5176
 
-.PHONY: prep dev api-dev api-test api-install vue-dev vue-install
+.PHONY: prep dev api-dev api-test api-install vue-dev vue-install db-init
 
 prep: api-install vue-install
 
@@ -29,3 +29,7 @@ vue-dev:
 
 vue-install:
 	cd vue && npm install
+
+# DB
+db-init:
+	PGPASSWORD=$(POSTGRES_PASSWORD) psql -h $(POSTGRES_HOST) -p $(POSTGRES_PORT) -U $(POSTGRES_USER) -d $(POSTGRES_DATABASE) -f db/init.sql
