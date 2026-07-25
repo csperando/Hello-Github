@@ -22,6 +22,10 @@ testApp.get("/protected", requireAuth, (req: Request, res: Response) => {
 testApp.get("/admin-only", requireAuth, requireRole("admin"), (req: Request, res: Response) => {
     res.status(200).json({ success: true, status: 200, data: [req.user] });
 });
+// exercises requireRole's own defensive 401 for the case where it's mounted without requireAuth running first
+testApp.get("/role-only", requireRole("admin"), (req: Request, res: Response) => {
+    res.status(200).json({ success: true, status: 200, data: [req.user] });
+});
 testApp.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     const response: iResponse = { status: 500, success: false, error: err };
     res.status(500).json(response);
@@ -77,6 +81,13 @@ describe("requireRole middleware", () => {
 
     it("rejects a request with no session (req.user never set)", async () => {
         const res = await request(testApp).get("/admin-only");
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+        expect(usersRepoMock.getUserById).not.toHaveBeenCalled();
+    });
+
+    it("defensively rejects when mounted without requireAuth running first", async () => {
+        const res = await request(testApp).get("/role-only");
         expect(res.status).toBe(401);
         expect(res.body.success).toBe(false);
         expect(usersRepoMock.getUserById).not.toHaveBeenCalled();
