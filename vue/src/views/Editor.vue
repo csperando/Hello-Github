@@ -4,7 +4,7 @@ import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
-import { LEVEL_COLORS } from '@/helpers/grid'
+import { LEVEL_COLORS, todayAnchor, currentYearAnchor } from '@/helpers/grid'
 
 const WEEKS = 53
 const DAYS = 7
@@ -65,13 +65,14 @@ const TEMPLATES = [
   { key: 'diamond', name: 'Diamond', icon: '◆', build: () => stampPattern(DIAMOND, 20, 4) },
 ]
 
-const YEARS = ['2023', '2024', '2025', '2026']
+type TabKey = 'year' | 'today'
+const currentYear = new Date().getFullYear()
 
 const grid = ref<number[]>(stampPattern(HEART, 19, 4))
 const selectedTemplate = ref('heart')
 const brush = ref(4)
 const painting = ref(false)
-const selectedYear = ref('2026')
+const activeTab = ref<TabKey>('today')
 const publicOptIn = ref(true)
 const designName = ref('my first design')
 const repeatIndefinitely = ref(false)
@@ -107,6 +108,27 @@ function applyTemplate(key: string) {
   selectedTemplate.value = key
 }
 
+// The grid's first column is always the most recent Sunday on/before this
+// anchor date - "today" gives a rolling window starting now, "year" starts
+// from Jan 1 of the current year for year-to-date designs. Both tabs use the
+// same fixed 53-week grid width, extending forward from the anchor (this app
+// designs future contributions, unlike GitHub's own profile graph which runs
+// backward from today).
+const anchorDate = computed(() => (activeTab.value === 'today' ? todayAnchor() : currentYearAnchor()))
+const anchorDateLabel = computed(() =>
+  anchorDate.value.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
+)
+
+function selectTab(key: TabKey) {
+  if (key === activeTab.value) return
+  activeTab.value = key
+  // Switching tabs re-bases the grid onto a different real-world date range,
+  // so painted cells can't be meaningfully remapped onto new columns - reset
+  // the canvas rather than leaving stale art anchored to the wrong dates.
+  grid.value = emptyGrid()
+  selectedTemplate.value = 'blank'
+}
+
 const cells = computed(() =>
   grid.value.map((level, idx) => ({ idx, bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })),
 )
@@ -133,13 +155,20 @@ const brushLevels = computed(() =>
   })),
 )
 
-const years = computed(() =>
-  YEARS.map((y) => ({
-    label: y,
-    bg: y === selectedYear.value ? 'oklch(58% 0.16 145)' : 'transparent',
-    color: y === selectedYear.value ? 'oklch(14% 0.03 145)' : 'oklch(75% 0.008 250)',
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'year', label: String(currentYear) },
+  { key: 'today', label: 'Today' },
+]
+
+const tabs = computed(() =>
+  TABS.map((t) => ({
+    ...t,
+    bg: t.key === activeTab.value ? 'oklch(58% 0.16 145)' : 'transparent',
+    color: t.key === activeTab.value ? 'oklch(14% 0.03 145)' : 'oklch(75% 0.008 250)',
   })),
 )
+
+const activeTabLabel = computed(() => TABS.find((t) => t.key === activeTab.value)?.label ?? 'Today')
 
 const painted = computed(() => grid.value.filter((l) => l > 0).length)
 const commitCount = computed(() => painted.value * brush.value * 2)
@@ -166,11 +195,11 @@ const commitCount = computed(() => painted.value * brush.value * 2)
 
       <div style="display:flex;align-items:center;gap:4px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);border-radius:8px;padding:3px;">
         <button
-          v-for="y in years"
-          :key="y.label"
-          @click="selectedYear = y.label"
-          :style="{ fontFamily: 'IBM Plex Mono, monospace', fontSize: '12.5px', fontWeight: 600, background: y.bg, color: y.color, border: 'none', borderRadius: '6px', padding: '8px 14px', cursor: 'pointer' }"
-        >{{ y.label }}</button>
+          v-for="t in tabs"
+          :key="t.key"
+          @click="selectTab(t.key)"
+          :style="{ fontFamily: 'IBM Plex Mono, monospace', fontSize: '12.5px', fontWeight: 600, background: t.bg, color: t.color, border: 'none', borderRadius: '6px', padding: '8px 14px', cursor: 'pointer' }"
+        >{{ t.label }}</button>
       </div>
 
       <BaseButton as="router-link" to="/checkout" style="font-size:13.5px;border-radius:7px;padding:10px 18px;text-decoration:none;">continue to checkout →</BaseButton>
@@ -215,7 +244,7 @@ const commitCount = computed(() => painted.value * brush.value * 2)
       <main style="padding:clamp(20px,3vw,44px);overflow:auto;display:flex;align-items:center;justify-content:center;">
         <div style="width:100%;max-width:980px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px;">
-            <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:oklch(85% 0.006 250);">{{ selectedYear }} contribution graph</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:oklch(85% 0.006 250);">{{ activeTabLabel }} contribution graph · starts {{ anchorDateLabel }}</div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:oklch(60% 0.01 250);">drag to paint · click to toggle</div>
           </div>
           <BaseCard padding="28px 26px 24px">
@@ -298,7 +327,7 @@ const commitCount = computed(() => painted.value * brush.value * 2)
           <ToggleSwitch :checked="repeatIndefinitely" />
         </div>
         <div v-if="repeatIndefinitely" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:oklch(72% 0.16 145);">
-          <span>∞</span><span>renews {{ selectedYear }} → forever, until you cancel</span>
+          <span>∞</span><span>renews from {{ activeTabLabel }} → forever, until you cancel</span>
         </div>
       </aside>
     </div>
