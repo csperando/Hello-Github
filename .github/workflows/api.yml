@@ -90,7 +90,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_SSH_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "compose.yml,.env,ssl/*,deploy/nginx/conf.d/*,db/backup-db.sh,db/init.sql"
+          source: "compose.yml,.env,ssl/*,deploy/nginx/conf.d/*,db/backup-db.sh"
           target: "/home/ec2-user"
 
       - name: Install nginx config, pull, and restart
@@ -106,13 +106,11 @@ jobs:
             sudo docker compose pull
             sudo docker compose up -d --remove-orphans
 
-            # db/init.sql uses CREATE ... IF NOT EXISTS throughout, so it's safe to re-run on
-            # every deploy - this is the only schema-apply mechanism since there's no migration
-            # runner. It won't pick up ALTERs to existing tables.
-            set -a
-            source /home/ec2-user/.env
-            set +a
-            sudo docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" < /home/ec2-user/db/init.sql
+            # Applies any pending api/data/migrations/*.sql not yet recorded in schema_migrations.
+            # Note: the freshly-deployed api container is already running new code at this point,
+            # so there's a brief window before this completes where it's serving requests against
+            # the old schema - acceptable for this single-host, no-blue-green deploy.
+            sudo docker compose exec -T api npm run migrate
 
             sudo docker image prune -f
 
