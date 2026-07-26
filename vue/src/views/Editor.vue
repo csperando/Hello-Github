@@ -7,7 +7,7 @@ import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { LEVEL_COLORS, todayAnchor, currentYearAnchor } from '@/helpers/grid'
 
 const WEEKS = 53
-const DAYS = 7
+const DAYS = 7 // row 0 = Sunday, matching stampPattern's idx = week * DAYS + row and GitHub's own week layout
 const MONTH_LABELS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 
 type Pattern = number[][]
@@ -256,10 +256,10 @@ const commitCount = computed(() => painted.value * brush.value * 2)
               >{{ m.label }}</span>
             </div>
             <div style="display:flex;gap:8px;align-items:stretch;">
-              <div style="flex:none;width:26px;display:flex;flex-direction:column;justify-content:space-between;padding:2px 0;">
-                <span style="font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">mon</span>
-                <span style="font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">wed</span>
-                <span style="font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">fri</span>
+              <div style="flex:none;width:26px;display:grid;grid-template-rows:repeat(7, 1fr);align-items:center;padding:2px 0;">
+                <span style="grid-row:2;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">mon</span>
+                <span style="grid-row:4;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">wed</span>
+                <span style="grid-row:6;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">fri</span>
               </div>
               <div
                 @mousedown="painting = true"
