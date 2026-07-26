@@ -3,7 +3,12 @@ import path from "path";
 import pool from "../config/db";
 import { logger } from "../config/logger";
 
-const DEFAULT_MIGRATIONS_DIR = path.join(__dirname, "migrations");
+// resolved from process.cwd() rather than __dirname: __dirname would point at
+// dist/data once compiled, but tsc never copies the .sql files there - every
+// entry point that runs this (npm scripts, ts-node-dev, jest, the Docker
+// image's WORKDIR) has cwd set to the api/ project root, where data/migrations
+// actually lives (and is COPY'd to in deploy/Dockerfile.api).
+const DEFAULT_MIGRATIONS_DIR = path.join(process.cwd(), "data", "migrations");
 
 async function ensureMigrationsTable(): Promise<void> {
     await pool.query(`
