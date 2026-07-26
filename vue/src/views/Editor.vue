@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import UserAvatarChip from '@/components/ui/UserAvatarChip.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { LEVEL_COLORS } from '@/helpers/grid'
 
@@ -154,9 +153,6 @@ const commitCount = computed(() => painted.value * brush.value * 2)
         <RouterLink to="/#how" style="color:oklch(85% 0.006 250);">how it works</RouterLink>
         <RouterLink to="/#give" style="color:oklch(85% 0.006 250);">pricing</RouterLink>
         <RouterLink to="/#community" style="color:oklch(85% 0.006 250);">community</RouterLink>
-      </template>
-      <template #actions>
-        <UserAvatarChip initial="L" handle="@lena.codes" />
       </template>
     </AppNavbar>
 

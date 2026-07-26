@@ -99,10 +99,6 @@ const steps = STEPS
         <a href="#give" style="color:oklch(85% 0.006 250);">pricing</a>
         <a href="#community" style="color:oklch(85% 0.006 250);">community</a>
       </template>
-      <template #actions>
-        <BaseButton variant="secondary" style="font-size:13.5px;color:oklch(94% 0.004 250);border:1px solid oklch(100% 0 0 / 0.18);border-radius:6px;padding:8px 14px;">sign in</BaseButton>
-        <BaseButton as="router-link" to="/signup" style="font-size:13.5px;border-radius:6px;padding:9px 16px;text-decoration:none;">connect github →</BaseButton>
-      </template>
     </AppNavbar>
 
     <!-- HERO -->

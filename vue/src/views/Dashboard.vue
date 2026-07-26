@@ -2,7 +2,6 @@
 import { computed, ref } from 'vue'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
-import UserAvatarChip from '@/components/ui/UserAvatarChip.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import ContributionGridPreview from '@/components/ui/ContributionGridPreview.vue'
 import { LEVEL_COLORS } from '@/helpers/grid'
@@ -125,9 +124,6 @@ const receipts = RECEIPTS
       <template #links>
         <RouterLink to="/editor" style="color:oklch(85% 0.006 250);">design</RouterLink>
         <RouterLink to="/#community" style="color:oklch(85% 0.006 250);">community</RouterLink>
-      </template>
-      <template #actions>
-        <UserAvatarChip initial="L" handle="@lena.codes" />
       </template>
     </AppNavbar>
 

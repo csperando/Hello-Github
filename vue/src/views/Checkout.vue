@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import UserAvatarChip from '@/components/ui/UserAvatarChip.vue'
 import CharityListItem from '@/components/ui/CharityListItem.vue'
 import StepProgress from '@/components/ui/StepProgress.vue'
 import ContributionGridPreview from '@/components/ui/ContributionGridPreview.vue'
@@ -106,9 +105,6 @@ const paintedCount = computed(() => previewGrid.value.filter((l) => l > 0).lengt
       <template #links>
         <RouterLink to="/editor" style="color:oklch(85% 0.006 250);">design</RouterLink>
         <RouterLink to="/#community" style="color:oklch(85% 0.006 250);">community</RouterLink>
-      </template>
-      <template #actions>
-        <UserAvatarChip initial="L" handle="@lena.codes" />
       </template>
     </AppNavbar>
 
