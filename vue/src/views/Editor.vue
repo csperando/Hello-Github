@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import CustomRangeSlider from '@/components/ui/CustomRangeSlider.vue'
-import { LEVEL_COLORS, todayAnchor, currentYearAnchor } from '@/helpers/grid'
-import { getDesign, type iDesign } from '@/services/designs'
+import { LEVEL_COLORS, todayAnchor, currentYearAnchor, toDateString } from '@/helpers/grid'
+import { getDesign, type iDesign, type iDesignCreatePayload } from '@/services/designs'
+import { useDesignsStore } from '@/stores/designs'
 
 const WEEKS = 53
 const DAYS = 7 // row 0 = Sunday, matching stampPattern's idx = week * DAYS + row and GitHub's own week layout
@@ -308,6 +309,112 @@ const activeTabLabel = computed(() => TABS.find((t) => t.key === activeTab.value
 
 const painted = computed(() => grid.value.filter((l) => l > 0).length)
 const commitCount = computed(() => painted.value * brush.value * 2)
+
+const router = useRouter()
+const designsStore = useDesignsStore()
+const isSaving = ref(false)
+const saveError = ref('')
+
+/**
+ * Extracts the pattern actually being saved, plus the resulting start_date:
+ * with custom range on, the explicit [rangeStart, rangeEnd] slice (including
+ * any intentional empty spacer columns); otherwise the tight bounding box of
+ * painted columns (first through last non-empty). Returns null if there's
+ * nothing to save (grid is fully empty and custom range is off).
+ */
+function extractSavePayload(): { start_date: string; pattern: number[] } | null {
+  let firstCol: number
+  let lastCol: number
+
+  if (customRangeEnabled.value) {
+    firstCol = rangeStart.value
+    lastCol = rangeEnd.value
+  } else {
+    firstCol = -1
+    lastCol = -1
+    for (let week = 0; week < WEEKS; week++) {
+      let hasPaint = false
+      for (let day = 0; day < DAYS; day++) {
+        if ((grid.value[week * DAYS + day] ?? 0) > 0) {
+          hasPaint = true
+          break
+        }
+      }
+      if (hasPaint) {
+        if (firstCol === -1) firstCol = week
+        lastCol = week
+      }
+    }
+    if (firstCol === -1) return null
+  }
+
+  const pattern: number[] = []
+  for (let week = firstCol; week <= lastCol; week++) {
+    for (let day = 0; day < DAYS; day++) {
+      pattern.push(grid.value[week * DAYS + day] ?? 0)
+    }
+  }
+
+  const start = new Date(anchorDate.value)
+  start.setUTCDate(start.getUTCDate() + firstCol * 7)
+
+  return { start_date: toDateString(start), pattern }
+}
+
+async function saveDesign(): Promise<boolean> {
+  saveError.value = ''
+  const extracted = extractSavePayload()
+  if (!extracted) {
+    saveError.value = 'Paint at least one square before saving.'
+    return false
+  }
+
+  // Neither recurrence mechanism active means the design is a one-off that
+  // doesn't repeat at all - regardless of what the shared duration control
+  // happens to be set to.
+  const recurrenceActive = repeatEveryYear.value || customRangeEnabled.value
+  const finalRepeatIndefinitely = recurrenceActive && repeatIndefinitely.value
+  const finalRecurrenceEndDate =
+    recurrenceActive && !repeatIndefinitely.value && recurrenceEndDate.value ? recurrenceEndDate.value : null
+
+  const payload: iDesignCreatePayload = {
+    name: designName.value,
+    is_public: publicOptIn.value,
+    start_date: extracted.start_date,
+    pattern: extracted.pattern,
+    repeat_indefinitely: finalRepeatIndefinitely,
+    recurrence_end_date: finalRecurrenceEndDate,
+  }
+
+  isSaving.value = true
+  try {
+    if (loadedDesign.value) {
+      const updated = await designsStore.updateDesign(loadedDesign.value.id, payload)
+      if (!updated) {
+        saveError.value = 'Could not save changes.'
+        return false
+      }
+      loadedDesign.value = updated
+      return true
+    }
+
+    const created = await designsStore.createDesign(payload)
+    if (!created) {
+      saveError.value = 'Could not save this design.'
+      return false
+    }
+    loadedDesign.value = created
+    router.replace(`/editor/${created.id}`)
+    return true
+  } finally {
+    isSaving.value = false
+  }
+}
+
+async function onContinueToCheckout() {
+  const saved = await saveDesign()
+  if (saved) router.push('/checkout')
+}
 </script>
 
 <template>
@@ -326,7 +433,12 @@ const commitCount = computed(() => painted.value * brush.value * 2)
       <div style="display:flex;align-items:center;gap:10px;font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(65% 0.01 250);">
         <span>editor</span>
         <span style="width:1px;height:14px;background:oklch(100% 0 0 / 0.12);"></span>
-        <span style="color:oklch(85% 0.006 250);">saved as draft</span>
+        <button
+          @click="saveDesign"
+          :disabled="isSaving"
+          style="background:none;border:none;padding:0;font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(85% 0.006 250);cursor:pointer;"
+        >{{ isSaving ? 'saving…' : loadedDesign ? 'save changes' : 'save as draft' }}</button>
+        <span v-if="saveError" style="color:oklch(70% 0.18 30);">{{ saveError }}</span>
       </div>
 
       <div style="display:flex;align-items:center;gap:4px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);border-radius:8px;padding:3px;">
@@ -338,7 +450,7 @@ const commitCount = computed(() => painted.value * brush.value * 2)
         >{{ t.label }}</button>
       </div>
 
-      <BaseButton as="router-link" to="/checkout" style="font-size:13.5px;border-radius:7px;padding:10px 18px;text-decoration:none;">continue to checkout →</BaseButton>
+      <BaseButton @click="onContinueToCheckout" :loading="isSaving" style="font-size:13.5px;border-radius:7px;padding:10px 18px;text-decoration:none;">continue to checkout →</BaseButton>
     </div>
 
     <!-- BODY -->
