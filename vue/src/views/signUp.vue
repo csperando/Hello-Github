@@ -7,7 +7,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import CharityListItem from '@/components/ui/CharityListItem.vue'
 import StepProgress from '@/components/ui/StepProgress.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
-import { githubLoginUrl } from '@/services/api'
+import { githubLoginUrl, updateProfile } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 
 interface Charity {
@@ -31,6 +31,8 @@ const authStore = useAuthStore()
 const initializing = ref(true)
 const step = ref(1)
 const connecting = ref(false)
+const saving = ref(false)
+const saveError = ref('')
 const displayName = ref('')
 const charity = ref('GiveDirectly')
 const publicOptIn = ref(true)
@@ -74,8 +76,25 @@ function skip() {
   step.value = 3
 }
 
-function finish() {
-  step.value = 3
+async function finish() {
+  saving.value = true
+  saveError.value = ''
+  try {
+    const res = await updateProfile(authStore.user!.id, {
+      display_name: displayName.value,
+      default_charity: charity.value,
+      public_opt_in: publicOptIn.value,
+    })
+    if (!res.ok) {
+      saveError.value = 'Something went wrong saving your profile. Please try again.'
+      return
+    }
+    step.value = 3
+  } catch {
+    saveError.value = 'Something went wrong saving your profile. Please try again.'
+  } finally {
+    saving.value = false
+  }
 }
 
 const charities = computed(() =>
@@ -165,9 +184,14 @@ const firstName = computed(() => {
               <ToggleSwitch :checked="publicOptIn" />
             </div>
 
+            <div v-if="saveError" style="font-size:13px;color:oklch(70% 0.19 25);margin-bottom:16px;">{{ saveError }}</div>
+
             <div style="display:flex;gap:12px;">
-              <BaseButton variant="secondary" @click="skip" style="flex:none;font-weight:500;font-size:14px;color:oklch(80% 0.006 250);border:1px solid oklch(100% 0 0 / 0.16);border-radius:8px;padding:13px 18px;">skip for now</BaseButton>
-              <BaseButton @click="finish" style="flex:1;font-size:14px;border-radius:8px;padding:13px 18px;">save & continue →</BaseButton>
+              <BaseButton variant="secondary" @click="skip" :disabled="saving" style="flex:none;font-weight:500;font-size:14px;color:oklch(80% 0.006 250);border:1px solid oklch(100% 0 0 / 0.16);border-radius:8px;padding:13px 18px;">skip for now</BaseButton>
+              <BaseButton @click="finish" :disabled="saving" :loading="saving" style="flex:1;font-size:14px;border-radius:8px;padding:13px 18px;">
+                <span v-if="saving">saving…</span>
+                <span v-else>save & continue →</span>
+              </BaseButton>
             </div>
           </div>
 
