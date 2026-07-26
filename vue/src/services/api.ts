@@ -14,3 +14,16 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
         },
     })
 }
+
+export interface iProfileUpdatePayload {
+    display_name?: string
+    default_charity?: string
+    public_opt_in?: boolean
+}
+
+export async function updateProfile(userId: string, payload: iProfileUpdatePayload): Promise<Response> {
+    return apiFetch(`/user/${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+    })
+}

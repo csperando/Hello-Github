@@ -8,6 +8,9 @@ export interface iAuthUser {
     github_email: string
     avatar_url?: string
     name?: string
+    display_name?: string
+    default_charity?: string
+    public_opt_in?: boolean
 }
 
 export const useAuthStore = defineStore('auth', () => {
