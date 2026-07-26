@@ -4,7 +4,7 @@ import DashboardView from "../views/Dashboard.vue";
 import AdminView from "../views/Admin.vue";
 
 export const editorRoute = {
-    path: "/editor",
+    path: "/editor/:designId?",
     name: "Editor",
     component: EditorView,
     meta: { requiresAuth: true },

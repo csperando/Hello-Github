@@ -59,6 +59,7 @@ function buildMiniGrid(pattern: Pattern, level: number, noise: boolean): number[
 }
 
 interface DesignSpec {
+  id: string
   name: string
   year: string
   charity: string
@@ -67,11 +68,12 @@ interface DesignSpec {
   level: number
 }
 
+// Mocked - id is a placeholder until this list is wired to real designs.
 const DESIGNS: DesignSpec[] = [
-  { name: 'my first design', year: '2026', charity: 'GiveDirectly', status: 'live', pattern: HEART_MINI, level: 4 },
-  { name: 'holiday smiley', year: '2025', charity: 'Code.org', status: 'archived', pattern: SMILEY_MINI, level: 3 },
-  { name: 'geo diamond', year: '2026', charity: 'EFF', status: 'draft', pattern: DIAMOND_MINI, level: 4 },
-  { name: 'noise test', year: '2024', charity: 'Khan Academy', status: 'archived', pattern: [[]], level: 2 },
+  { id: 'mock-1', name: 'my first design', year: '2026', charity: 'GiveDirectly', status: 'live', pattern: HEART_MINI, level: 4 },
+  { id: 'mock-2', name: 'holiday smiley', year: '2025', charity: 'Code.org', status: 'archived', pattern: SMILEY_MINI, level: 3 },
+  { id: 'mock-3', name: 'geo diamond', year: '2026', charity: 'EFF', status: 'draft', pattern: DIAMOND_MINI, level: 4 },
+  { id: 'mock-4', name: 'noise test', year: '2024', charity: 'Khan Academy', status: 'archived', pattern: [[]], level: 2 },
 ]
 
 const RECEIPTS = [
@@ -93,6 +95,7 @@ const designs = computed(() =>
     const grid = buildMiniGrid(d.pattern, d.level, true)
     const st = STATUS_STYLE[d.status]
     return {
+      id: d.id,
       name: d.name,
       year: d.year,
       charity: d.charity,
@@ -163,7 +166,7 @@ const receipts = RECEIPTS
                 </div>
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--color-text-muted-4);margin-bottom:12px;">{{ d.year }} · {{ d.painted }} squares · gave to {{ d.charity }}</div>
                 <div style="display:flex;gap:8px;">
-                  <BaseButton as="router-link" to="/editor" variant="secondary" style="flex:1;font-size:12px;background:oklch(15% 0.012 250);color:oklch(85% 0.006 250);border:1px solid oklch(100% 0 0 / 0.1);border-radius:6px;padding:8px;text-decoration:none;text-align:center;">edit</BaseButton>
+                  <BaseButton as="router-link" :to="'/editor/' + d.id" variant="secondary" style="flex:1;font-size:12px;background:oklch(15% 0.012 250);color:oklch(85% 0.006 250);border:1px solid oklch(100% 0 0 / 0.1);border-radius:6px;padding:8px;text-decoration:none;text-align:center;">edit</BaseButton>
                   <BaseButton variant="secondary" style="flex:1;font-size:12px;color:var(--color-text-muted-4);border:1px solid oklch(100% 0 0 / 0.1);border-radius:6px;padding:8px;">receipt</BaseButton>
                 </div>
               </div>

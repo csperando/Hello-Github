@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import CustomRangeSlider from '@/components/ui/CustomRangeSlider.vue'
 import { LEVEL_COLORS, todayAnchor, currentYearAnchor } from '@/helpers/grid'
+import { getDesign, type iDesign } from '@/services/designs'
 
 const WEEKS = 53
 const DAYS = 7 // row 0 = Sunday, matching stampPattern's idx = week * DAYS + row and GitHub's own week layout
@@ -162,13 +164,22 @@ function applyTemplate(key: string) {
   selectedTemplate.value = key
 }
 
+// The design currently being edited, if the route carries a :designId - see
+// onMounted below. While set, it overrides the tab-based anchor with the
+// design's own saved start_date, so the grid re-anchors to exactly where it
+// was when saved rather than to "today"/"this year" as of right now.
+const loadedDesign = ref<iDesign | null>(null)
+
 // The grid's first column is always the most recent Sunday on/before this
 // anchor date - "today" gives a rolling window starting now, "year" starts
 // from Jan 1 of the current year for year-to-date designs. Both tabs use the
 // same fixed 53-week grid width, extending forward from the anchor (this app
 // designs future contributions, unlike GitHub's own profile graph which runs
 // backward from today).
-const anchorDate = computed(() => (activeTab.value === 'today' ? todayAnchor() : currentYearAnchor()))
+const anchorDate = computed(() => {
+  if (loadedDesign.value) return new Date(`${loadedDesign.value.start_date}T00:00:00Z`)
+  return activeTab.value === 'today' ? todayAnchor() : currentYearAnchor()
+})
 const anchorDateLabel = computed(() =>
   anchorDate.value.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
 )
@@ -179,9 +190,60 @@ function selectTab(key: TabKey) {
   // Switching tabs re-bases the grid onto a different real-world date range,
   // so painted cells can't be meaningfully remapped onto new columns - reset
   // the canvas rather than leaving stale art anchored to the wrong dates.
+  // This also detaches from any loaded design: further edits become a new
+  // design rather than continuing to edit the one that was loaded.
+  loadedDesign.value = null
   grid.value = emptyGrid()
   selectedTemplate.value = 'blank'
 }
+
+/**
+ * Reconstructs editor state from a saved design. The schema doesn't record
+ * which UI mode ("repeat every year" vs "custom range") produced a given
+ * repeat_indefinitely/recurrence_end_date pairing, so this is a best-effort
+ * reconstruction: a pattern narrower than the full grid is treated as a
+ * custom range; a full-width pattern's repeat_indefinitely maps back to
+ * "repeat every year".
+ */
+function applyLoadedDesign(design: iDesign) {
+  loadedDesign.value = design
+
+  designName.value = design.name
+  publicOptIn.value = design.is_public
+  repeatIndefinitely.value = design.repeat_indefinitely
+  recurrenceEndDate.value = design.recurrence_end_date ?? ''
+
+  const patternWeeks = design.pattern.length / DAYS
+  const isFullWidth = patternWeeks >= WEEKS
+
+  customRangeEnabled.value = !isFullWidth
+  repeatEveryYear.value = isFullWidth && design.repeat_indefinitely
+  if (!isFullWidth) {
+    rangeStart.value = 0
+    rangeEnd.value = patternWeeks - 1
+  }
+
+  const newGrid = emptyGrid()
+  design.pattern.forEach((level, i) => {
+    if (i < newGrid.length) newGrid[i] = level
+  })
+  grid.value = newGrid
+  selectedTemplate.value = 'blank'
+}
+
+const route = useRoute()
+
+onMounted(async () => {
+  const designId = route.params.designId
+  if (typeof designId !== 'string') return
+
+  const res = await getDesign(designId)
+  if (!res.ok) return
+
+  const body = await res.json()
+  const design: iDesign | undefined = body.data?.[0]
+  if (design) applyLoadedDesign(design)
+})
 
 const cells = computed(() => {
   const rangeWidth = rangeEnd.value - rangeStart.value + 1
