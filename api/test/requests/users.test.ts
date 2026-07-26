@@ -13,9 +13,12 @@ const mockUser: iUser = {
 const adminCookie = signedSidCookie(mockUser.id as string);
 
 import type { iUserRepo } from "../../repository/users.repo";
+import type { iUserProfileRepo } from "../../repository/userProfiles.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
+const profilesRepoMock = createMockRepoProxy<iUserProfileRepo>();
+mockRepo("repository/userProfiles.repo", profilesRepoMock);
 
 import server from "../server";
 
@@ -26,6 +29,7 @@ afterAll(() => {
 describe("User routes", () => {
     beforeEach(() => {
         usersRepoMock.__reset();
+        profilesRepoMock.__reset();
         // satisfies requireRole's lookup of the requesting (admin) user on every route
         usersRepoMock.getUserById.mockResolvedValue(mockUser);
     });
@@ -93,12 +97,107 @@ describe("User routes", () => {
     //     expect(body.success).toBe(false);
     // });
 
-    // it("Should update an existing user", async () => {
-    //     const res = await request(server).patch("/user/" + mockUser.id);
-    //     const body: iResponse = JSON.parse(res.text);
-    //     expect(res.status).toBe(403);
-    //     expect(body.success).toBe(false);
-    // });
+    describe("PATCH /user/:userId", () => {
+        const selfCookie = signedSidCookie(mockUser.id as string);
+        const otherUserId = "223e4567-e89b-12d3-a456-426614174111";
+
+        it("lets a user update their own profile", async () => {
+            profilesRepoMock.upsert.mockResolvedValue({ user_id: mockUser.id, display_name: "Lena Ortiz" });
+            usersRepoMock.getUserById.mockResolvedValue({ ...mockUser, display_name: "Lena Ortiz" });
+
+            const res = await request(server)
+                .patch("/user/" + mockUser.id)
+                .set("Cookie", selfCookie)
+                .send({ display_name: "Lena Ortiz" });
+            const body: iResponse = JSON.parse(res.text);
+
+            expect(res.status).toBe(200);
+            expect(body.success).toBe(true);
+            expect(profilesRepoMock.upsert).toHaveBeenCalledWith(mockUser.id, { display_name: "Lena Ortiz" });
+        });
+
+        it("ignores fields outside the profile whitelist (e.g. role) rather than applying them", async () => {
+            profilesRepoMock.upsert.mockResolvedValue({ user_id: mockUser.id });
+            usersRepoMock.getUserById.mockResolvedValue(mockUser);
+
+            const res = await request(server)
+                .patch("/user/" + mockUser.id)
+                .set("Cookie", selfCookie)
+                .send({ display_name: "Lena Ortiz", role: "admin", is_active: false });
+
+            expect(res.status).toBe(200);
+            expect(profilesRepoMock.upsert).toHaveBeenCalledWith(mockUser.id, { display_name: "Lena Ortiz" });
+        });
+
+        it("rejects a non-string display_name with 400", async () => {
+            const res = await request(server)
+                .patch("/user/" + mockUser.id)
+                .set("Cookie", selfCookie)
+                .send({ display_name: 12345 });
+            const body: iResponse = JSON.parse(res.text);
+
+            expect(res.status).toBe(400);
+            expect(body.success).toBe(false);
+            expect(profilesRepoMock.upsert).not.toHaveBeenCalled();
+        });
+
+        it("rejects a non-boolean public_opt_in with 400", async () => {
+            const res = await request(server)
+                .patch("/user/" + mockUser.id)
+                .set("Cookie", selfCookie)
+                .send({ public_opt_in: "yes" });
+
+            expect(res.status).toBe(400);
+            expect(profilesRepoMock.upsert).not.toHaveBeenCalled();
+        });
+
+        it("rejects updating another user's profile when not an admin", async () => {
+            usersRepoMock.getUserById.mockResolvedValue({ ...mockUser, role: "user" });
+
+            const res = await request(server)
+                .patch("/user/" + otherUserId)
+                .set("Cookie", selfCookie)
+                .send({ display_name: "Someone Else" });
+
+            expect(res.status).toBe(403);
+            expect(profilesRepoMock.upsert).not.toHaveBeenCalled();
+        });
+
+        it("lets an admin update another user's profile", async () => {
+            usersRepoMock.getUserById.mockImplementation(async (userId: string) =>
+                userId === mockUser.id ? mockUser : { id: otherUserId, github_id: 99, github_username: "other" },
+            );
+            profilesRepoMock.upsert.mockResolvedValue({ user_id: otherUserId, display_name: "Someone Else" });
+
+            const res = await request(server)
+                .patch("/user/" + otherUserId)
+                .set("Cookie", adminCookie)
+                .send({ display_name: "Someone Else" });
+
+            expect(res.status).toBe(200);
+            expect(profilesRepoMock.upsert).toHaveBeenCalledWith(otherUserId, { display_name: "Someone Else" });
+        });
+
+        it("returns 404 when an admin targets a userId that doesn't exist", async () => {
+            usersRepoMock.getUserById.mockImplementation(async (userId: string) =>
+                userId === mockUser.id ? mockUser : undefined,
+            );
+
+            const res = await request(server)
+                .patch("/user/" + otherUserId)
+                .set("Cookie", adminCookie)
+                .send({ display_name: "Someone Else" });
+
+            expect(res.status).toBe(404);
+            expect(profilesRepoMock.upsert).not.toHaveBeenCalled();
+        });
+
+        it("rejects an unauthenticated request with 401", async () => {
+            const res = await request(server).patch("/user/" + mockUser.id).send({ display_name: "Lena Ortiz" });
+            expect(res.status).toBe(401);
+            expect(profilesRepoMock.upsert).not.toHaveBeenCalled();
+        });
+    });
 
     // it("Should delete an existing user by id", async () => {
     //     const res = await request(server).delete("/user/" + mockUser.id);
