@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -7,6 +8,7 @@ import CharityListItem from '@/components/ui/CharityListItem.vue'
 import StepProgress from '@/components/ui/StepProgress.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { githubLoginUrl } from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
 
 interface Charity {
   name: string
@@ -22,12 +24,42 @@ const CHARITIES: Charity[] = [
 
 const STEPS = ['connect', 'profile', 'done']
 
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
+
+const initializing = ref(true)
 const step = ref(1)
 const connecting = ref(false)
-const ghHandle = ref('@lena.codes')
 const displayName = ref('')
 const charity = ref('GiveDirectly')
 const publicOptIn = ref(true)
+
+const ghHandle = computed(() =>
+  authStore.user?.github_username ? `@${authStore.user.github_username}` : '',
+)
+
+onMounted(async () => {
+  await authStore.fetchMe()
+
+  const wantsProfileStep = route.query.step === 'profile'
+
+  if (authStore.isAuthenticated) {
+    if (!wantsProfileStep) {
+      // already fully signed in and not mid-onboarding - don't show the connect screen again
+      router.replace('/dashboard')
+      return
+    }
+
+    displayName.value = authStore.user?.display_name ?? displayName.value
+    charity.value = authStore.user?.default_charity ?? charity.value
+    publicOptIn.value = authStore.user?.public_opt_in ?? publicOptIn.value
+    step.value = 2
+  }
+  // else: stale/shared "?step=profile" link with no session - fall back to step 1 (the default)
+
+  initializing.value = false
+})
 
 function connect() {
   connecting.value = true
@@ -68,7 +100,7 @@ const firstName = computed(() => {
 
     <!-- MAIN -->
     <main style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px clamp(20px,4vw,48px) 60px;">
-      <div style="width:100%;max-width:520px;">
+      <div v-if="!initializing" style="width:100%;max-width:520px;">
 
         <!-- STEP PROGRESS -->
         <StepProgress :steps="STEPS" :current="step" />
