@@ -78,7 +78,7 @@ describe("Auth routes", () => {
             return { state, stateCookie };
         };
 
-        it("on success: exchanges the code, upserts the user, sets a signed sid cookie, and redirects to the dashboard", async () => {
+        it("on success for a new signup (inserted: true): exchanges the code, upserts the user, sets a signed sid cookie, and redirects to the profile step", async () => {
             const { state, stateCookie } = await buildAgentWithState();
 
             (githubService.exchangeCodeForToken as jest.Mock).mockResolvedValue("gho_abc123");
@@ -91,7 +91,7 @@ describe("Auth routes", () => {
                 .set("Cookie", stateCookie);
 
             expect(res.status).toBe(302);
-            expect(res.headers.location).toBe(`${config.FRONTEND_URL}/dashboard`);
+            expect(res.headers.location).toBe(`${config.FRONTEND_URL}/signup?step=profile`);
 
             const setCookie = res.headers["set-cookie"] as unknown as string[];
             expect(setCookie.some((c) => c.startsWith("sid="))).toBe(true);
@@ -104,6 +104,22 @@ describe("Auth routes", () => {
                 github_profile_url: mockGhUser.html_url,
                 avatar_url: mockGhUser.avatar_url,
             }));
+        });
+
+        it("on success for a returning login (inserted: false): redirects straight to the dashboard", async () => {
+            const { state, stateCookie } = await buildAgentWithState();
+
+            (githubService.exchangeCodeForToken as jest.Mock).mockResolvedValue("gho_abc123");
+            (githubService.fetchGitHubUser as jest.Mock).mockResolvedValue(mockGhUser);
+            (githubService.fetchPrimaryVerifiedEmail as jest.Mock).mockResolvedValue("primary@example.com");
+            usersRepoMock.upsertFromGitHub.mockResolvedValue({ ...mockUser, inserted: false });
+
+            const res = await request(testApp)
+                .get(`/auth/github/callback?code=some-code&state=${state}`)
+                .set("Cookie", stateCookie);
+
+            expect(res.status).toBe(302);
+            expect(res.headers.location).toBe(`${config.FRONTEND_URL}/dashboard`);
         });
 
         it.skip("sets a sid cookie that requireAuth actually accepts on a subsequent /auth/me call", async () => {

@@ -87,7 +87,8 @@ router.get("/github/callback", async (req: Request, res: Response) => {
             maxAge: SID_COOKIE_MAX_AGE_MS,
         });
 
-        res.redirect(`${config.FRONTEND_URL}/dashboard`);
+        // brand-new signups land on the profile step; returning logins skip straight to the dashboard
+        res.redirect(user.inserted ? `${config.FRONTEND_URL}/signup?step=profile` : `${config.FRONTEND_URL}/dashboard`);
 
     } catch(err) {
         logger.error(err);
