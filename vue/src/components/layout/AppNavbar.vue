@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import BaseButton from '@/components/ui/BaseButton.vue'
+import NavAccount from '@/components/layout/NavAccount.vue'
+import { useAuthStore } from '@/stores/auth'
+
 withDefaults(
   defineProps<{
     sticky?: boolean
@@ -9,6 +13,8 @@ withDefaults(
     showLinks: false,
   },
 )
+
+const authStore = useAuthStore()
 </script>
 
 <template>
@@ -28,12 +34,31 @@ withDefaults(
 
     <nav v-if="showLinks" style="display:flex;align-items:center;gap:clamp(16px,3vw,32px);font-family:'IBM Plex Mono',monospace;font-size:13.5px;">
       <slot name="links" />
-      <span style="display:flex;align-items:center;gap:10px;margin-left:8px;">
-        <slot name="actions" />
+      <RouterLink v-if="authStore.isAdmin" to="/admin" style="color:oklch(85% 0.006 250);">admin</RouterLink>
+      <span v-if="!authStore.isLoading" style="display:flex;align-items:center;gap:10px;margin-left:8px;">
+        <NavAccount v-if="authStore.isAuthenticated" />
+        <BaseButton
+          v-else
+          variant="secondary"
+          as="router-link"
+          to="/signup"
+          style="font-size:13.5px;color:oklch(94% 0.004 250);border:1px solid oklch(100% 0 0 / 0.18);border-radius:6px;padding:8px 14px;text-decoration:none;"
+        >
+          sign in
+        </BaseButton>
       </span>
     </nav>
-    <div v-else style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(65% 0.01 250);">
-      <slot name="actions" />
+    <div v-else-if="!authStore.isLoading" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(65% 0.01 250);">
+      <NavAccount v-if="authStore.isAuthenticated" />
+      <BaseButton
+        v-else
+        variant="secondary"
+        as="router-link"
+        to="/signup"
+        style="font-size:13.5px;color:oklch(94% 0.004 250);border:1px solid oklch(100% 0 0 / 0.18);border-radius:6px;padding:8px 14px;text-decoration:none;"
+      >
+        sign in
+      </BaseButton>
     </div>
   </header>
 </template>
