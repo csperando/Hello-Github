@@ -1,0 +1,74 @@
+import pool from "../../config/db";
+import { runMigrations } from "../../data/migrate";
+import UsersRepository from "../../repository/users.repo";
+import { iGitHubUpsertInput } from "../../models/users";
+
+describe("0001_create_user_profiles migration", () => {
+    beforeAll(async () => {
+        await runMigrations();
+    });
+
+    it("creates a user_profiles table with the expected columns and defaults", async () => {
+        const columns = await pool.query(`
+            SELECT column_name, is_nullable, column_default
+            FROM information_schema.columns
+            WHERE table_name = 'user_profiles';
+        `);
+        const byName: Record<string, { is_nullable: string; column_default: string | null }> = Object.fromEntries(
+            columns.rows.map((row: { column_name: string; is_nullable: string; column_default: string | null }) => [
+                row.column_name,
+                row,
+            ]),
+        );
+
+        expect(Object.keys(byName).sort()).toEqual(
+            ["user_id", "display_name", "default_charity", "public_opt_in", "created_at", "updated_at"].sort(),
+        );
+        expect(byName.public_opt_in?.is_nullable).toBe("NO");
+        expect(byName.public_opt_in?.column_default).toContain("true");
+        expect(byName.display_name?.is_nullable).toBe("YES");
+        expect(byName.default_charity?.is_nullable).toBe("YES");
+    });
+
+    it("defines user_id as both the primary key and a foreign key to users(id)", async () => {
+        const constraints = await pool.query(`
+            SELECT tc.constraint_type
+            FROM information_schema.table_constraints tc
+            WHERE tc.table_name = 'user_profiles';
+        `);
+        const types = constraints.rows.map((row: { constraint_type: string }) => row.constraint_type);
+        expect(types).toEqual(expect.arrayContaining(["PRIMARY KEY", "FOREIGN KEY"]));
+    });
+
+    describe("cascade behavior", () => {
+        const repo = UsersRepository.repo();
+        // fixed, out-of-range-for-real-GitHub id so this test never collides with real data
+        const testGitHubId = -2;
+
+        const upsertInput: iGitHubUpsertInput = {
+            github_id: testGitHubId,
+            github_username: "octocat-profile-test",
+            github_email: "octocat-profile-test@example.com",
+            github_node_id: "MDQ6VXNlcjI=",
+            github_profile_url: "https://github.com/octocat-profile-test",
+            avatar_url: "https://avatars.githubusercontent.com/u/2?v=4",
+        };
+
+        afterEach(async () => {
+            await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
+        });
+
+        it("deletes the profile row when the owning user is deleted", async () => {
+            const user = await repo.upsertFromGitHub(upsertInput);
+            await pool.query(
+                "INSERT INTO user_profiles (user_id, display_name) VALUES ($1, $2);",
+                [user.id, "Test Display Name"],
+            );
+
+            await pool.query("DELETE FROM users WHERE id = $1;", [user.id]);
+
+            const profile = await pool.query("SELECT * FROM user_profiles WHERE user_id = $1;", [user.id]);
+            expect(profile.rows).toHaveLength(0);
+        });
+    });
+});
