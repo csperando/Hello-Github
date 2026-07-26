@@ -4,6 +4,7 @@ import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
+import CustomRangeSlider from '@/components/ui/CustomRangeSlider.vue'
 import { LEVEL_COLORS, todayAnchor, currentYearAnchor } from '@/helpers/grid'
 
 const WEEKS = 53
@@ -75,7 +76,24 @@ const painting = ref(false)
 const activeTab = ref<TabKey>('today')
 const publicOptIn = ref(true)
 const designName = ref('my first design')
-const repeatIndefinitely = ref(false)
+
+// Recurrence: "repeat every year" (annual carry-forward of the whole design)
+// and "custom range" (tile a narrower slice across the rest of the grid) are
+// mutually exclusive - enabling one turns the other off.
+const repeatEveryYear = ref(false)
+const customRangeEnabled = ref(false)
+const rangeStart = ref(0)
+const rangeEnd = ref(6)
+
+function toggleRepeatEveryYear() {
+  repeatEveryYear.value = !repeatEveryYear.value
+  if (repeatEveryYear.value) customRangeEnabled.value = false
+}
+
+function toggleCustomRange() {
+  customRangeEnabled.value = !customRangeEnabled.value
+  if (customRangeEnabled.value) repeatEveryYear.value = false
+}
 
 function cycleCell(idx: number) {
   const current = grid.value[idx] ?? 0
@@ -133,9 +151,29 @@ function selectTab(key: TabKey) {
   selectedTemplate.value = 'blank'
 }
 
-const cells = computed(() =>
-  grid.value.map((level, idx) => ({ idx, bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })),
-)
+const cells = computed(() => {
+  const rangeWidth = rangeEnd.value - rangeStart.value + 1
+  return grid.value.map((level, idx) => {
+    const week = Math.floor(idx / DAYS)
+    const day = idx % DAYS
+    let paintIdx = idx
+    let ghost = false
+
+    if (customRangeEnabled.value && (week < rangeStart.value || week > rangeEnd.value)) {
+      ghost = true
+      const relWeek = ((week - rangeStart.value) % rangeWidth + rangeWidth) % rangeWidth
+      paintIdx = (rangeStart.value + relWeek) * DAYS + day
+    }
+
+    const displayLevel = customRangeEnabled.value ? (grid.value[paintIdx] ?? 0) : level
+    return {
+      idx,
+      paintIdx,
+      bg: LEVEL_COLORS[displayLevel] ?? LEVEL_COLORS[0]!,
+      opacity: ghost ? 0.38 : 1,
+    }
+  })
+})
 
 const months = computed(() =>
   MONTH_LABELS.map((label, i) => ({ label, col: Math.round((i * WEEKS) / 12) + 1 })),
@@ -274,11 +312,15 @@ const commitCount = computed(() => painted.value * brush.value * 2)
                 <div
                   v-for="cell in cells"
                   :key="cell.idx"
-                  @mousedown="onCellDown(cell.idx)"
-                  @mouseenter="onCellEnter(cell.idx)"
-                  :style="{ borderRadius: '2px', cursor: 'pointer', background: cell.bg }"
+                  @mousedown="onCellDown(cell.paintIdx)"
+                  @mouseenter="onCellEnter(cell.paintIdx)"
+                  :style="{ borderRadius: '2px', cursor: 'pointer', background: cell.bg, opacity: cell.opacity }"
                 ></div>
               </div>
+            </div>
+            <div v-if="customRangeEnabled" style="margin-top:18px;padding-left:34px;">
+              <CustomRangeSlider v-model:start="rangeStart" v-model:end="rangeEnd" :max="WEEKS - 1" />
+              <div style="font-size:11.5px;line-height:1.5;color:oklch(60% 0.008 250);margin-top:12px;">columns outside the range show a dimmed preview of the repeated pattern — paint anywhere and it maps back into your selection.</div>
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:18px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(58% 0.01 250);">
               <span>less</span>
@@ -323,15 +365,24 @@ const commitCount = computed(() => painted.value * brush.value * 2)
         </div>
 
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin:24px 0 14px;">recurrence</div>
-        <div @click="repeatIndefinitely = !repeatIndefinitely" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
+        <div @click="toggleRepeatEveryYear" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
           <div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-bottom:2px;">repeat every year</div>
             <div style="font-size:11.5px;color:oklch(60% 0.008 250);">auto-repaints this design indefinitely on future years</div>
           </div>
-          <ToggleSwitch :checked="repeatIndefinitely" />
+          <ToggleSwitch :checked="repeatEveryYear" />
         </div>
-        <div v-if="repeatIndefinitely" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:oklch(72% 0.16 145);">
+        <div v-if="repeatEveryYear" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:oklch(72% 0.16 145);">
           <span>∞</span><span>renews from {{ activeTabLabel }} → forever, until you cancel</span>
+        </div>
+
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin:24px 0 14px;">custom range</div>
+        <div @click="toggleCustomRange" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
+          <div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-bottom:2px;">select custom range</div>
+            <div style="font-size:11.5px;color:oklch(60% 0.008 250);">paint a short pattern, repeat it across the grid</div>
+          </div>
+          <ToggleSwitch :checked="customRangeEnabled" />
         </div>
       </aside>
     </div>
