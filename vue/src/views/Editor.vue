@@ -95,6 +95,38 @@ function toggleCustomRange() {
   if (customRangeEnabled.value) repeatEveryYear.value = false
 }
 
+// Shared recurrence-duration control - applies to whichever of the two
+// toggles above is active. Mirrors the schema's repeat_indefinitely /
+// recurrence_end_date pairing directly.
+const repeatIndefinitely = ref(true)
+const recurrenceEndDate = ref('')
+
+function setRecurrenceIndefinite() {
+  repeatIndefinitely.value = true
+}
+
+function setRecurrenceUntil() {
+  repeatIndefinitely.value = false
+}
+
+function modeButtonStyle(active: boolean) {
+  return {
+    flex: '1',
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: '11.5px',
+    fontWeight: 600,
+    background: active ? 'oklch(58% 0.16 145)' : 'oklch(15% 0.012 250)',
+    color: active ? 'oklch(14% 0.03 145)' : 'oklch(80% 0.006 250)',
+    border: active ? 'none' : '1px solid oklch(100% 0 0 / 0.1)',
+    borderRadius: '7px',
+    padding: '9px 6px',
+    cursor: 'pointer',
+  }
+}
+
+const indefiniteButtonStyle = computed(() => modeButtonStyle(repeatIndefinitely.value))
+const untilButtonStyle = computed(() => modeButtonStyle(!repeatIndefinitely.value))
+
 function cycleCell(idx: number) {
   const current = grid.value[idx] ?? 0
   grid.value[idx] = (current + 1) % 5
@@ -372,8 +404,20 @@ const commitCount = computed(() => painted.value * brush.value * 2)
           </div>
           <ToggleSwitch :checked="repeatEveryYear" />
         </div>
-        <div v-if="repeatEveryYear" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:oklch(72% 0.16 145);">
-          <span>∞</span><span>renews from {{ activeTabLabel }} → forever, until you cancel</span>
+        <div v-if="repeatEveryYear" style="margin-top:10px;">
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <button @click="setRecurrenceIndefinite" :style="indefiniteButtonStyle">indefinitely</button>
+            <button @click="setRecurrenceUntil" :style="untilButtonStyle">end date</button>
+          </div>
+          <div v-if="repeatIndefinitely" style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:oklch(72% 0.16 145);">
+            <span>∞</span><span>renews from {{ activeTabLabel }} → forever, until you cancel</span>
+          </div>
+          <input
+            v-else
+            type="date"
+            v-model="recurrenceEndDate"
+            style="width:100%;box-sizing:border-box;font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:oklch(15% 0.012 250);color:oklch(96% 0.004 250);border:1px solid oklch(100% 0 0 / 0.12);border-radius:7px;padding:9px 10px;"
+          />
         </div>
 
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin:24px 0 14px;">custom range</div>
@@ -383,6 +427,21 @@ const commitCount = computed(() => painted.value * brush.value * 2)
             <div style="font-size:11.5px;color:oklch(60% 0.008 250);">paint a short pattern, repeat it across the grid</div>
           </div>
           <ToggleSwitch :checked="customRangeEnabled" />
+        </div>
+        <div v-if="customRangeEnabled" style="margin-top:10px;">
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <button @click="setRecurrenceIndefinite" :style="indefiniteButtonStyle">indefinitely</button>
+            <button @click="setRecurrenceUntil" :style="untilButtonStyle">end date</button>
+          </div>
+          <div v-if="repeatIndefinitely" style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:oklch(72% 0.16 145);">
+            <span>∞</span><span>repeats from {{ activeTabLabel }} → forever, until you cancel</span>
+          </div>
+          <input
+            v-else
+            type="date"
+            v-model="recurrenceEndDate"
+            style="width:100%;box-sizing:border-box;font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:oklch(15% 0.012 250);color:oklch(96% 0.004 250);border:1px solid oklch(100% 0 0 / 0.12);border-radius:7px;padding:9px 10px;"
+          />
         </div>
       </aside>
     </div>
