@@ -15,19 +15,23 @@ const repo = (): iUserRepo => {
     const getAllUsers = async () => {
         try {
             const sqlString = `
-                SELECT id
-                    , github_id
-                    , github_username
-                    , github_email
-                    , github_node_id
-                    , github_profile_url
-                    , avatar_url
-                    , email
-                    , name
-                    , bio
-                    , role
-                    , is_active
-                FROM users;
+                SELECT u.id
+                    , u.github_id
+                    , u.github_username
+                    , u.github_email
+                    , u.github_node_id
+                    , u.github_profile_url
+                    , u.avatar_url
+                    , u.email
+                    , u.name
+                    , u.bio
+                    , u.role
+                    , u.is_active
+                    , p.display_name
+                    , p.default_charity
+                    , COALESCE(p.public_opt_in, TRUE) AS public_opt_in
+                FROM users u
+                LEFT JOIN user_profiles p ON p.user_id = u.id;
             `
             const result = await pool.query(sqlString);
             return result.rows[0];
@@ -41,22 +45,26 @@ const repo = (): iUserRepo => {
     const getUserById = async (userId: string) => {
         try {
             const sqlString = `
-                SELECT id
-                    , github_id
-                    , github_username
-                    , github_email
-                    , github_node_id
-                    , github_profile_url
-                    , avatar_url
-                    , email
-                    , name
-                    , bio
-                    , role
-                    , is_active
-                FROM users
-                WHERE id = $1;
+                SELECT u.id
+                    , u.github_id
+                    , u.github_username
+                    , u.github_email
+                    , u.github_node_id
+                    , u.github_profile_url
+                    , u.avatar_url
+                    , u.email
+                    , u.name
+                    , u.bio
+                    , u.role
+                    , u.is_active
+                    , p.display_name
+                    , p.default_charity
+                    , COALESCE(p.public_opt_in, TRUE) AS public_opt_in
+                FROM users u
+                LEFT JOIN user_profiles p ON p.user_id = u.id
+                WHERE u.id = $1;
             `
-            
+
             const result = await pool.query(sqlString, [userId]);
             return result.rows[0];
 
@@ -69,22 +77,26 @@ const repo = (): iUserRepo => {
     const getUserByGitHubId = async (ghId: number) => {
         try {
             const sqlString = `
-                SELECT id
-                    , github_id
-                    , github_username
-                    , github_email
-                    , github_node_id
-                    , github_profile_url
-                    , avatar_url
-                    , email
-                    , name
-                    , bio
-                    , role
-                    , is_active
-                FROM users
-                WHERE github_id = $1;
+                SELECT u.id
+                    , u.github_id
+                    , u.github_username
+                    , u.github_email
+                    , u.github_node_id
+                    , u.github_profile_url
+                    , u.avatar_url
+                    , u.email
+                    , u.name
+                    , u.bio
+                    , u.role
+                    , u.is_active
+                    , p.display_name
+                    , p.default_charity
+                    , COALESCE(p.public_opt_in, TRUE) AS public_opt_in
+                FROM users u
+                LEFT JOIN user_profiles p ON p.user_id = u.id
+                WHERE u.github_id = $1;
             `
-            
+
             const result = await pool.query(sqlString, [ghId]);
             return result.rows[0];
 
