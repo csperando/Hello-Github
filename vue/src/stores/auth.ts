@@ -11,12 +11,15 @@ export interface iAuthUser {
     display_name?: string
     default_charity?: string
     public_opt_in?: boolean
+    role?: 'admin' | 'user'
+    is_active?: boolean
 }
 
 export const useAuthStore = defineStore('auth', () => {
     const user = ref<iAuthUser | null>(null)
     const isLoading = ref(true)
     const isAuthenticated = computed(() => user.value !== null)
+    const isAdmin = computed(() => user.value?.role === 'admin' && user.value?.is_active !== false)
 
     let inFlight: Promise<void> | null = null
 
@@ -53,5 +56,5 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
-    return { user, isLoading, isAuthenticated, fetchMe, logout }
+    return { user, isLoading, isAuthenticated, isAdmin, fetchMe, logout }
 })
