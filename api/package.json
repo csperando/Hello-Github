@@ -8,6 +8,7 @@
         "test:all": "jest --config jest.config.js --detectOpenHandles",
         "build": "npx tsc",
         "start": "node dist/index.js",
+        "migrate": "node dist/data/migrate.js",
         "dev": "ts-node-dev index.ts"
     },
     "keywords": [],
