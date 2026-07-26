@@ -3,7 +3,7 @@
 # REST_PORT := 3000
 # VUE_PORT := 5176
 
-.PHONY: prep dev api-dev api-test api-install vue-dev vue-install db-init
+.PHONY: prep dev api-dev api-test api-install vue-dev vue-install db-init db-promote-admin
 
 prep: api-install vue-install
 
@@ -33,3 +33,8 @@ vue-install:
 # DB
 db-init:
 	PGPASSWORD=$(POSTGRES_PASSWORD) psql -h $(POSTGRES_HOST) -p $(POSTGRES_PORT) -U $(POSTGRES_USER) -d $(POSTGRES_DATABASE) -f db/init.sql
+
+# promote an existing user (must have logged in via GitHub at least once) to admin
+# usage: make db-promote-admin GH_USER=<github_username>
+db-promote-admin:
+	PGPASSWORD=$(POSTGRES_PASSWORD) psql -h $(POSTGRES_HOST) -p $(POSTGRES_PORT) -U $(POSTGRES_USER) -d $(POSTGRES_DATABASE) -c "UPDATE users SET role = 'admin' WHERE github_username = '$(GH_USER)';"
