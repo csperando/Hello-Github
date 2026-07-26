@@ -36,3 +36,20 @@ export interface iGitHubUpsertInput {
     github_profile_url?: String;
     avatar_url?: String;
 }
+
+export interface iUserProfile {
+    user_id: String; // uuid, FK -> users.id
+
+    display_name?: String;
+    default_charity?: String;
+    public_opt_in: Boolean;
+
+    created_at?: String;
+    updated_at?: String;
+}
+
+export interface iProfileUpdateInput {
+    display_name?: String;
+    default_charity?: String;
+    public_opt_in?: Boolean;
+}
