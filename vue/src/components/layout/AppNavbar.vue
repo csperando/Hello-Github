@@ -2,6 +2,7 @@
 import BaseButton from '@/components/ui/BaseButton.vue'
 import NavAccount from '@/components/layout/NavAccount.vue'
 import { useAuthStore } from '@/stores/auth'
+import { githubLoginUrl } from '@/services/api'
 
 withDefaults(
   defineProps<{
@@ -15,6 +16,10 @@ withDefaults(
 )
 
 const authStore = useAuthStore()
+
+function connect() {
+  window.location.href = githubLoginUrl()
+}
 </script>
 
 <template>
@@ -37,28 +42,34 @@ const authStore = useAuthStore()
       <RouterLink v-if="authStore.isAdmin" to="/admin" style="color:oklch(85% 0.006 250);">admin</RouterLink>
       <span v-if="!authStore.isLoading" style="display:flex;align-items:center;gap:10px;margin-left:8px;">
         <NavAccount v-if="authStore.isAuthenticated" />
+        <template v-else>
+          <BaseButton
+            variant="secondary"
+            @click="connect"
+            style="font-size:13.5px;color:oklch(94% 0.004 250);border:1px solid oklch(100% 0 0 / 0.18);border-radius:6px;padding:8px 14px;"
+          >
+            sign in
+          </BaseButton>
+          <BaseButton as="router-link" to="/signup" style="font-size:13.5px;border-radius:6px;padding:9px 16px;text-decoration:none;">
+            connect github →
+          </BaseButton>
+        </template>
+      </span>
+    </nav>
+    <div v-else-if="!authStore.isLoading" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(65% 0.01 250);display:flex;align-items:center;gap:10px;">
+      <NavAccount v-if="authStore.isAuthenticated" />
+      <template v-else>
         <BaseButton
-          v-else
           variant="secondary"
-          as="router-link"
-          to="/signup"
-          style="font-size:13.5px;color:oklch(94% 0.004 250);border:1px solid oklch(100% 0 0 / 0.18);border-radius:6px;padding:8px 14px;text-decoration:none;"
+          @click="connect"
+          style="font-size:13.5px;color:oklch(94% 0.004 250);border:1px solid oklch(100% 0 0 / 0.18);border-radius:6px;padding:8px 14px;"
         >
           sign in
         </BaseButton>
-      </span>
-    </nav>
-    <div v-else-if="!authStore.isLoading" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(65% 0.01 250);">
-      <NavAccount v-if="authStore.isAuthenticated" />
-      <BaseButton
-        v-else
-        variant="secondary"
-        as="router-link"
-        to="/signup"
-        style="font-size:13.5px;color:oklch(94% 0.004 250);border:1px solid oklch(100% 0 0 / 0.18);border-radius:6px;padding:8px 14px;text-decoration:none;"
-      >
-        sign in
-      </BaseButton>
+        <BaseButton as="router-link" to="/signup" style="font-size:13.5px;border-radius:6px;padding:9px 16px;text-decoration:none;">
+          connect github →
+        </BaseButton>
+      </template>
     </div>
   </header>
 </template>

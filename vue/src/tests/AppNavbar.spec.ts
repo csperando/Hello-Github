@@ -7,9 +7,10 @@ import AppNavbar from '../components/layout/AppNavbar.vue'
 import { useAuthStore, type iAuthUser } from '../stores/auth'
 
 const apiFetchMock = vi.fn()
+const githubLoginUrlMock = vi.fn(() => 'https://api.test/auth/github/login')
 
 vi.mock('@/services/api', () => ({
-  githubLoginUrl: () => 'https://api.test/auth/github/login',
+  githubLoginUrl: () => githubLoginUrlMock(),
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
   updateProfile: vi.fn(),
 }))
@@ -38,6 +39,7 @@ async function mountNavbar(props: { showLinks?: boolean } = {}) {
     routes: [
       { path: '/', component: { template: '<div>home</div>' } },
       { path: '/signup', component: { template: '<div>signup</div>' } },
+      { path: '/dashboard', component: { template: '<div>dashboard</div>' } },
       { path: '/admin', component: { template: '<div>admin</div>' } },
     ],
   })
@@ -55,6 +57,7 @@ async function mountNavbar(props: { showLinks?: boolean } = {}) {
 describe('AppNavbar', () => {
   beforeEach(() => {
     apiFetchMock.mockReset()
+    githubLoginUrlMock.mockClear()
   })
 
   it('renders no account UI while auth state is still loading', async () => {
@@ -64,17 +67,24 @@ describe('AppNavbar', () => {
     expect(wrapper.find('img').exists()).toBe(false)
   })
 
-  it('renders a working sign-in link when logged out', async () => {
+  it('renders a working sign-in button and a connect-github link when logged out', async () => {
     const { wrapper, authStore } = await mountNavbar()
     authStore.isLoading = false
     await wrapper.vm.$nextTick()
 
-    const signIn = wrapper.find('a[href="/signup"]')
-    expect(signIn.exists()).toBe(true)
-    expect(signIn.text()).toContain('sign in')
+    const connectLink = wrapper.find('a[href="/signup"]')
+    expect(connectLink.exists()).toBe(true)
+    expect(connectLink.text()).toContain('connect github')
+
+    const signInButton = wrapper.findAll('button').find((b) => b.text().includes('sign in'))
+    expect(signInButton).toBeTruthy()
+
+    await signInButton!.trigger('click')
+
+    expect(githubLoginUrlMock).toHaveBeenCalled()
   })
 
-  it('renders real avatar, name, charity/opt-in status, and a working logout button when logged in', async () => {
+  it('renders real avatar, name, charity status, and a working logout button when logged in', async () => {
     const { wrapper, authStore, router } = await mountNavbar()
     authStore.isLoading = false
     authStore.user = buildUser()
@@ -85,7 +95,11 @@ describe('AppNavbar', () => {
     expect(avatar.attributes('src')).toBe('https://avatars.example/lena.png')
     expect(wrapper.text()).toContain('Lena Ortiz')
     expect(wrapper.text()).toContain('supporting EFF')
-    expect(wrapper.text()).toContain('public')
+    expect(wrapper.text()).not.toContain('public')
+
+    const dashboardLink = wrapper.find('a[href="/dashboard"]')
+    expect(dashboardLink.exists()).toBe(true)
+    expect(dashboardLink.find('img').exists()).toBe(true)
 
     const logoutButton = wrapper.findAll('button').find((b) => b.text().includes('log out'))
     expect(logoutButton).toBeTruthy()

@@ -12,14 +12,9 @@ const displayName = computed(
 )
 const initial = computed(() => (displayName.value.charAt(0) || '?').toUpperCase())
 
-const accountStatus = computed(() => {
-  const parts: string[] = []
-  if (authStore.user?.default_charity) parts.push(`supporting ${authStore.user.default_charity}`)
-  if (authStore.user?.public_opt_in !== undefined) {
-    parts.push(authStore.user.public_opt_in ? 'public' : 'private')
-  }
-  return parts.join(' · ')
-})
+const accountStatus = computed(() =>
+  authStore.user?.default_charity ? `supporting ${authStore.user.default_charity}` : '',
+)
 
 async function handleLogout() {
   await authStore.logout()
@@ -30,7 +25,9 @@ async function handleLogout() {
 <template>
   <div style="display:flex;align-items:center;gap:14px;">
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
-      <UserAvatarChip :initial="initial" :handle="displayName" :avatar-url="authStore.user?.avatar_url" />
+      <RouterLink to="/dashboard" style="text-decoration:none;color:inherit;">
+        <UserAvatarChip :initial="initial" :handle="displayName" :avatar-url="authStore.user?.avatar_url" />
+      </RouterLink>
       <div
         v-if="accountStatus"
         style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:oklch(60% 0.01 250);white-space:nowrap;"
