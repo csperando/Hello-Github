@@ -77,14 +77,18 @@ const publicOptIn = ref(true)
 const designName = ref('my first design')
 const repeatIndefinitely = ref(false)
 
-function paintCell(idx: number, forceLevel?: number) {
+function cycleCell(idx: number) {
   const current = grid.value[idx] ?? 0
-  grid.value[idx] = forceLevel !== undefined ? forceLevel : current === brush.value ? 0 : brush.value
+  grid.value[idx] = (current + 1) % 5
+}
+
+function paintCell(idx: number, level: number) {
+  grid.value[idx] = level
 }
 
 function onCellDown(idx: number) {
   painting.value = true
-  paintCell(idx)
+  cycleCell(idx)
 }
 
 function onCellEnter(idx: number) {
@@ -245,7 +249,7 @@ const commitCount = computed(() => painted.value * brush.value * 2)
         <div style="width:100%;max-width:980px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px;">
             <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:oklch(85% 0.006 250);">{{ activeTabLabel }} contribution graph · starts {{ anchorDateLabel }}</div>
-            <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:oklch(60% 0.01 250);">drag to paint · click to toggle</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:oklch(60% 0.01 250);">drag to paint · click to cycle intensity</div>
           </div>
           <BaseCard padding="28px 26px 24px">
             <div style="display:grid;grid-template-columns:repeat(53, 1fr);gap:clamp(2px,0.35vw,4px);margin-bottom:8px;padding-left:32px;">
