@@ -1,6 +1,7 @@
 import EditorView from "../views/Editor.vue";
 import CheckoutView from "../views/Checkout.vue";
 import DashboardView from "../views/Dashboard.vue";
+import AdminView from "../views/Admin.vue";
 
 export const editorRoute = {
     path: "/editor",
@@ -21,4 +22,11 @@ export const dashboardRoute = {
     name: "Dashboard",
     component: DashboardView,
     meta: { requiresAuth: true },
+};
+
+export const adminRoute = {
+    path: "/admin",
+    name: "Admin",
+    component: AdminView,
+    meta: { requiresAuth: true, requiresAdmin: true },
 };

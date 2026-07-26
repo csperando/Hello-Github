@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 
 import * as auth from "./authRoutes";
 import { homeRoute } from "./homeRoutes";
-import { editorRoute, checkoutRoute, dashboardRoute } from "./appRoutes";
+import { editorRoute, checkoutRoute, dashboardRoute, adminRoute } from "./appRoutes";
 import { errorRoute, notFoundRoute } from "./errorRoutes";
 import { useAuthStore } from "../stores/auth";
 
@@ -13,6 +13,7 @@ const router = createRouter({
         editorRoute,
         checkoutRoute,
         dashboardRoute,
+        adminRoute,
         errorRoute,
         notFoundRoute,
     ],
@@ -34,6 +35,10 @@ router.beforeEach(async (to) => {
 
     if (!authStore.isAuthenticated) {
         return { path: "/signup" };
+    }
+
+    if (to.meta.requiresAdmin && !authStore.isAdmin) {
+        return { path: "/dashboard" };
     }
 
     return true;
