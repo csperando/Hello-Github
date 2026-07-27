@@ -518,6 +518,7 @@ async function onContinueToCheckout() {
                 <div
                   v-for="cell in cells"
                   :key="cell.idx"
+                  data-testid="grid-cell"
                   @mousedown="onCellDown(cell.paintIdx)"
                   @mouseenter="onCellEnter(cell.paintIdx)"
                   :style="{ borderRadius: '2px', cursor: 'pointer', background: cell.bg, opacity: cell.opacity }"
