@@ -1,80 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import ContributionGridPreview from '@/components/ui/ContributionGridPreview.vue'
 import { LEVEL_COLORS } from '@/helpers/grid'
+import { useDesignsStore } from '@/stores/designs'
 
-type Pattern = number[][]
-
-const HEART_MINI: Pattern = [
-  [0, 1, 1, 0, 0, 0, 0, 1, 1, 0],
-  [1, 1, 1, 1, 0, 1, 1, 1, 1, 1],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-  [0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
-  [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-  [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
-]
-const SMILEY_MINI: Pattern = [
-  [0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
-  [0, 1, 0, 0, 0, 0, 0, 0, 1, 0],
-  [1, 0, 1, 0, 0, 0, 1, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 1, 0, 0, 0, 0, 0, 0, 1],
-  [0, 1, 0, 1, 1, 1, 1, 0, 1, 0],
-  [0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
-]
-const DIAMOND_MINI: Pattern = [
-  [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
-  [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-  [0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
-  [0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-  [0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
-  [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-  [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
-]
-
-function buildMiniGrid(pattern: Pattern, level: number, noise: boolean): number[] {
-  const weeks = 24
-  const days = 7
-  const grid = new Array(weeks * days).fill(0)
-  if (noise) {
-    for (let i = 0; i < grid.length; i++) {
-      if (Math.random() < 0.18) grid[i] = 1 + Math.floor(Math.random() * 2)
-    }
-  }
-  const startWeek = 7
-  pattern.forEach((row, r) => {
-    row.forEach((filled, c) => {
-      if (filled) {
-        const week = startWeek + c
-        const idx = week * days + r
-        if (idx < grid.length) grid[idx] = level
-      }
-    })
-  })
-  return grid
-}
-
-interface DesignSpec {
-  id: string
-  name: string
-  year: string
-  charity: string
-  status: 'live' | 'draft' | 'archived'
-  pattern: Pattern
-  level: number
-}
-
-// Mocked - id is a placeholder until this list is wired to real designs.
-const DESIGNS: DesignSpec[] = [
-  { id: 'mock-1', name: 'my first design', year: '2026', charity: 'GiveDirectly', status: 'live', pattern: HEART_MINI, level: 4 },
-  { id: 'mock-2', name: 'holiday smiley', year: '2025', charity: 'Code.org', status: 'archived', pattern: SMILEY_MINI, level: 3 },
-  { id: 'mock-3', name: 'geo diamond', year: '2026', charity: 'EFF', status: 'draft', pattern: DIAMOND_MINI, level: 4 },
-  { id: 'mock-4', name: 'noise test', year: '2024', charity: 'Khan Academy', status: 'archived', pattern: [[]], level: 2 },
-]
+const DAYS = 7
 
 const RECEIPTS = [
   { charity: 'GiveDirectly', amount: 10, date: 'Jul 8, 2026' },
@@ -82,40 +15,47 @@ const RECEIPTS = [
   { charity: 'Code.org', amount: 15, date: 'Dec 20, 2025' },
 ]
 
-const STATUS_STYLE = {
-  live: { color: 'oklch(72% 0.19 145)', bg: 'oklch(58% 0.16 145 / 0.15)' },
-  draft: { color: 'oklch(75% 0.14 85)', bg: 'oklch(75% 0.14 85 / 0.15)' },
-  archived: { color: 'var(--color-text-muted-4)', bg: 'oklch(100% 0 0 / 0.06)' },
-}
-
 const publicOptIn = ref(true)
 
+const designsStore = useDesignsStore()
+
+onMounted(() => {
+  designsStore.fetchDesigns()
+})
+
+function formatDate(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+// The schema has no status/charity fields yet, so the card shows only what
+// a design actually has: its name, visibility, start date, and how much of
+// it is painted. Richer dashboard metadata (charity, live/draft/archived
+// status) is future work once that data exists.
 const designs = computed(() =>
-  DESIGNS.map((d) => {
-    const grid = buildMiniGrid(d.pattern, d.level, true)
-    const st = STATUS_STYLE[d.status]
-    return {
-      id: d.id,
-      name: d.name,
-      year: d.year,
-      charity: d.charity,
-      status: d.status,
-      statusColor: st.color,
-      statusBg: st.bg,
-      painted: grid.filter((l) => l > 0).length,
-      previewCells: grid.map((level) => ({ bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })),
-    }
-  }),
+  designsStore.designs.map((d) => ({
+    id: d.id,
+    name: d.name,
+    isPublic: d.is_public,
+    startDateLabel: formatDate(d.start_date),
+    painted: d.pattern.filter((l) => l > 0).length,
+    weeks: d.pattern.length / DAYS,
+    previewCells: d.pattern.map((level) => ({ bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })),
+  })),
 )
 
 const totalDonated = RECEIPTS.reduce((sum, r) => sum + r.amount, 0)
 
-const statCards = [
+const statCards = computed(() => [
   { value: '$' + totalDonated, label: 'total donated' },
-  { value: String(DESIGNS.length), label: 'designs created' },
-  { value: DESIGNS.filter((d) => d.status === 'live').length + ' live', label: 'on your profile now' },
+  { value: String(designsStore.designs.length), label: 'designs created' },
+  { value: designsStore.designs.filter((d) => d.is_public).length + ' public', label: 'on your profile now' },
   { value: '3', label: 'charities supported' },
-]
+])
 
 const receipts = RECEIPTS
 </script>
@@ -154,17 +94,29 @@ const receipts = RECEIPTS
         <!-- YOUR DESIGNS -->
         <div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-3);letter-spacing:0.02em;margin-bottom:16px;">your designs</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-            <div v-for="d in designs" :key="d.name" style="background:var(--color-bg-raised);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;">
+          <div v-if="designsStore.isLoading" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-4);">loading…</div>
+          <div v-else-if="designs.length === 0" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-4);">no designs yet - head to the editor to create one.</div>
+          <div v-else style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div v-for="d in designs" :key="d.id" style="background:var(--color-bg-raised);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;">
               <div style="padding:14px;">
-                <ContributionGridPreview :cells="d.previewCells" />
+                <ContributionGridPreview :cells="d.previewCells" :weeks="d.weeks" />
               </div>
               <div style="padding:0 16px 16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                   <span style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:600;">{{ d.name }}</span>
-                  <span :style="{ fontFamily: 'IBM Plex Mono, monospace', fontSize: '10.5px', fontWeight: 600, color: d.statusColor, background: d.statusBg, borderRadius: '5px', padding: '3px 8px' }">{{ d.status }}</span>
+                  <span
+                    :style="{
+                      fontFamily: 'IBM Plex Mono, monospace',
+                      fontSize: '10.5px',
+                      fontWeight: 600,
+                      color: d.isPublic ? 'oklch(72% 0.19 145)' : 'var(--color-text-muted-4)',
+                      background: d.isPublic ? 'oklch(58% 0.16 145 / 0.15)' : 'oklch(100% 0 0 / 0.06)',
+                      borderRadius: '5px',
+                      padding: '3px 8px',
+                    }"
+                  >{{ d.isPublic ? 'public' : 'private' }}</span>
                 </div>
-                <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--color-text-muted-4);margin-bottom:12px;">{{ d.year }} · {{ d.painted }} squares · gave to {{ d.charity }}</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--color-text-muted-4);margin-bottom:12px;">{{ d.startDateLabel }} · {{ d.painted }} squares</div>
                 <div style="display:flex;gap:8px;">
                   <BaseButton as="router-link" :to="'/editor/' + d.id" variant="secondary" style="flex:1;font-size:12px;background:oklch(15% 0.012 250);color:oklch(85% 0.006 250);border:1px solid oklch(100% 0 0 / 0.1);border-radius:6px;padding:8px;text-decoration:none;text-align:center;">edit</BaseButton>
                   <BaseButton variant="secondary" style="flex:1;font-size:12px;color:var(--color-text-muted-4);border:1px solid oklch(100% 0 0 / 0.1);border-radius:6px;padding:8px;">receipt</BaseButton>
