@@ -99,7 +99,7 @@ const receipts = RECEIPTS
           <div v-else style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
             <div v-for="d in designs" :key="d.id" style="background:var(--color-bg-raised);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;">
               <div style="padding:14px;">
-                <ContributionGridPreview :cells="d.previewCells" :weeks="d.weeks" />
+                <ContributionGridPreview :cells="d.previewCells" :weeks="d.weeks" height="90px" />
               </div>
               <div style="padding:0 16px 16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">

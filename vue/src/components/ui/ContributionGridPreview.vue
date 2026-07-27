@@ -5,6 +5,14 @@ const props = withDefaults(
   defineProps<{
     cells: { bg: string }[]
     weeks?: number
+    /**
+     * Fixed height (any CSS length), for callers showing several previews of
+     * varying `weeks` side by side (e.g. a dashboard grid of design cards) -
+     * without it, a narrower pattern gets a taller aspect-ratio box than a
+     * wider one, so tiles in the same layout end up inconsistently sized.
+     * When omitted, falls back to the original aspect-ratio-driven sizing.
+     */
+    height?: string
   }>(),
   {
     weeks: 24,
@@ -17,7 +25,7 @@ const gridStyle = computed(() => ({
   gridTemplateRows: 'repeat(7,1fr)',
   gridAutoFlow: 'column',
   gap: '2px',
-  aspectRatio: `${props.weeks}/7`,
+  ...(props.height ? { height: props.height } : { aspectRatio: `${props.weeks}/7` }),
 }))
 </script>
 
