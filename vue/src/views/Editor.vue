@@ -525,7 +525,7 @@ async function onContinueToCheckout() {
             <div style="display:grid;grid-template-columns:repeat(53, 1fr);gap:clamp(2px,0.35vw,4px);margin-bottom:8px;padding-left:32px;">
               <span
                 v-for="m in months"
-                :key="m.label"
+                :key="m.col"
                 :style="{ gridColumn: m.col + ' / span 4', font: '500 10.5px IBM Plex Mono, monospace', color: 'oklch(58% 0.01 250)' }"
               >{{ m.label }}</span>
             </div>
