@@ -55,6 +55,18 @@ describe("DesignsRepository", () => {
             expect(design.pattern).toEqual([0, 1, 2, 3, 4, 0, 0]);
         });
 
+        it("returns date columns as plain YYYY-MM-DD strings, not Date objects/timestamps", async () => {
+            // pg's default type parser turns DATE columns into JS Date objects,
+            // which then serialize as full ISO timestamps (e.g.
+            // "2026-01-04T00:00:00.000Z") instead of the plain date string every
+            // caller (validation, the schedule lookup, the Vue frontend) assumes.
+            const design = await designsRepo.create(userId, minimalInput);
+
+            expect(typeof design.start_date).toBe("string");
+            expect(design.start_date).toBe("2026-01-04");
+            expect(design.end_date).toBe("2026-01-10");
+        });
+
         it("persists all fields when fully specified", async () => {
             const design = await designsRepo.create(userId, {
                 name: "Heart 2026",
