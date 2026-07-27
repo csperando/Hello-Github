@@ -246,6 +246,12 @@ onMounted(async () => {
   if (design) applyLoadedDesign(design)
 })
 
+function cellDateLabel(week: number, day: number): string {
+  const date = new Date(anchorDate.value)
+  date.setUTCDate(date.getUTCDate() + week * 7 + day)
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+}
+
 const cells = computed(() => {
   const rangeWidth = rangeEnd.value - rangeStart.value + 1
   return grid.value.map((level, idx) => {
@@ -266,13 +272,28 @@ const cells = computed(() => {
       paintIdx,
       bg: LEVEL_COLORS[displayLevel] ?? LEVEL_COLORS[0]!,
       opacity: ghost ? 0.38 : 1,
+      title: cellDateLabel(week, day),
     }
   })
 })
 
-const months = computed(() =>
-  MONTH_LABELS.map((label, i) => ({ label, col: Math.round((i * WEEKS) / 12) + 1 })),
-)
+// One label per real month transition, positioned at the column where that
+// month actually starts relative to the anchor - not evenly spaced Jan-Dec,
+// since the grid always starts at anchorDate (which is rarely Jan 1).
+const months = computed(() => {
+  const labels: { label: string; col: number }[] = []
+  let lastMonth = -1
+  for (let week = 0; week < WEEKS; week++) {
+    const date = new Date(anchorDate.value)
+    date.setUTCDate(date.getUTCDate() + week * 7)
+    const month = date.getUTCMonth()
+    if (month !== lastMonth) {
+      labels.push({ label: MONTH_LABELS[month]!, col: week + 1 })
+      lastMonth = month
+    }
+  }
+  return labels
+})
 
 const templates = computed(() =>
   TEMPLATES.map((t) => ({
@@ -433,12 +454,7 @@ async function onContinueToCheckout() {
       <div style="display:flex;align-items:center;gap:10px;font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(65% 0.01 250);">
         <span>editor</span>
         <span style="width:1px;height:14px;background:oklch(100% 0 0 / 0.12);"></span>
-        <button
-          @click="saveDesign"
-          :disabled="isSaving"
-          style="background:none;border:none;padding:0;font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(85% 0.006 250);cursor:pointer;"
-        >{{ isSaving ? 'saving…' : loadedDesign ? 'save changes' : 'save as draft' }}</button>
-        <span v-if="saveError" style="color:oklch(70% 0.18 30);">{{ saveError }}</span>
+        <span style="color:oklch(85% 0.006 250);">saved as draft</span>
       </div>
 
       <div style="display:flex;align-items:center;gap:4px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);border-radius:8px;padding:3px;">
@@ -450,7 +466,17 @@ async function onContinueToCheckout() {
         >{{ t.label }}</button>
       </div>
 
-      <BaseButton @click="onContinueToCheckout" :loading="isSaving" style="font-size:13.5px;border-radius:7px;padding:10px 18px;text-decoration:none;">continue to checkout →</BaseButton>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span v-if="saveError" style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:oklch(70% 0.18 30);">{{ saveError }}</span>
+        <BaseButton
+          variant="secondary"
+          @click="saveDesign"
+          :loading="isSaving"
+          :disabled="isSaving"
+          style="font-size:13.5px;background:oklch(19% 0.012 250);color:oklch(85% 0.006 250);border:1px solid oklch(100% 0 0 / 0.14);border-radius:7px;padding:10px 18px;"
+        >{{ loadedDesign ? 'save changes' : 'save as draft' }}</BaseButton>
+        <BaseButton @click="onContinueToCheckout" :loading="isSaving" style="font-size:13.5px;border-radius:7px;padding:10px 18px;text-decoration:none;">continue to checkout →</BaseButton>
+      </div>
     </div>
 
     <!-- BODY -->
@@ -519,6 +545,7 @@ async function onContinueToCheckout() {
                   v-for="cell in cells"
                   :key="cell.idx"
                   data-testid="grid-cell"
+                  :title="cell.title"
                   @mousedown="onCellDown(cell.paintIdx)"
                   @mouseenter="onCellEnter(cell.paintIdx)"
                   :style="{ borderRadius: '2px', cursor: 'pointer', background: cell.bg, opacity: cell.opacity }"
