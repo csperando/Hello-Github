@@ -78,6 +78,7 @@ const filtered = computed(() => CHARITIES.filter((c) => c.name.toLowerCase().inc
 const charities = computed(() =>
   filtered.value.map((c) => ({
     ...c,
+    selected: c.name === selectedCharity.value,
     borderColor: c.name === selectedCharity.value ? 'oklch(58% 0.16 145 / 0.7)' : 'oklch(100% 0 0 / 0.08)',
   })),
 )
@@ -128,6 +129,7 @@ const paintedCount = computed(() => previewGrid.value.filter((l) => l > 0).lengt
                 :letter="charity.letter"
                 :focus="charity.focus"
                 :border-color="charity.borderColor"
+                :selected="charity.selected"
                 @click="selectedCharity = charity.name"
               />
             </div>

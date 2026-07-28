@@ -100,6 +100,7 @@ async function finish() {
 const charities = computed(() =>
   CHARITIES.map((c) => ({
     ...c,
+    selected: c.name === charity.value,
     borderColor: c.name === charity.value ? 'oklch(58% 0.16 145 / 0.7)' : 'oklch(100% 0 0 / 0.08)',
   })),
 )
@@ -172,6 +173,7 @@ const firstName = computed(() => {
                 :name="c.name"
                 :letter="c.letter"
                 :border-color="c.borderColor"
+                :selected="c.selected"
                 @click="charity = c.name"
               />
             </div>

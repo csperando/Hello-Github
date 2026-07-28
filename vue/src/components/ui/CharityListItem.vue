@@ -8,19 +8,28 @@ const props = withDefaults(
     focus?: string
     borderColor: string
     size?: 'sm' | 'md' | 'lg'
+    /** Whether this charity is the currently selected one - only meaningful when interactive (sm/md). */
+    selected?: boolean
   }>(),
   {
     size: 'lg',
+    selected: false,
   },
 )
 
+// lg is used as a plain, non-clickable info card (e.g. Home.vue's pricing
+// section); sm/md are used as selectable charity pickers and need real
+// button semantics so selection works via keyboard, not just a mouse click.
+const isInteractive = computed(() => props.size !== 'lg')
+
 const wrapperStyle = computed(() => {
   const border = `border-width:1px;border-style:solid;border-color:${props.borderColor};`
+  const resetForButton = isInteractive.value ? 'width:100%;box-sizing:border-box;text-align:left;font-family:inherit;' : ''
   if (props.size === 'sm') {
-    return `cursor:pointer;display:flex;gap:10px;align-items:center;padding:12px;border-radius:8px;background:var(--color-bg);${border}`
+    return `${resetForButton}cursor:pointer;display:flex;gap:10px;align-items:center;padding:12px;border-radius:8px;background:var(--color-bg);${border}`
   }
   if (props.size === 'md') {
-    return `cursor:pointer;display:flex;gap:12px;align-items:flex-start;padding:13px;border-radius:10px;background:var(--color-bg-raised);${border}`
+    return `${resetForButton}cursor:pointer;display:flex;gap:12px;align-items:flex-start;padding:13px;border-radius:10px;background:var(--color-bg-raised);${border}`
   }
   return `display:flex;gap:14px;align-items:flex-start;padding:16px;border-radius:10px;background:var(--color-bg-raised);${border}`
 })
@@ -53,12 +62,17 @@ const focusStyle = computed(() => {
 </script>
 
 <template>
-  <div :style="wrapperStyle">
+  <component
+    :is="isInteractive ? 'button' : 'div'"
+    :type="isInteractive ? 'button' : undefined"
+    :aria-pressed="isInteractive ? selected : undefined"
+    :style="wrapperStyle"
+  >
     <div :style="avatarStyle">{{ letter }}</div>
     <div v-if="size !== 'sm'">
       <div :style="nameStyle">{{ name }}</div>
       <div v-if="focus" :style="focusStyle">{{ focus }}</div>
     </div>
     <span v-else style="font-family:var(--font-mono);font-size:13px;">{{ name }}</span>
-  </div>
+  </component>
 </template>
