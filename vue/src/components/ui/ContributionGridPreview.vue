@@ -35,7 +35,10 @@ const gridStyle = computed(() => ({
 </script>
 
 <template>
-  <div style="width:100%;overflow-x:auto;">
+  <!-- Always a decorative preview/illustration of a pattern - the meaningful
+       info (design name, painted count, etc.) is rendered as text elsewhere
+       by every caller, so this is hidden from assistive tech entirely. -->
+  <div aria-hidden="true" style="width:100%;overflow-x:auto;">
     <div :style="gridStyle">
       <div v-for="(cell, i) in cells" :key="i" :style="{ borderRadius: '1px', background: cell.bg }"></div>
     </div>

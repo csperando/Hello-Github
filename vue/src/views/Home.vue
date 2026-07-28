@@ -157,11 +157,11 @@ const steps = STEPS
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-top:16px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:oklch(55% 0.01 250);">
             <span>less</span>
-            <span style="width:10px;height:10px;border-radius:2px;background:oklch(24% 0.01 250);display:inline-block;"></span>
-            <span style="width:10px;height:10px;border-radius:2px;background:oklch(32% 0.07 145);display:inline-block;"></span>
-            <span style="width:10px;height:10px;border-radius:2px;background:oklch(45% 0.12 145);display:inline-block;"></span>
-            <span style="width:10px;height:10px;border-radius:2px;background:oklch(58% 0.16 145);display:inline-block;"></span>
-            <span style="width:10px;height:10px;border-radius:2px;background:oklch(72% 0.19 145);display:inline-block;"></span>
+            <span aria-hidden="true" style="width:10px;height:10px;border-radius:2px;background:oklch(24% 0.01 250);display:inline-block;"></span>
+            <span aria-hidden="true" style="width:10px;height:10px;border-radius:2px;background:oklch(32% 0.07 145);display:inline-block;"></span>
+            <span aria-hidden="true" style="width:10px;height:10px;border-radius:2px;background:oklch(45% 0.12 145);display:inline-block;"></span>
+            <span aria-hidden="true" style="width:10px;height:10px;border-radius:2px;background:oklch(58% 0.16 145);display:inline-block;"></span>
+            <span aria-hidden="true" style="width:10px;height:10px;border-radius:2px;background:oklch(72% 0.19 145);display:inline-block;"></span>
             <span>more</span>
             <span style="margin-left:auto;color:oklch(65% 0.01 250);">click a square to paint</span>
           </div>
@@ -193,7 +193,7 @@ const steps = STEPS
 
         <div style="max-width:520px;margin-bottom:56px;">
           <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(70% 0.01 250);margin-bottom:8px;"><span>example: $10 contribution</span><span>$3 fee · $7 to charity</span></div>
-          <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;">
+          <div aria-hidden="true" style="display:flex;height:14px;border-radius:7px;overflow:hidden;">
             <div style="width:70%;background:oklch(58% 0.16 145);"></div>
             <div style="width:30%;background:oklch(38% 0.02 250);"></div>
           </div>
@@ -226,7 +226,7 @@ const steps = STEPS
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
           <div v-for="post in gallery" :key="post.user" style="border-radius:12px;overflow:hidden;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
-            <div style="height:70px;background-image:repeating-linear-gradient(45deg, oklch(26% 0.015 250), oklch(26% 0.015 250) 8px, oklch(22% 0.013 250) 8px, oklch(22% 0.013 250) 16px);display:flex;align-items:center;justify-content:center;">
+            <div aria-hidden="true" style="height:70px;background-image:repeating-linear-gradient(45deg, oklch(26% 0.015 250), oklch(26% 0.015 250) 8px, oklch(22% 0.013 250) 8px, oklch(22% 0.013 250) 16px);display:flex;align-items:center;justify-content:center;">
               <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:oklch(55% 0.01 250);">[ user's grid design ]</span>
             </div>
             <div style="padding:14px 16px;">

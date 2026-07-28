@@ -570,11 +570,11 @@ async function onContinueToCheckout() {
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:18px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(58% 0.01 250);">
               <span>less</span>
-              <span style="width:11px;height:11px;border-radius:2px;background:oklch(24% 0.01 250);display:inline-block;"></span>
-              <span style="width:11px;height:11px;border-radius:2px;background:oklch(32% 0.07 145);display:inline-block;"></span>
-              <span style="width:11px;height:11px;border-radius:2px;background:oklch(45% 0.12 145);display:inline-block;"></span>
-              <span style="width:11px;height:11px;border-radius:2px;background:oklch(58% 0.16 145);display:inline-block;"></span>
-              <span style="width:11px;height:11px;border-radius:2px;background:oklch(72% 0.19 145);display:inline-block;"></span>
+              <span aria-hidden="true" style="width:11px;height:11px;border-radius:2px;background:oklch(24% 0.01 250);display:inline-block;"></span>
+              <span aria-hidden="true" style="width:11px;height:11px;border-radius:2px;background:oklch(32% 0.07 145);display:inline-block;"></span>
+              <span aria-hidden="true" style="width:11px;height:11px;border-radius:2px;background:oklch(45% 0.12 145);display:inline-block;"></span>
+              <span aria-hidden="true" style="width:11px;height:11px;border-radius:2px;background:oklch(58% 0.16 145);display:inline-block;"></span>
+              <span aria-hidden="true" style="width:11px;height:11px;border-radius:2px;background:oklch(72% 0.19 145);display:inline-block;"></span>
               <span>more</span>
             </div>
           </BaseCard>
