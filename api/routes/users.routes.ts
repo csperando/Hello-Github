@@ -2,7 +2,7 @@ import { Router, NextFunction, Request, Response } from "express";
 import { iResponse } from "../models/response";
 import { UserService } from "../services/users.service";
 import { requireAuth, requireRole } from "../middleware/auth.middleware";
-import { iProfileUpdateInput } from "../models/users";
+import { iProfileUpdateInput, toPublicUser } from "../models/users";
 import { logger } from "../config/logger";
 
 const router = Router();
@@ -128,8 +128,9 @@ router.patch("/:userId", requireAuth, async (req: Request, res: Response, next: 
     try {
         const targetUserId = req.params.userId as string;
         const requestingUserId = req.user!.id;
+        const isSelfService = requestingUserId === targetUserId;
 
-        if (requestingUserId !== targetUserId) {
+        if (!isSelfService) {
             const requester = await userService.getUserById(requestingUserId);
 
             if (!isActiveAdmin(requester)) {
@@ -157,7 +158,8 @@ router.patch("/:userId", requireAuth, async (req: Request, res: Response, next: 
         }
 
         const user = await userService.updateProfile(targetUserId, input);
-        const response: iResponse = { status: 200, success: true, data: [user] };
+        const responseData = isSelfService ? toPublicUser(user) : user;
+        const response: iResponse = { status: 200, success: true, data: [responseData] };
         res.status(200).json(response);
 
     } catch(err) {

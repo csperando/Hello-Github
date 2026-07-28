@@ -116,6 +116,25 @@ describe("User routes", () => {
             expect(profilesRepoMock.upsert).toHaveBeenCalledWith(mockUser.id, { display_name: "Lena Ortiz" });
         });
 
+        it("returns only the client-safe shape when a user updates their own profile", async () => {
+            profilesRepoMock.upsert.mockResolvedValue({ user_id: mockUser.id, display_name: "Lena Ortiz" });
+            usersRepoMock.getUserById.mockResolvedValue({
+                ...mockUser,
+                display_name: "Lena Ortiz",
+                access_token: "gho_secret",
+            });
+
+            const res = await request(server)
+                .patch("/user/" + mockUser.id)
+                .set("Cookie", selfCookie)
+                .send({ display_name: "Lena Ortiz" });
+            const body: iResponse = JSON.parse(res.text);
+
+            expect((body.data![0] as any).display_name).toBe("Lena Ortiz");
+            expect(body.data![0]).not.toHaveProperty("access_token");
+            expect(body.data![0]).not.toHaveProperty("github_id");
+        });
+
         it("ignores fields outside the profile whitelist (e.g. role) rather than applying them", async () => {
             profilesRepoMock.upsert.mockResolvedValue({ user_id: mockUser.id });
             usersRepoMock.getUserById.mockResolvedValue(mockUser);
@@ -176,6 +195,21 @@ describe("User routes", () => {
 
             expect(res.status).toBe(200);
             expect(profilesRepoMock.upsert).toHaveBeenCalledWith(otherUserId, { display_name: "Someone Else" });
+        });
+
+        it("returns the full user shape (not the reduced client shape) when an admin updates another user's profile", async () => {
+            usersRepoMock.getUserById.mockImplementation(async (userId: string) =>
+                userId === mockUser.id ? mockUser : { id: otherUserId, github_id: 99, github_username: "other" },
+            );
+            profilesRepoMock.upsert.mockResolvedValue({ user_id: otherUserId, display_name: "Someone Else" });
+
+            const res = await request(server)
+                .patch("/user/" + otherUserId)
+                .set("Cookie", adminCookie)
+                .send({ display_name: "Someone Else" });
+            const body: iResponse = JSON.parse(res.text);
+
+            expect((body.data![0] as any).github_id).toBe(99);
         });
 
         it("returns 404 when an admin targets a userId that doesn't exist", async () => {

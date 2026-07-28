@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { iResponse } from "../models/response";
-import { iGitHubUpsertInput } from "../models/users";
+import { iGitHubUpsertInput, toPublicUser } from "../models/users";
 import { UserService } from "../services/users.service";
 import { exchangeCodeForToken, fetchGitHubUser, fetchPrimaryVerifiedEmail } from "../services/github.service";
 import { requireAuth } from "../middleware/auth.middleware";
@@ -111,7 +111,7 @@ router.get("/me", requireAuth, async (req: Request, res: Response, next: NextFun
             return;
         }
 
-        const response: iResponse = { status: 200, success: true, data: [user] };
+        const response: iResponse = { status: 200, success: true, data: [toPublicUser(user)] };
         res.status(200).json(response);
 
     } catch(err) {

@@ -218,6 +218,30 @@ describe("Auth routes", () => {
             expect(res.body.data[0].id).toBe(mockUser.id);
         });
 
+        it("strips GitHub-internal/contact fields, returning only the client-safe shape", async () => {
+            usersRepoMock.getUserById.mockResolvedValue({
+                ...mockUser,
+                github_node_id: mockGhUser.node_id,
+                github_profile_url: mockGhUser.html_url,
+                access_token: "gho_secret",
+                refresh_token: "ghr_secret",
+                scope: "read:user user:email",
+            });
+            const sidCookie = `sid=s:${sign(mockUser.id as string, config.SESSION_SECRET)}`;
+
+            const res = await request(testApp).get("/auth/me").set("Cookie", sidCookie);
+
+            expect(res.status).toBe(200);
+            const user = res.body.data[0];
+            expect(user).toEqual({
+                id: mockUser.id,
+                github_username: mockUser.github_username,
+            });
+            for (const field of ["github_id", "github_email", "github_node_id", "github_profile_url", "access_token", "refresh_token", "scope"]) {
+                expect(user).not.toHaveProperty(field);
+            }
+        });
+
         it("returns 401 and clears sid when the session user no longer exists", async () => {
             usersRepoMock.getUserById.mockResolvedValue(undefined);
             const sidCookie = `sid=s:${sign("deleted-user-id", config.SESSION_SECRET)}`;
