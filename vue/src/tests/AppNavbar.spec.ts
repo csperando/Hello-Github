@@ -19,7 +19,6 @@ function buildUser(overrides: Partial<iAuthUser> = {}): iAuthUser {
   return {
     id: 'u1',
     github_username: 'lena',
-    github_email: 'lena@example.com',
     avatar_url: 'https://avatars.example/lena.png',
     display_name: 'Lena Ortiz',
     default_charity: 'EFF',

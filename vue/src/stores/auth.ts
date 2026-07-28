@@ -5,7 +5,6 @@ import { apiFetch } from '@/services/api'
 export interface iAuthUser {
     id: string
     github_username: string
-    github_email: string
     avatar_url?: string
     name?: string
     display_name?: string

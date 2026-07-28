@@ -38,7 +38,7 @@ describe('router /admin guard', () => {
 
   it('redirects an authenticated non-admin to /dashboard', async () => {
     apiFetchMock.mockResolvedValue(
-      meResponse({ id: 'u2', github_username: 'dev', github_email: 'dev@example.com', role: 'user' }),
+      meResponse({ id: 'u2', github_username: 'dev', role: 'user' }),
     )
 
     await router.push('/admin')
@@ -51,7 +51,6 @@ describe('router /admin guard', () => {
       meResponse({
         id: 'u3',
         github_username: 'root',
-        github_email: 'root@example.com',
         role: 'admin',
         is_active: true,
       }),
@@ -68,7 +67,6 @@ describe('router /admin guard', () => {
       meResponse({
         id: 'u4',
         github_username: 'exadmin',
-        github_email: 'exadmin@example.com',
         role: 'admin',
         is_active: false,
       }),
@@ -100,7 +98,7 @@ describe('router /settings guard', () => {
 
   it('lets an authenticated non-admin reach /settings', async () => {
     apiFetchMock.mockResolvedValue(
-      meResponse({ id: 'u5', github_username: 'dev', github_email: 'dev@example.com', role: 'user' }),
+      meResponse({ id: 'u5', github_username: 'dev', role: 'user' }),
     )
 
     await router.push('/settings')
@@ -114,7 +112,6 @@ describe('router /settings guard', () => {
       meResponse({
         id: 'u6',
         github_username: 'root',
-        github_email: 'root@example.com',
         role: 'admin',
         is_active: true,
       }),

@@ -19,7 +19,7 @@ function jsonResponse(body: unknown, ok = true) {
 }
 
 const authenticatedMeResponse = () =>
-  jsonResponse({ data: [{ id: 'u1', github_username: 'lena', github_email: 'lena@example.com' }] })
+  jsonResponse({ data: [{ id: 'u1', github_username: 'lena' }] })
 
 async function mountSignUp(initialPath = '/signup') {
   const pinia = createPinia()
@@ -69,7 +69,6 @@ describe('signUp.vue', () => {
           {
             id: 'u1',
             github_username: 'lena',
-            github_email: 'lena@example.com',
             display_name: 'Lena Ortiz',
             default_charity: 'EFF',
             public_opt_in: false,
