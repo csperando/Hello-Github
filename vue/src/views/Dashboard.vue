@@ -6,6 +6,7 @@ import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import ContributionGridPreview from '@/components/ui/ContributionGridPreview.vue'
 import { LEVEL_COLORS } from '@/helpers/grid'
 import { useDesignsStore } from '@/stores/designs'
+import { useAuthStore } from '@/stores/auth'
 
 const DAYS = 7
 
@@ -18,10 +19,15 @@ const RECEIPTS = [
 const publicOptIn = ref(true)
 
 const designsStore = useDesignsStore()
+const authStore = useAuthStore()
 
 onMounted(() => {
   designsStore.fetchDesigns()
 })
+
+const displayName = computed(
+  () => authStore.user?.display_name || authStore.user?.name || authStore.user?.github_username || '',
+)
 
 function formatDate(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString('en-US', {
@@ -71,7 +77,7 @@ const receipts = RECEIPTS
       <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;margin-bottom:32px;">
         <div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(72% 0.16 145);margin-bottom:8px;">// welcome back</div>
-          <h1 style="font-family:'IBM Plex Mono',monospace;font-size:clamp(24px,2.8vw,32px);font-weight:700;margin:0;">lena.codes</h1>
+          <h1 style="font-family:'IBM Plex Mono',monospace;font-size:clamp(24px,2.8vw,32px);font-weight:700;margin:0;">{{ displayName }}</h1>
         </div>
         <BaseButton as="router-link" to="/editor" style="font-size:13.5px;border-radius:8px;padding:12px 18px;text-decoration:none;">+ new design</BaseButton>
       </div>
