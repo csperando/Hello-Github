@@ -164,7 +164,7 @@ const firstName = computed(() => {
             <input v-model="displayName" placeholder="e.g. Lena Ortiz" style="width:100%;box-sizing:border-box;font-family:'IBM Plex Sans',sans-serif;font-size:14.5px;background:oklch(15% 0.012 250);color:oklch(96% 0.004 250);border:1px solid oklch(100% 0 0 / 0.12);border-radius:8px;padding:12px 14px;margin-bottom:18px;" />
 
             <label style="display:block;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:oklch(70% 0.01 250);margin-bottom:7px;">default charity</label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" style="margin-bottom:20px;">
               <CharityListItem
                 v-for="c in charities"
                 :key="c.name"
