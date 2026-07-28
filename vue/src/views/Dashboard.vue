@@ -90,21 +90,21 @@ const statCards = computed(() => [
       </div>
 
       <!-- STATS ROW -->
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:36px;">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" style="margin-bottom:36px;">
         <div v-for="s in statCards" :key="s.label" style="background:var(--color-bg-raised);border:1px solid var(--color-border);border-radius:12px;padding:18px 20px;">
           <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:700;margin-bottom:4px;">{{ s.value }}</div>
           <div style="font-size:12.5px;color:var(--color-text-muted-4);">{{ s.label }}</div>
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 320px;gap:28px;align-items:start;">
+      <div class="grid grid-cols-1 lg:grid-cols-[1fr_320px] items-start gap-7">
 
         <!-- YOUR DESIGNS -->
         <div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-3);letter-spacing:0.02em;margin-bottom:16px;">your designs</div>
           <div v-if="designsStore.isLoading" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-4);">loading…</div>
           <div v-else-if="designs.length === 0" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-4);">no designs yet - head to the editor to create one.</div>
-          <div v-else style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div v-for="d in designs" :key="d.id" style="background:var(--color-bg-raised);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;">
               <div style="padding:14px;">
                 <ContributionGridPreview :cells="d.previewCells" :weeks="d.weeks" height="90px" />
