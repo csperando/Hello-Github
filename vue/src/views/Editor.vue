@@ -532,6 +532,11 @@ async function onContinueToCheckout() {
                     :style="{ gridColumn: m.col + ' / span 4', font: '500 10.5px IBM Plex Mono, monospace', color: 'oklch(58% 0.01 250)' }"
                   >{{ m.label }}</span>
                 </div>
+                <!-- Known accessibility gap: cells are mouse/touch-only (mousedown+mouseenter
+                     drag-paint) - painting this grid via keyboard isn't supported. Giving each
+                     of the ~370 cells its own tab stop isn't a real fix either. A proper fix
+                     needs roving-tabindex arrow-key focus + Enter/Space to cycle intensity,
+                     which is a larger feature than this pass's layout/labeling scope covers. -->
                 <div style="display:flex;gap:8px;align-items:stretch;">
                   <div style="flex:none;width:26px;display:grid;grid-template-rows:repeat(7, 1fr);align-items:center;padding:2px 0;">
                     <span style="grid-row:2;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">mon</span>
@@ -539,6 +544,8 @@ async function onContinueToCheckout() {
                     <span style="grid-row:6;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">fri</span>
                   </div>
                   <div
+                    role="group"
+                    :aria-label="'contribution graph editor, ' + painted + ' of ' + grid.length + ' squares painted'"
                     @mousedown="painting = true"
                     @mouseup="painting = false"
                     @mouseleave="painting = false"

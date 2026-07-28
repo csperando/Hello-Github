@@ -140,7 +140,11 @@ const steps = STEPS
                   <span style="font:500 8.5px 'IBM Plex Mono',monospace;color:oklch(55% 0.01 250);">wed</span>
                   <span style="font:500 8.5px 'IBM Plex Mono',monospace;color:oklch(55% 0.01 250);">fri</span>
                 </div>
-                <div style="flex:1;min-width:0;display:grid;grid-template-columns:repeat(53, 1fr);grid-template-rows:repeat(7, 1fr);grid-auto-flow:column;gap:clamp(1px,0.3vw,3px);aspect-ratio:53/7.6;">
+                <div
+                  role="group"
+                  :aria-label="'contribution graph editor, ' + painted + ' of ' + total + ' squares painted'"
+                  style="flex:1;min-width:0;display:grid;grid-template-columns:repeat(53, 1fr);grid-template-rows:repeat(7, 1fr);grid-auto-flow:column;gap:clamp(1px,0.3vw,3px);aspect-ratio:53/7.6;"
+                >
                   <div
                     v-for="cell in cells"
                     :key="cell.idx"
