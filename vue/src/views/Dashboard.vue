@@ -18,6 +18,8 @@ const RECEIPTS = [
 ]
 
 const designsStore = useDesignsStore()
+// authStore.user is already populated here: the router's requiresAuth guard
+// (vue/src/router/index.ts) awaits fetchMe() before this route resolves.
 const authStore = useAuthStore()
 
 onMounted(() => {
