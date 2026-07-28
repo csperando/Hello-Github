@@ -28,6 +28,49 @@ export interface iUser {
     last_login_at?: String;
 }
 
+/**
+ * The subset of a user row safe to return to a non-admin client - excludes
+ * GitHub-internal ids/urls, contact info, OAuth tokens, and timestamps that
+ * the client has no use for and shouldn't be exposed to.
+ */
+export interface iPublicUser {
+    id: String; // uuid
+
+    github_username: String;
+    avatar_url?: String | undefined;
+
+    name?: String | undefined;
+    display_name?: String | undefined;
+    default_charity?: String | undefined;
+    public_opt_in?: Boolean | undefined;
+
+    role?: Role | undefined;
+    is_active?: Boolean | undefined;
+}
+
+/**
+ * Whitelists the fields of a raw user row that are safe to return to a
+ * non-admin client, dropping everything else (GitHub-internal ids/urls,
+ * email/bio, OAuth tokens, timestamps) regardless of what the row contains.
+ * Accepts the profile fields flattened onto the row by the users repo's
+ * join against user_profiles, since those aren't part of the bare iUser shape.
+ */
+export function toPublicUser(
+    user: iUser & Partial<Pick<iUserProfile, "display_name" | "default_charity" | "public_opt_in">>,
+): iPublicUser {
+    return {
+        id: user.id,
+        github_username: user.github_username,
+        avatar_url: user.avatar_url,
+        name: user.name,
+        display_name: user.display_name,
+        default_charity: user.default_charity,
+        public_opt_in: user.public_opt_in,
+        role: user.role,
+        is_active: user.is_active,
+    };
+}
+
 export interface iGitHubUpsertInput {
     github_id: Number;
     github_username: String;
