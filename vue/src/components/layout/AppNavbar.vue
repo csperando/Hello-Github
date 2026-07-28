@@ -24,10 +24,11 @@ function connect() {
 
 <template>
   <header
+    class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
     :style="
       sticky
-        ? 'position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:18px clamp(20px,4vw,48px);background:oklch(14% 0.012 250 / 0.88);backdrop-filter:blur(8px);border-bottom:1px solid oklch(100% 0 0 / 0.08);'
-        : 'display:flex;align-items:center;justify-content:space-between;padding:22px clamp(20px,4vw,48px);'
+        ? 'position:sticky;top:0;z-index:20;padding:18px clamp(20px,4vw,48px);background:oklch(14% 0.012 250 / 0.88);backdrop-filter:blur(8px);border-bottom:1px solid oklch(100% 0 0 / 0.08);'
+        : 'padding:22px clamp(20px,4vw,48px);'
     "
   >
     <RouterLink
@@ -37,14 +38,14 @@ function connect() {
       <span>commit</span><span style="color:oklch(72% 0.16 145);">ment</span><span style="color:oklch(72% 0.16 145);animation:blink 1.1s step-end infinite;">_</span>
     </RouterLink>
 
-    <nav v-if="showLinks" style="display:flex;align-items:center;gap:clamp(16px,3vw,32px);font-family:'IBM Plex Mono',monospace;font-size:13.5px;">
+    <nav v-if="showLinks" class="flex flex-wrap items-center gap-4 md:gap-8" style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;">
       <template v-if="!authStore.isLoading && authStore.isAuthenticated">
         <RouterLink to="/editor" style="color:oklch(85% 0.006 250);">design</RouterLink>
         <RouterLink to="/settings" style="color:oklch(85% 0.006 250);">settings</RouterLink>
         <RouterLink v-if="authStore.isAdmin" to="/admin" style="color:oklch(85% 0.006 250);">admin</RouterLink>
       </template>
       <slot v-else name="links" />
-      <span v-if="!authStore.isLoading" style="display:flex;align-items:center;gap:10px;margin-left:8px;">
+      <span v-if="!authStore.isLoading" class="flex flex-wrap items-center gap-2.5" style="margin-left:8px;">
         <NavAccount v-if="authStore.isAuthenticated" />
         <template v-else>
           <BaseButton
@@ -60,7 +61,7 @@ function connect() {
         </template>
       </span>
     </nav>
-    <div v-else-if="!authStore.isLoading" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(65% 0.01 250);display:flex;align-items:center;gap:10px;">
+    <div v-else-if="!authStore.isLoading" class="flex flex-wrap items-center gap-2.5" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(65% 0.01 250);">
       <NavAccount v-if="authStore.isAuthenticated" />
       <template v-else>
         <BaseButton
