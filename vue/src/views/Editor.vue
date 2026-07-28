@@ -474,10 +474,10 @@ async function onContinueToCheckout() {
     </div>
 
     <!-- BODY -->
-    <div style="flex:1;display:grid;grid-template-columns:236px 1fr 268px;min-height:0;">
+    <div class="grid grid-cols-1 md:grid-cols-[236px_1fr] lg:grid-cols-[236px_1fr_268px]" style="flex:1;min-height:0;">
 
       <!-- LEFT SIDEBAR: TEMPLATES + BRUSH -->
-      <aside style="border-right:1px solid oklch(100% 0 0 / 0.08);padding:22px 18px;overflow-y:auto;">
+      <aside class="order-2 md:order-1" style="border-right:1px solid oklch(100% 0 0 / 0.08);padding:22px 18px;overflow-y:auto;">
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin-bottom:12px;">templates</div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:28px;">
           <div
@@ -509,7 +509,7 @@ async function onContinueToCheckout() {
       </aside>
 
       <!-- CENTER: CANVAS -->
-      <main style="padding:clamp(20px,3vw,44px);overflow:auto;display:flex;align-items:center;justify-content:center;">
+      <main class="order-1 md:order-2" style="padding:clamp(20px,3vw,44px);overflow:auto;display:flex;align-items:center;justify-content:center;">
         <div style="width:100%;max-width:980px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px;">
             <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:oklch(85% 0.006 250);">{{ activeTabLabel }} contribution graph · starts {{ anchorDateLabel }}</div>
@@ -564,7 +564,7 @@ async function onContinueToCheckout() {
       </main>
 
       <!-- RIGHT SIDEBAR: STATS + CHARITY PREVIEW -->
-      <aside style="border-left:1px solid oklch(100% 0 0 / 0.08);padding:22px 20px;overflow-y:auto;">
+      <aside class="order-3 md:col-span-2 lg:col-span-1" style="border-left:1px solid oklch(100% 0 0 / 0.08);padding:22px 20px;overflow-y:auto;">
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin-bottom:10px;">design name</div>
         <input v-model="designName" placeholder="untitled design" style="width:100%;box-sizing:border-box;font-family:'IBM Plex Mono',monospace;font-size:13px;background:oklch(19% 0.012 250);color:oklch(96% 0.004 250);border:1px solid oklch(100% 0 0 / 0.1);border-radius:8px;padding:10px 12px;margin-bottom:24px;" />
 
