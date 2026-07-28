@@ -152,11 +152,11 @@ const statCards = computed(() => [
               <a href="#" style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;">change default</a>
             </div>
           </div>
-          <div data-testid="public-opt-in-toggle" @click="togglePublicOptIn" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:var(--color-bg-raised);border:1px solid var(--color-border);margin-bottom:28px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:var(--color-bg-raised);border:1px solid var(--color-border);margin-bottom:28px;">
             <div>
               <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;margin-bottom:2px;">share new designs by default</div>
             </div>
-            <ToggleSwitch :checked="!!authStore.user?.public_opt_in" />
+            <ToggleSwitch data-testid="public-opt-in-toggle" :checked="!!authStore.user?.public_opt_in" @click="togglePublicOptIn" />
           </div>
 
           <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-3);letter-spacing:0.02em;margin-bottom:16px;">recent receipts</div>

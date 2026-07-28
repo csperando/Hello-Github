@@ -176,12 +176,12 @@ const firstName = computed(() => {
               />
             </div>
 
-            <div @click="togglePublic" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:8px;background:oklch(15% 0.012 250);border:1px solid oklch(100% 0 0 / 0.1);margin-bottom:28px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:8px;background:oklch(15% 0.012 250);border:1px solid oklch(100% 0 0 / 0.1);margin-bottom:28px;">
               <div>
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:600;margin-bottom:3px;">share to public gallery</div>
                 <div style="font-size:12.5px;color:oklch(65% 0.008 250);">let others see your design and which charity you supported</div>
               </div>
-              <ToggleSwitch :checked="publicOptIn" />
+              <ToggleSwitch :checked="publicOptIn" @click="togglePublic" />
             </div>
 
             <div v-if="saveError" style="font-size:13px;color:oklch(70% 0.19 25);margin-bottom:16px;">{{ saveError }}</div>

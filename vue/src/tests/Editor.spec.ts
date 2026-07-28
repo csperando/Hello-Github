@@ -99,7 +99,7 @@ describe('Editor.vue', () => {
     const { wrapper } = await mountEditor('/editor')
 
     await findButton(wrapper, 'clear grid').trigger('click')
-    await findClickableDiv(wrapper, 'select custom range').trigger('click')
+    await findClickableDiv(wrapper, 'select custom range').find('button').trigger('click')
 
     expect(wrapper.findComponent(CustomRangeSlider).exists()).toBe(true)
 

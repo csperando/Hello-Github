@@ -10,7 +10,12 @@ const knobLeft = computed(() => (props.checked ? '18px' : '2px'))
 </script>
 
 <template>
-  <span :style="{ flex: 'none', width: '38px', height: '22px', borderRadius: '11px', background: trackBg, position: 'relative' }">
+  <button
+    type="button"
+    role="switch"
+    :aria-checked="checked"
+    :style="{ flex: 'none', width: '38px', height: '22px', borderRadius: '11px', background: trackBg, position: 'relative', border: 'none', padding: '0', cursor: 'pointer' }"
+  >
     <span :style="{ position: 'absolute', top: '2px', left: knobLeft, width: '18px', height: '18px', borderRadius: '50%', background: 'oklch(96% 0.004 250)', transition: 'left 0.15s' }"></span>
-  </span>
+  </button>
 </template>

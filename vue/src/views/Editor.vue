@@ -588,21 +588,21 @@ async function onContinueToCheckout() {
         </div>
 
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin-bottom:14px;">visibility</div>
-        <div @click="publicOptIn = !publicOptIn" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
           <div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-bottom:2px;">share to gallery</div>
             <div style="font-size:11.5px;color:oklch(60% 0.008 250);">visible to community</div>
           </div>
-          <ToggleSwitch :checked="publicOptIn" />
+          <ToggleSwitch :checked="publicOptIn" @click="publicOptIn = !publicOptIn" />
         </div>
 
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin:24px 0 14px;">recurrence</div>
-        <div @click="toggleRepeatEveryYear" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
           <div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-bottom:2px;">repeat every year</div>
             <div style="font-size:11.5px;color:oklch(60% 0.008 250);">auto-repaints this design indefinitely on future years</div>
           </div>
-          <ToggleSwitch :checked="repeatEveryYear" />
+          <ToggleSwitch :checked="repeatEveryYear" @click="toggleRepeatEveryYear" />
         </div>
         <div v-if="repeatEveryYear" style="margin-top:10px;">
           <div style="display:flex;gap:8px;margin-bottom:10px;">
@@ -621,12 +621,12 @@ async function onContinueToCheckout() {
         </div>
 
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin:24px 0 14px;">custom range</div>
-        <div @click="toggleCustomRange" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
           <div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-bottom:2px;">select custom range</div>
             <div style="font-size:11.5px;color:oklch(60% 0.008 250);">paint a short pattern, repeat it across the grid</div>
           </div>
-          <ToggleSwitch :checked="customRangeEnabled" />
+          <ToggleSwitch :checked="customRangeEnabled" @click="toggleCustomRange" />
         </div>
         <div v-if="customRangeEnabled" style="margin-top:10px;">
           <div style="display:flex;gap:8px;margin-bottom:10px;">
