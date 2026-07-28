@@ -25,6 +25,22 @@ const testApp = express();
 testApp.use(cookieParser(config.SESSION_SECRET));
 testApp.use("/auth", authRouter);
 
+// Guardrail against these creeping back into a client-facing response shape.
+const SENSITIVE_FIELDS = [
+    "access_token",
+    "refresh_token",
+    "token_expires_at",
+    "scope",
+    "github_id",
+    "github_node_id",
+    "github_profile_url",
+    "email",
+    "bio",
+    "created_at",
+    "updated_at",
+    "last_login_at",
+];
+
 const mockUser: iUser = {
     id: "123e4567-e89b-12d3-a456-426614174000",
     github_id: 1,
@@ -239,6 +255,31 @@ describe("Auth routes", () => {
             });
             for (const field of ["github_id", "github_email", "github_node_id", "github_profile_url", "access_token", "refresh_token", "scope"]) {
                 expect(user).not.toHaveProperty(field);
+            }
+        });
+
+        it("never includes any sensitive/internal field in the response body, regardless of what the DB row contains", async () => {
+            usersRepoMock.getUserById.mockResolvedValue({
+                ...mockUser,
+                access_token: "gho_secret",
+                refresh_token: "ghr_secret",
+                token_expires_at: "2026-08-01T00:00:00Z",
+                scope: "read:user user:email",
+                github_node_id: mockGhUser.node_id,
+                github_profile_url: mockGhUser.html_url,
+                email: "personal@example.com",
+                bio: "I paint pixels.",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-02T00:00:00Z",
+                last_login_at: "2026-07-28T00:00:00Z",
+            });
+            const sidCookie = `sid=s:${sign(mockUser.id as string, config.SESSION_SECRET)}`;
+
+            const res = await request(testApp).get("/auth/me").set("Cookie", sidCookie);
+
+            expect(res.status).toBe(200);
+            for (const field of SENSITIVE_FIELDS) {
+                expect(res.body.data[0]).not.toHaveProperty(field);
             }
         });
 

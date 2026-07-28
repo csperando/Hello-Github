@@ -3,6 +3,22 @@ import request from "supertest";
 
 import { iUser } from "../../models/users";
 import { signedSidCookie } from "../helpers";
+
+// Guardrail against these creeping back into a client-facing response shape.
+const SENSITIVE_FIELDS = [
+    "access_token",
+    "refresh_token",
+    "token_expires_at",
+    "scope",
+    "github_id",
+    "github_node_id",
+    "github_profile_url",
+    "email",
+    "bio",
+    "created_at",
+    "updated_at",
+    "last_login_at",
+];
 const mockUser: iUser = {
     id: "123e4567-e89b-12d3-a456-426614174000",
     github_id: 12,
@@ -146,6 +162,35 @@ describe("User routes", () => {
 
             expect(res.status).toBe(200);
             expect(profilesRepoMock.upsert).toHaveBeenCalledWith(mockUser.id, { display_name: "Lena Ortiz" });
+        });
+
+        it("never includes any sensitive/internal field in the self-service response, regardless of what the DB row contains", async () => {
+            profilesRepoMock.upsert.mockResolvedValue({ user_id: mockUser.id, display_name: "Lena Ortiz" });
+            usersRepoMock.getUserById.mockResolvedValue({
+                ...mockUser,
+                display_name: "Lena Ortiz",
+                access_token: "gho_secret",
+                refresh_token: "ghr_secret",
+                token_expires_at: "2026-08-01T00:00:00Z",
+                scope: "read:user user:email",
+                github_node_id: "MDQ6VXNlcjE=",
+                github_profile_url: "https://github.com/csperando",
+                email: "personal@example.com",
+                bio: "I paint pixels.",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-02T00:00:00Z",
+                last_login_at: "2026-07-28T00:00:00Z",
+            });
+
+            const res = await request(server)
+                .patch("/user/" + mockUser.id)
+                .set("Cookie", selfCookie)
+                .send({ display_name: "Lena Ortiz" });
+            const body: iResponse = JSON.parse(res.text);
+
+            for (const field of SENSITIVE_FIELDS) {
+                expect(body.data![0]).not.toHaveProperty(field);
+            }
         });
 
         it("rejects a non-string display_name with 400", async () => {
