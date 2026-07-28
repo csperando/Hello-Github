@@ -107,7 +107,7 @@ const paintedCount = computed(() => previewGrid.value.filter((l) => l > 0).lengt
 
       <StepProgress :steps="['charity', 'payment', 'done']" :current="step" line-width="32px" />
 
-      <div style="display:grid;grid-template-columns:1fr 320px;gap:32px;align-items:start;">
+      <div class="grid grid-cols-1 lg:grid-cols-[1fr_320px] items-start gap-8">
 
         <!-- STEP CONTENT -->
         <BaseCard padding="clamp(24px,3vw,36px)" style="min-width:0;">
@@ -119,7 +119,7 @@ const paintedCount = computed(() => previewGrid.value.filter((l) => l > 0).lengt
 
             <input v-model="search" placeholder="search 501(c)(3) organizations…" style="width:100%;box-sizing:border-box;font-family:'IBM Plex Sans',sans-serif;font-size:14px;background:oklch(15% 0.012 250);color:oklch(96% 0.004 250);border:1px solid oklch(100% 0 0 / 0.12);border-radius:8px;padding:12px 14px;margin-bottom:20px;" />
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px;">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" style="margin-bottom:24px;">
               <CharityListItem
                 v-for="charity in charities"
                 :key="charity.name"
@@ -204,7 +204,7 @@ const paintedCount = computed(() => previewGrid.value.filter((l) => l > 0).lengt
         </BaseCard>
 
         <!-- ORDER SUMMARY -->
-        <aside style="position:sticky;top:96px;">
+        <aside class="lg:sticky lg:top-24">
           <BaseCard padding="22px">
             <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin-bottom:12px;">your design</div>
             <div style="background:oklch(15% 0.012 250);border-radius:8px;padding:12px;margin-bottom:16px;">
