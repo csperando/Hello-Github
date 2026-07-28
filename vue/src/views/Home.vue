@@ -103,7 +103,7 @@ const steps = STEPS
 
     <!-- HERO -->
     <section style="position:relative;overflow:hidden;padding:clamp(56px,8vw,110px) clamp(20px,4vw,48px) 70px;background-image:radial-gradient(oklch(100% 0 0 / 0.05) 1px, transparent 1px);background-size:22px 22px;">
-      <div style="max-width:1240px;margin:0 auto;display:grid;grid-template-columns:1.05fr 1fr;gap:56px;align-items:center;">
+      <div class="grid grid-cols-1 lg:grid-cols-[1.05fr_1fr] items-center gap-14" style="max-width:1240px;margin:0 auto;">
         <div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(72% 0.16 145);margin-bottom:18px;letter-spacing:0.02em;">// a nonprofit sa[a]s for developers</div>
           <h1 style="font-family:'IBM Plex Mono',monospace;font-size:clamp(34px,4.4vw,58px);line-height:1.05;font-weight:700;margin:0 0 22px;letter-spacing:-0.01em;">Paint pixel art<br>on your <span style="color:oklch(72% 0.16 145);">GitHub graph</span>.<br>Fund something real.</h1>
@@ -168,7 +168,7 @@ const steps = STEPS
       <div style="max-width:1100px;margin:0 auto;">
         <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(72% 0.16 145);margin-bottom:12px;">// how it works</div>
         <h2 style="font-family:'IBM Plex Mono',monospace;font-size:clamp(26px,3vw,38px);font-weight:700;margin:0 0 48px;max-width:640px;">Three steps between an idea and a good deed.</h2>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:36px;">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-9">
           <div v-for="step in steps" :key="step.n" style="border-top:2px solid oklch(58% 0.16 145);padding-top:20px;">
             <div style="font-family:'IBM Plex Mono',monospace;font-size:32px;font-weight:700;color:oklch(38% 0.02 250);margin-bottom:14px;">{{ step.n }}</div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:600;margin-bottom:10px;">{{ step.title }}</div>
@@ -194,7 +194,7 @@ const steps = STEPS
         </div>
 
         <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(70% 0.01 250);margin-bottom:16px;">choose a charity —</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <CharityListItem
             v-for="charity in charities"
             :key="charity.name"
@@ -218,7 +218,7 @@ const steps = STEPS
           </div>
           <BaseButton variant="secondary" style="font-size:13.5px;border:1px solid oklch(100% 0 0 / 0.18);color:oklch(94% 0.004 250);border-radius:8px;padding:11px 18px;white-space:nowrap;">browse the gallery →</BaseButton>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
           <div v-for="post in gallery" :key="post.user" style="border-radius:12px;overflow:hidden;background:oklch(19% 0.012 250);border:1px solid oklch(100% 0 0 / 0.08);">
             <div style="height:70px;background-image:repeating-linear-gradient(45deg, oklch(26% 0.015 250), oklch(26% 0.015 250) 8px, oklch(22% 0.013 250) 8px, oklch(22% 0.013 250) 16px);display:flex;align-items:center;justify-content:center;">
               <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:oklch(55% 0.01 250);">[ user's grid design ]</span>
