@@ -19,18 +19,25 @@ const props = withDefaults(
   },
 )
 
+// Below this, cells become too thin to read - scroll the grid horizontally
+// within its own container instead of shrinking cells indefinitely.
+const MIN_CELL_PX = 6
+
 const gridStyle = computed(() => ({
   display: 'grid',
   gridTemplateColumns: `repeat(${props.weeks}, 1fr)`,
   gridTemplateRows: 'repeat(7,1fr)',
   gridAutoFlow: 'column',
   gap: '2px',
+  minWidth: `${props.weeks * MIN_CELL_PX}px`,
   ...(props.height ? { height: props.height } : { aspectRatio: `${props.weeks}/7` }),
 }))
 </script>
 
 <template>
-  <div :style="gridStyle">
-    <div v-for="(cell, i) in cells" :key="i" :style="{ borderRadius: '1px', background: cell.bg }"></div>
+  <div style="width:100%;overflow-x:auto;">
+    <div :style="gridStyle">
+      <div v-for="(cell, i) in cells" :key="i" :style="{ borderRadius: '1px', background: cell.bg }"></div>
+    </div>
   </div>
 </template>

@@ -125,27 +125,29 @@ const steps = STEPS
             <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:oklch(78% 0.008 250);">{{ painted }} <span style="color:oklch(55% 0.01 250);">/ {{ total }} squares painted</span></div>
             <BaseButton variant="secondary" @click="resetGrid" style="font-size:12px;border:1px solid oklch(100% 0 0 / 0.16);color:oklch(75% 0.008 250);border-radius:6px;padding:6px 10px;">clear grid</BaseButton>
           </div>
-          <div style="width:100%;">
-            <div style="display:grid;grid-template-columns:repeat(53, 1fr);gap:clamp(1px,0.3vw,3px);margin-bottom:6px;padding-left:26px;">
-              <span
-                v-for="m in months"
-                :key="m.label"
-                :style="{ gridColumn: m.col + ' / ' + m.colEnd, font: '500 9px IBM Plex Mono, monospace', color: 'oklch(55% 0.01 250)' }"
-              >{{ m.label }}</span>
-            </div>
-            <div style="display:flex;gap:6px;align-items:stretch;">
-              <div style="flex:none;width:20px;display:flex;flex-direction:column;justify-content:space-between;padding:2px 0;">
-                <span style="font:500 8.5px 'IBM Plex Mono',monospace;color:oklch(55% 0.01 250);">mon</span>
-                <span style="font:500 8.5px 'IBM Plex Mono',monospace;color:oklch(55% 0.01 250);">wed</span>
-                <span style="font:500 8.5px 'IBM Plex Mono',monospace;color:oklch(55% 0.01 250);">fri</span>
+          <div style="width:100%;overflow-x:auto;">
+            <div style="min-width:344px;">
+              <div style="display:grid;grid-template-columns:repeat(53, 1fr);gap:clamp(1px,0.3vw,3px);margin-bottom:6px;padding-left:26px;">
+                <span
+                  v-for="m in months"
+                  :key="m.label"
+                  :style="{ gridColumn: m.col + ' / ' + m.colEnd, font: '500 9px IBM Plex Mono, monospace', color: 'oklch(55% 0.01 250)' }"
+                >{{ m.label }}</span>
               </div>
-              <div style="flex:1;min-width:0;display:grid;grid-template-columns:repeat(53, 1fr);grid-template-rows:repeat(7, 1fr);grid-auto-flow:column;gap:clamp(1px,0.3vw,3px);aspect-ratio:53/7.6;">
-                <div
-                  v-for="cell in cells"
-                  :key="cell.idx"
-                  @click="toggleCell(cell.idx)"
-                  :style="{ borderRadius: '2px', cursor: 'pointer', background: cell.bg }"
-                ></div>
+              <div style="display:flex;gap:6px;align-items:stretch;">
+                <div style="flex:none;width:20px;display:flex;flex-direction:column;justify-content:space-between;padding:2px 0;">
+                  <span style="font:500 8.5px 'IBM Plex Mono',monospace;color:oklch(55% 0.01 250);">mon</span>
+                  <span style="font:500 8.5px 'IBM Plex Mono',monospace;color:oklch(55% 0.01 250);">wed</span>
+                  <span style="font:500 8.5px 'IBM Plex Mono',monospace;color:oklch(55% 0.01 250);">fri</span>
+                </div>
+                <div style="flex:1;min-width:0;display:grid;grid-template-columns:repeat(53, 1fr);grid-template-rows:repeat(7, 1fr);grid-auto-flow:column;gap:clamp(1px,0.3vw,3px);aspect-ratio:53/7.6;">
+                  <div
+                    v-for="cell in cells"
+                    :key="cell.idx"
+                    @click="toggleCell(cell.idx)"
+                    :style="{ borderRadius: '2px', cursor: 'pointer', background: cell.bg }"
+                  ></div>
+                </div>
               </div>
             </div>
           </div>

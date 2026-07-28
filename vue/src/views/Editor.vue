@@ -516,34 +516,38 @@ async function onContinueToCheckout() {
             <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:oklch(60% 0.01 250);">drag to paint · click to cycle intensity</div>
           </div>
           <BaseCard padding="28px 26px 24px">
-            <div style="display:grid;grid-template-columns:repeat(53, 1fr);gap:clamp(2px,0.35vw,4px);margin-bottom:8px;padding-left:32px;">
-              <span
-                v-for="m in months"
-                :key="m.col"
-                :style="{ gridColumn: m.col + ' / span 4', font: '500 10.5px IBM Plex Mono, monospace', color: 'oklch(58% 0.01 250)' }"
-              >{{ m.label }}</span>
-            </div>
-            <div style="display:flex;gap:8px;align-items:stretch;">
-              <div style="flex:none;width:26px;display:grid;grid-template-rows:repeat(7, 1fr);align-items:center;padding:2px 0;">
-                <span style="grid-row:2;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">mon</span>
-                <span style="grid-row:4;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">wed</span>
-                <span style="grid-row:6;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">fri</span>
-              </div>
-              <div
-                @mousedown="painting = true"
-                @mouseup="painting = false"
-                @mouseleave="painting = false"
-                style="flex:1;min-width:0;display:grid;grid-template-columns:repeat(53, 1fr);grid-template-rows:repeat(7, 1fr);grid-auto-flow:column;gap:clamp(2px,0.35vw,4px);aspect-ratio:53/7.6;user-select:none;"
-              >
-                <div
-                  v-for="cell in cells"
-                  :key="cell.idx"
-                  data-testid="grid-cell"
-                  :title="cell.title"
-                  @mousedown="onCellDown(cell.paintIdx)"
-                  @mouseenter="onCellEnter(cell.paintIdx)"
-                  :style="{ borderRadius: '2px', cursor: 'pointer', background: cell.bg, opacity: cell.opacity }"
-                ></div>
+            <div style="overflow-x:auto;">
+              <div style="min-width:360px;">
+                <div style="display:grid;grid-template-columns:repeat(53, 1fr);gap:clamp(2px,0.35vw,4px);margin-bottom:8px;padding-left:32px;">
+                  <span
+                    v-for="m in months"
+                    :key="m.col"
+                    :style="{ gridColumn: m.col + ' / span 4', font: '500 10.5px IBM Plex Mono, monospace', color: 'oklch(58% 0.01 250)' }"
+                  >{{ m.label }}</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:stretch;">
+                  <div style="flex:none;width:26px;display:grid;grid-template-rows:repeat(7, 1fr);align-items:center;padding:2px 0;">
+                    <span style="grid-row:2;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">mon</span>
+                    <span style="grid-row:4;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">wed</span>
+                    <span style="grid-row:6;font:500 10px 'IBM Plex Mono',monospace;color:oklch(58% 0.01 250);">fri</span>
+                  </div>
+                  <div
+                    @mousedown="painting = true"
+                    @mouseup="painting = false"
+                    @mouseleave="painting = false"
+                    style="flex:1;min-width:0;display:grid;grid-template-columns:repeat(53, 1fr);grid-template-rows:repeat(7, 1fr);grid-auto-flow:column;gap:clamp(2px,0.35vw,4px);aspect-ratio:53/7.6;user-select:none;"
+                  >
+                    <div
+                      v-for="cell in cells"
+                      :key="cell.idx"
+                      data-testid="grid-cell"
+                      :title="cell.title"
+                      @mousedown="onCellDown(cell.paintIdx)"
+                      @mouseenter="onCellEnter(cell.paintIdx)"
+                      :style="{ borderRadius: '2px', cursor: 'pointer', background: cell.bg, opacity: cell.opacity }"
+                    ></div>
+                  </div>
+                </div>
               </div>
             </div>
             <div v-if="customRangeEnabled" style="margin-top:18px;padding-left:34px;">
