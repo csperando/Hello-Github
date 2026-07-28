@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
@@ -7,6 +7,7 @@ import ContributionGridPreview from '@/components/ui/ContributionGridPreview.vue
 import { LEVEL_COLORS } from '@/helpers/grid'
 import { useDesignsStore } from '@/stores/designs'
 import { useAuthStore } from '@/stores/auth'
+import { updateProfile } from '@/services/api'
 
 const DAYS = 7
 
@@ -15,8 +16,6 @@ const RECEIPTS = [
   { charity: 'EFF', amount: 25, date: 'Mar 2, 2026' },
   { charity: 'Code.org', amount: 15, date: 'Dec 20, 2025' },
 ]
-
-const publicOptIn = ref(true)
 
 const designsStore = useDesignsStore()
 const authStore = useAuthStore()
@@ -28,6 +27,22 @@ onMounted(() => {
 const displayName = computed(
   () => authStore.user?.display_name || authStore.user?.name || authStore.user?.github_username || '',
 )
+
+const defaultCharityLabel = computed(() => authStore.user?.default_charity || 'no charity selected')
+const defaultCharityLetter = computed(() => (authStore.user?.default_charity?.charAt(0) || '–').toUpperCase())
+
+async function togglePublicOptIn() {
+  const user = authStore.user
+  if (!user) return
+
+  const next = !user.public_opt_in
+  user.public_opt_in = next
+
+  const res = await updateProfile(user.id, { public_opt_in: next })
+  if (!res.ok) {
+    user.public_opt_in = !next
+  }
+}
 
 function formatDate(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString('en-US', {
@@ -140,17 +155,17 @@ const receipts = RECEIPTS
 
           <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-3);letter-spacing:0.02em;margin-bottom:16px;">default preferences</div>
           <div style="display:flex;gap:12px;align-items:center;padding:14px;border-radius:10px;background:var(--color-bg-raised);border:1px solid var(--color-border);margin-bottom:12px;">
-            <div style="flex:none;width:30px;height:30px;border-radius:8px;background:var(--color-bg-chip);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--color-accent-bright);font-size:12px;">G</div>
+            <div style="flex:none;width:30px;height:30px;border-radius:8px;background:var(--color-bg-chip);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--color-accent-bright);font-size:12px;">{{ defaultCharityLetter }}</div>
             <div>
-              <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;">GiveDirectly</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;">{{ defaultCharityLabel }}</div>
               <a href="#" style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;">change default</a>
             </div>
           </div>
-          <div @click="publicOptIn = !publicOptIn" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:var(--color-bg-raised);border:1px solid var(--color-border);margin-bottom:28px;">
+          <div @click="togglePublicOptIn" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:10px;background:var(--color-bg-raised);border:1px solid var(--color-border);margin-bottom:28px;">
             <div>
               <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;margin-bottom:2px;">share new designs by default</div>
             </div>
-            <ToggleSwitch :checked="publicOptIn" />
+            <ToggleSwitch :checked="!!authStore.user?.public_opt_in" />
           </div>
 
           <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-3);letter-spacing:0.02em;margin-bottom:16px;">recent receipts</div>
