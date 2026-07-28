@@ -5,12 +5,7 @@ import AppNavbar from '@/components/layout/AppNavbar.vue'
 <template>
   <div style="font-family:'IBM Plex Sans',sans-serif;background:oklch(14% 0.012 250);color:oklch(96% 0.004 250);min-height:100vh;display:flex;flex-direction:column;">
 
-    <AppNavbar sticky show-links>
-      <template #links>
-        <RouterLink to="/editor" style="color:oklch(85% 0.006 250);">design</RouterLink>
-        <RouterLink to="/#community" style="color:oklch(85% 0.006 250);">community</RouterLink>
-      </template>
-    </AppNavbar>
+    <AppNavbar sticky show-links />
 
     <!-- MAIN -->
     <main style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px clamp(20px,4vw,48px) 80px;">

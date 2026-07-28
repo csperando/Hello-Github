@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 
 import * as auth from "./authRoutes";
 import { homeRoute } from "./homeRoutes";
-import { editorRoute, checkoutRoute, dashboardRoute, adminRoute } from "./appRoutes";
+import { editorRoute, checkoutRoute, dashboardRoute, adminRoute, settingsRoute } from "./appRoutes";
 import { errorRoute, notFoundRoute } from "./errorRoutes";
 import { useAuthStore } from "../stores/auth";
 
@@ -14,6 +14,7 @@ const router = createRouter({
         checkoutRoute,
         dashboardRoute,
         adminRoute,
+        settingsRoute,
         errorRoute,
         notFoundRoute,
     ],

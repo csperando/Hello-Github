@@ -2,6 +2,7 @@ import EditorView from "../views/Editor.vue";
 import CheckoutView from "../views/Checkout.vue";
 import DashboardView from "../views/Dashboard.vue";
 import AdminView from "../views/Admin.vue";
+import SettingsView from "../views/Settings.vue";
 
 export const editorRoute = {
     path: "/editor/:designId?",
@@ -29,4 +30,11 @@ export const adminRoute = {
     name: "Admin",
     component: AdminView,
     meta: { requiresAuth: true, requiresAdmin: true },
+};
+
+export const settingsRoute = {
+    path: "/settings",
+    name: "Settings",
+    component: SettingsView,
+    meta: { requiresAuth: true },
 };

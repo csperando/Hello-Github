@@ -38,8 +38,12 @@ function connect() {
     </RouterLink>
 
     <nav v-if="showLinks" style="display:flex;align-items:center;gap:clamp(16px,3vw,32px);font-family:'IBM Plex Mono',monospace;font-size:13.5px;">
-      <slot name="links" />
-      <RouterLink v-if="authStore.isAdmin" to="/admin" style="color:oklch(85% 0.006 250);">admin</RouterLink>
+      <template v-if="!authStore.isLoading && authStore.isAuthenticated">
+        <RouterLink to="/editor" style="color:oklch(85% 0.006 250);">design</RouterLink>
+        <RouterLink to="/settings" style="color:oklch(85% 0.006 250);">settings</RouterLink>
+        <RouterLink v-if="authStore.isAdmin" to="/admin" style="color:oklch(85% 0.006 250);">admin</RouterLink>
+      </template>
+      <slot v-else name="links" />
       <span v-if="!authStore.isLoading" style="display:flex;align-items:center;gap:10px;margin-left:8px;">
         <NavAccount v-if="authStore.isAuthenticated" />
         <template v-else>

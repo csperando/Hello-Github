@@ -441,13 +441,7 @@ async function onContinueToCheckout() {
 <template>
   <div style="font-family:'IBM Plex Sans',sans-serif;background:oklch(14% 0.012 250);color:oklch(96% 0.004 250);min-height:100vh;display:flex;flex-direction:column;">
 
-    <AppNavbar sticky show-links>
-      <template #links>
-        <RouterLink to="/#how" style="color:oklch(85% 0.006 250);">how it works</RouterLink>
-        <RouterLink to="/#give" style="color:oklch(85% 0.006 250);">pricing</RouterLink>
-        <RouterLink to="/#community" style="color:oklch(85% 0.006 250);">community</RouterLink>
-      </template>
-    </AppNavbar>
+    <AppNavbar sticky show-links />
 
     <!-- EDITOR SUB-BAR -->
     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px clamp(16px,3vw,32px);border-bottom:1px solid oklch(100% 0 0 / 0.08);flex-wrap:wrap;gap:12px;">

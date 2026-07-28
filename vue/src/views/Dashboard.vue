@@ -63,12 +63,7 @@ const receipts = RECEIPTS
 <template>
   <div style="font-family:'IBM Plex Sans',sans-serif;background:oklch(14% 0.012 250);color:oklch(96% 0.004 250);min-height:100vh;">
 
-    <AppNavbar sticky show-links>
-      <template #links>
-        <RouterLink to="/editor" style="color:oklch(85% 0.006 250);">design</RouterLink>
-        <RouterLink to="/#community" style="color:oklch(85% 0.006 250);">community</RouterLink>
-      </template>
-    </AppNavbar>
+    <AppNavbar sticky show-links />
 
     <main style="max-width:1240px;margin:0 auto;padding:clamp(28px,4vw,44px) clamp(20px,4vw,32px) 80px;">
 

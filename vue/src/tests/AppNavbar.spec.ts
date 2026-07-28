@@ -30,7 +30,10 @@ function buildUser(overrides: Partial<iAuthUser> = {}): iAuthUser {
   }
 }
 
-async function mountNavbar(props: { showLinks?: boolean } = {}) {
+async function mountNavbar(
+  props: { showLinks?: boolean } = {},
+  slots: Record<string, string> = {},
+) {
   const pinia = createPinia()
   setActivePinia(pinia)
 
@@ -41,6 +44,8 @@ async function mountNavbar(props: { showLinks?: boolean } = {}) {
       { path: '/signup', component: { template: '<div>signup</div>' } },
       { path: '/dashboard', component: { template: '<div>dashboard</div>' } },
       { path: '/admin', component: { template: '<div>admin</div>' } },
+      { path: '/editor', component: { template: '<div>editor</div>' } },
+      { path: '/settings', component: { template: '<div>settings</div>' } },
     ],
   })
   router.push('/')
@@ -48,6 +53,7 @@ async function mountNavbar(props: { showLinks?: boolean } = {}) {
 
   const wrapper = mount(AppNavbar, {
     props,
+    slots,
     global: { plugins: [pinia, router] },
   })
 
@@ -121,6 +127,8 @@ describe('AppNavbar', () => {
     const adminLink = wrapper.find('a[href="/admin"]')
     expect(adminLink.exists()).toBe(true)
     expect(adminLink.text()).toContain('admin')
+    expect(wrapper.find('a[href="/editor"]').text()).toBe('design')
+    expect(wrapper.find('a[href="/settings"]').text()).toBe('settings')
   })
 
   it('hides the admin nav link for a non-admin user even with showLinks set', async () => {
@@ -139,5 +147,43 @@ describe('AppNavbar', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('a[href="/admin"]').exists()).toBe(false)
+  })
+
+  it('shows the unified design and settings links (and no community link) for an authenticated non-admin user', async () => {
+    const { wrapper, authStore } = await mountNavbar(
+      { showLinks: true },
+      { links: '<a href="/#community">community</a>' },
+    )
+    authStore.isLoading = false
+    authStore.user = buildUser({ role: 'user' })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('a[href="/editor"]').text()).toBe('design')
+    expect(wrapper.find('a[href="/settings"]').text()).toBe('settings')
+    expect(wrapper.text()).not.toContain('community')
+  })
+
+  it('renders the passed-in #links slot content unchanged for an unauthenticated visitor', async () => {
+    const { wrapper, authStore } = await mountNavbar(
+      { showLinks: true },
+      { links: '<a href="/#community">community</a>' },
+    )
+    authStore.isLoading = false
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('a[href="/#community"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/editor"]').exists()).toBe(false)
+    expect(wrapper.find('a[href="/settings"]').exists()).toBe(false)
+  })
+
+  it('renders the passed-in #links slot content while auth state is still loading', async () => {
+    const { wrapper } = await mountNavbar(
+      { showLinks: true },
+      { links: '<a href="/#community">community</a>' },
+    )
+
+    expect(wrapper.find('a[href="/#community"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/editor"]').exists()).toBe(false)
+    expect(wrapper.find('a[href="/settings"]').exists()).toBe(false)
   })
 })

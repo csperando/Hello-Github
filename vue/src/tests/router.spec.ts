@@ -79,3 +79,50 @@ describe('router /admin guard', () => {
     expect(router.currentRoute.value.path).toBe('/dashboard')
   })
 })
+
+describe('router /settings guard', () => {
+  beforeEach(async () => {
+    apiFetchMock.mockReset()
+    setActivePinia(createPinia())
+    // vue-router treats navigating to the route you're already on as a no-op
+    // (guards don't re-run) - reset to home between tests so each /settings push is a real navigation
+    apiFetchMock.mockResolvedValue(meResponse(null))
+    await router.push('/')
+  })
+
+  it('redirects an unauthenticated visitor to /signup', async () => {
+    apiFetchMock.mockResolvedValue(meResponse(null))
+
+    await router.push('/settings')
+
+    expect(router.currentRoute.value.path).toBe('/signup')
+  })
+
+  it('lets an authenticated non-admin reach /settings', async () => {
+    apiFetchMock.mockResolvedValue(
+      meResponse({ id: 'u5', github_username: 'dev', github_email: 'dev@example.com', role: 'user' }),
+    )
+
+    await router.push('/settings')
+
+    expect(router.currentRoute.value.path).toBe('/settings')
+    expect(router.currentRoute.value.name).toBe('Settings')
+  })
+
+  it('lets an authenticated admin reach /settings', async () => {
+    apiFetchMock.mockResolvedValue(
+      meResponse({
+        id: 'u6',
+        github_username: 'root',
+        github_email: 'root@example.com',
+        role: 'admin',
+        is_active: true,
+      }),
+    )
+
+    await router.push('/settings')
+
+    expect(router.currentRoute.value.path).toBe('/settings')
+    expect(router.currentRoute.value.name).toBe('Settings')
+  })
+})
