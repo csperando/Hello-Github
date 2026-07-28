@@ -11,12 +11,6 @@ import { updateProfile } from '@/services/api'
 
 const DAYS = 7
 
-const RECEIPTS = [
-  { charity: 'GiveDirectly', amount: 10, date: 'Jul 8, 2026' },
-  { charity: 'EFF', amount: 25, date: 'Mar 2, 2026' },
-  { charity: 'Code.org', amount: 15, date: 'Dec 20, 2025' },
-]
-
 const designsStore = useDesignsStore()
 // authStore.user is already populated here: the router's requiresAuth guard
 // (vue/src/router/index.ts) awaits fetchMe() before this route resolves.
@@ -71,16 +65,12 @@ const designs = computed(() =>
   })),
 )
 
-const totalDonated = RECEIPTS.reduce((sum, r) => sum + r.amount, 0)
-
+// Donation totals, charity counts, and receipts have no backing data model
+// yet (no donations/receipts table) - only design-derived stats are real.
 const statCards = computed(() => [
-  { value: '$' + totalDonated, label: 'total donated' },
   { value: String(designsStore.designs.length), label: 'designs created' },
   { value: designsStore.designs.filter((d) => d.is_public).length + ' public', label: 'on your profile now' },
-  { value: '3', label: 'charities supported' },
 ])
-
-const receipts = RECEIPTS
 </script>
 
 <template>
@@ -100,7 +90,7 @@ const receipts = RECEIPTS
       </div>
 
       <!-- STATS ROW -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:36px;">
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:36px;">
         <div v-for="s in statCards" :key="s.label" style="background:var(--color-bg-raised);border:1px solid var(--color-border);border-radius:12px;padding:18px 20px;">
           <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:700;margin-bottom:4px;">{{ s.value }}</div>
           <div style="font-size:12.5px;color:var(--color-text-muted-4);">{{ s.label }}</div>
@@ -151,7 +141,6 @@ const receipts = RECEIPTS
             <div style="flex:none;width:34px;height:34px;border-radius:8px;background:oklch(58% 0.16 145 / 0.15);display:flex;align-items:center;justify-content:center;color:oklch(72% 0.19 145);font-weight:700;">✓</div>
             <div>
               <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;">connected</div>
-              <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--color-text-muted-4);">last synced 3 min ago</div>
             </div>
           </div>
 
@@ -171,15 +160,7 @@ const receipts = RECEIPTS
           </div>
 
           <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-3);letter-spacing:0.02em;margin-bottom:16px;">recent receipts</div>
-          <div style="display:flex;flex-direction:column;gap:10px;">
-            <div v-for="r in receipts" :key="r.charity + r.date" style="display:flex;justify-content:space-between;align-items:center;background:var(--color-bg-raised);border:1px solid var(--color-border);border-radius:9px;padding:12px 14px;">
-              <div>
-                <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;">{{ r.charity }}</div>
-                <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:oklch(58% 0.01 250);">{{ r.date }}</div>
-              </div>
-              <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:oklch(72% 0.16 145);">${{ r.amount }}</div>
-            </div>
-          </div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-4);">no receipts yet - they'll show up here once you make a donation.</div>
         </div>
       </div>
     </main>
