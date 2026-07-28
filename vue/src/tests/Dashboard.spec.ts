@@ -78,6 +78,14 @@ describe('Dashboard.vue', () => {
     listDesignsMock.mockResolvedValue(jsonResponse({ data: [] }))
   })
 
+  it('stacks the stats row and main/sidebar split to a single column on narrow viewports', async () => {
+    const { wrapper } = await mountDashboard(buildUser())
+
+    const gridDivs = wrapper.findAll('div.grid')
+    expect(gridDivs.some((d) => d.classes().includes('grid-cols-1') && d.classes().includes('sm:grid-cols-2'))).toBe(true)
+    expect(gridDivs.some((d) => d.classes().includes('grid-cols-1') && d.classes().some((c) => c.startsWith('lg:grid-cols-')))).toBe(true)
+  })
+
   it('renders the authenticated user\'s real name in the header', async () => {
     const { wrapper } = await mountDashboard(buildUser({ display_name: 'Lena Ortiz' }))
 

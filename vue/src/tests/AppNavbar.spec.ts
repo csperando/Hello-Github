@@ -72,6 +72,13 @@ describe('AppNavbar', () => {
     expect(wrapper.find('img').exists()).toBe(false)
   })
 
+  it('wraps onto multiple rows instead of a fixed single row, for narrow viewports', async () => {
+    const { wrapper } = await mountNavbar({ showLinks: true })
+
+    expect(wrapper.get('header').classes()).toContain('flex-wrap')
+    expect(wrapper.get('nav').classes()).toContain('flex-wrap')
+  })
+
   it('renders a working sign-in button and a connect-github link when logged out', async () => {
     const { wrapper, authStore } = await mountNavbar()
     authStore.isLoading = false

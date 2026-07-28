@@ -98,6 +98,22 @@ describe('signUp.vue', () => {
     expect(router.currentRoute.value.path).toBe('/dashboard')
   })
 
+  it('renders charity options as buttons with aria-pressed reflecting the current selection, and selecting one via click/keyboard updates aria-pressed', async () => {
+    apiFetchMock.mockResolvedValue(authenticatedMeResponse())
+
+    const { wrapper } = await mountSignUp('/signup?step=profile')
+
+    const giveDirectlyButton = findButton(wrapper, 'GiveDirectly')
+    const effButton = findButton(wrapper, 'EFF')
+    expect(giveDirectlyButton.attributes('aria-pressed')).toBe('true')
+    expect(effButton.attributes('aria-pressed')).toBe('false')
+
+    await effButton.trigger('click')
+
+    expect(findButton(wrapper, 'EFF').attributes('aria-pressed')).toBe('true')
+    expect(findButton(wrapper, 'GiveDirectly').attributes('aria-pressed')).toBe('false')
+  })
+
   it('finish() calls the update API and only advances to the done step on success', async () => {
     apiFetchMock.mockResolvedValue(authenticatedMeResponse())
     updateProfileMock.mockResolvedValue({ ok: true })

@@ -70,6 +70,24 @@ describe('Editor.vue', () => {
     vi.useRealTimers()
   })
 
+  it('gives the paintable grid an accessible group name reflecting painted progress', async () => {
+    const { wrapper } = await mountEditor('/editor')
+
+    const group = wrapper.get('[role="group"]')
+    expect(group.attributes('aria-label')).toMatch(/contribution graph editor, \d+ of \d+ squares painted/)
+  })
+
+  it('renders templates and brush swatches as real, keyboard-operable buttons', async () => {
+    const { wrapper } = await mountEditor('/editor')
+
+    const templateButton = findButton(wrapper, 'Blank canvas')
+    expect(templateButton.attributes('type')).toBe('button')
+    expect(templateButton.attributes('aria-pressed')).toBeDefined()
+
+    const brushButtons = wrapper.findAll('button[aria-label^="intensity level"]')
+    expect(brushButtons.length).toBeGreaterThan(0)
+  })
+
   it('saves a bounding-box-trimmed pattern when custom range is off', async () => {
     createDesignMock.mockResolvedValue(jsonResponse({ data: [{ id: 'new-id' }] }))
 
