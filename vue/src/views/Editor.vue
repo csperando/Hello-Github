@@ -300,6 +300,7 @@ const templates = computed(() =>
     key: t.key,
     name: t.name,
     icon: t.icon,
+    selected: t.key === selectedTemplate.value,
     bg: t.key === selectedTemplate.value ? 'oklch(58% 0.16 145 / 0.12)' : 'transparent',
     border: t.key === selectedTemplate.value ? 'oklch(58% 0.16 145 / 0.5)' : 'oklch(100% 0 0 / 0.08)',
   })),
@@ -309,6 +310,7 @@ const brushLevels = computed(() =>
   LEVEL_COLORS.map((color, lvl) => ({
     lvl,
     bg: color,
+    selected: lvl === brush.value,
     border: lvl === brush.value ? 'oklch(96% 0.004 250)' : 'transparent',
   })),
 )
@@ -480,25 +482,30 @@ async function onContinueToCheckout() {
       <aside class="order-2 md:order-1" style="border-right:1px solid oklch(100% 0 0 / 0.08);padding:22px 18px;overflow-y:auto;">
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin-bottom:12px;">templates</div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:28px;">
-          <div
+          <button
             v-for="tpl in templates"
             :key="tpl.key"
+            type="button"
+            :aria-pressed="tpl.selected"
             @click="applyTemplate(tpl.key)"
-            :style="{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', background: tpl.bg, border: `1px solid ${tpl.border}` }"
+            :style="{ width: '100%', boxSizing: 'border-box', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', background: tpl.bg, border: `1px solid ${tpl.border}` }"
           >
             <div style="flex:none;width:26px;height:26px;border-radius:6px;background:oklch(24% 0.02 250);display:flex;align-items:center;justify-content:center;font-size:13px;">{{ tpl.icon }}</div>
             <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;">{{ tpl.name }}</span>
-          </div>
+          </button>
         </div>
 
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin-bottom:12px;">brush intensity</div>
         <div style="display:flex;gap:8px;margin-bottom:24px;">
-          <div
+          <button
             v-for="lvl in brushLevels"
             :key="lvl.lvl"
+            type="button"
+            :aria-pressed="lvl.selected"
+            :aria-label="'intensity level ' + lvl.lvl"
             @click="brush = lvl.lvl"
-            :style="{ width: '30px', height: '30px', borderRadius: '6px', cursor: 'pointer', background: lvl.bg, border: `2px solid ${lvl.border}` }"
-          ></div>
+            :style="{ width: '30px', height: '30px', borderRadius: '6px', cursor: 'pointer', background: lvl.bg, border: `2px solid ${lvl.border}`, padding: '0' }"
+          ></button>
         </div>
 
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin-bottom:12px;">actions</div>
