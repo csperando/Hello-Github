@@ -158,6 +158,40 @@ router.patch("/:designId", requireAuth, async (req: Request, res: Response, next
 });
 
 /**
+ * Count how many *other* users currently have an active selection on this
+ * design - owner or admin only, used by the frontend to warn ("N users are
+ * using this design") before the owner flips is_public off.
+ */
+router.get("/:designId/selections/count", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const design = await designService.getDesignById((req.params.designId as string));
+
+        if (!design) {
+            const response: iResponse = { status: 404, success: false, error: "Design not found." };
+            res.status(404).json(response);
+            return;
+        }
+
+        if (design.user_id !== req.user!.id) {
+            const requester = await userService.getUserById(req.user!.id);
+            if (!isActiveAdmin(requester)) {
+                const response: iResponse = { status: 403, success: false, error: "Forbidden." };
+                res.status(403).json(response);
+                return;
+            }
+        }
+
+        const count = await designService.countOtherActiveSelections((req.params.designId as string), req.user!.id);
+        const response: iResponse = { status: 200, success: true, data: [{ count }] };
+        res.status(200).json(response);
+
+    } catch(err) {
+        logger.error(err);
+        next(err);
+    }
+});
+
+/**
  * Select a design (the owner's own, or an existing public one) for the
  * authenticated user - creates their design_selections row for it.
  */

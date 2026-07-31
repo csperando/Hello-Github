@@ -69,6 +69,15 @@ describe("DesignService (delegation methods)", () => {
         expect(result).toEqual({ id: "s1" });
     });
 
+    it("countOtherActiveSelections delegates to the selections repo", async () => {
+        selectionsRepoMock.countActiveExcludingUser.mockResolvedValue(3);
+
+        const result = await service.countOtherActiveSelections("d1", "u1");
+
+        expect(selectionsRepoMock.countActiveExcludingUser).toHaveBeenCalledWith("d1", "u1");
+        expect(result).toBe(3);
+    });
+
     it("selectDesign delegates to the selections repo", async () => {
         selectionsRepoMock.create.mockResolvedValue({ id: "s1" });
 

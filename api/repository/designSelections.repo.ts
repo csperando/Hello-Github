@@ -10,6 +10,7 @@ export interface iDesignSelectionsRepo {
     update: (userId: string, designId: string, input: iDesignSelectionUpdateInput) => Promise<any>;
     delete: (userId: string, designId: string, client?: any) => Promise<any>;
     countForDesign: (designId: string, client?: any) => Promise<number>;
+    countActiveExcludingUser: (designId: string, excludingUserId: string) => Promise<number>;
 }
 
 // main repo init function to be called in the service factories
@@ -151,6 +152,22 @@ const repo = (): iDesignSelectionsRepo => {
         }
     }
 
+    const countActiveExcludingUser = async (designId: string, excludingUserId: string) => {
+        try {
+            const sqlString = `
+                SELECT COUNT(*)::int AS count
+                FROM design_selections
+                WHERE design_id = $1 AND is_active AND user_id != $2;
+            `;
+            const result = await pool.query(sqlString, [designId, excludingUserId]);
+            return result.rows[0].count as number;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     return {
         create,
         getByUserAndDesign,
@@ -158,6 +175,7 @@ const repo = (): iDesignSelectionsRepo => {
         update,
         delete: deleteSelection,
         countForDesign,
+        countActiveExcludingUser,
     }
 };
 

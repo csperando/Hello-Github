@@ -314,6 +314,49 @@ describe("Design routes", () => {
         });
     });
 
+    describe("GET /design/:designId/selections/count", () => {
+        it("lets the owner see how many other users have this design active", async () => {
+            designsRepoMock.getById.mockResolvedValue(mockDesignRow());
+            selectionsRepoMock.countActiveExcludingUser.mockResolvedValue(4);
+
+            const res = await request(server).get("/design/d1/selections/count").set("Cookie", ownerCookie);
+            const body: iResponse = JSON.parse(res.text);
+
+            expect(res.status).toBe(200);
+            expect(selectionsRepoMock.countActiveExcludingUser).toHaveBeenCalledWith("d1", owner.id);
+            expect((body.data![0] as any).count).toBe(4);
+        });
+
+        it("lets an admin check another user's design", async () => {
+            designsRepoMock.getById.mockResolvedValue(mockDesignRow());
+            selectionsRepoMock.countActiveExcludingUser.mockResolvedValue(0);
+
+            const res = await request(server).get("/design/d1/selections/count").set("Cookie", adminCookie);
+            expect(res.status).toBe(200);
+        });
+
+        it("rejects another (non-admin) user with 403", async () => {
+            designsRepoMock.getById.mockResolvedValue(mockDesignRow());
+
+            const res = await request(server).get("/design/d1/selections/count").set("Cookie", otherUserCookie);
+
+            expect(res.status).toBe(403);
+            expect(selectionsRepoMock.countActiveExcludingUser).not.toHaveBeenCalled();
+        });
+
+        it("returns 404 for a design that does not exist", async () => {
+            designsRepoMock.getById.mockResolvedValue(undefined);
+
+            const res = await request(server).get("/design/missing/selections/count").set("Cookie", ownerCookie);
+            expect(res.status).toBe(404);
+        });
+
+        it("rejects an unauthenticated request with 401", async () => {
+            const res = await request(server).get("/design/d1/selections/count");
+            expect(res.status).toBe(401);
+        });
+    });
+
     describe("POST /design/:designId/select", () => {
         it("lets the owner select their own design", async () => {
             designsRepoMock.getById.mockResolvedValue(mockDesignRow());

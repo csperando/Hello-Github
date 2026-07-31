@@ -180,6 +180,20 @@ describe("DesignSelectionsRepository", () => {
             expect(fetched).toBeUndefined();
         });
 
+        it("countActiveExcludingUser counts only other users' active selections", async () => {
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
+            await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04", is_active: false });
+
+            // otherUser's selection is inactive - doesn't count yet, and never counts the requester's own
+            expect(await selectionsRepo.countActiveExcludingUser(designId, userId)).toBe(0);
+
+            await selectionsRepo.update(otherUserId, designId, { is_active: true });
+
+            expect(await selectionsRepo.countActiveExcludingUser(designId, userId)).toBe(1);
+            // from otherUser's perspective, it's userId's active selection being counted
+            expect(await selectionsRepo.countActiveExcludingUser(designId, otherUserId)).toBe(1);
+        });
+
         it("countForDesign reflects the number of remaining selections across all users", async () => {
             await selectionsRepo.create(userId, designId, { start_date: "2026-01-04" });
             await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04" });

@@ -110,6 +110,17 @@ export class DesignService {
         }
     }
 
+    public async countOtherActiveSelections(designId: string, excludingUserId: string) {
+        try {
+            const count = await this.selectionsRepo.countActiveExcludingUser(designId, excludingUserId);
+            return count;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     public async selectDesign(userId: string, designId: string, input: iDesignSelectionCreateInput) {
         try {
             const selection = await this.selectionsRepo.create(userId, designId, input);
