@@ -6,6 +6,7 @@ import user from "./users.routes";
 import org from "./orgs.routes";
 import auth from "./auth.routes";
 import design from "./designs.routes";
+import scheduler from "./scheduler.routes";
 
 const router = (server: Express) => {
     server.use(bodyParser.json());
@@ -14,6 +15,7 @@ const router = (server: Express) => {
     server.use("/org", org);
     server.use("/auth", auth);
     server.use("/design", design);
+    server.use("/scheduler", scheduler);
 }
 
 export default router;

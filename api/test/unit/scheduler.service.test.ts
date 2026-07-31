@@ -1,8 +1,11 @@
 import type { iSchedulerRepo } from "../../repository/scheduler.repo";
+import type { iRunLogRepo } from "../../repository/runLog.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 
 const schedulerRepoMock = createMockRepoProxy<iSchedulerRepo>();
 mockRepo("repository/scheduler.repo", schedulerRepoMock);
+const runLogRepoMock = createMockRepoProxy<iRunLogRepo>();
+mockRepo("repository/runLog.repo", runLogRepoMock);
 
 import { SchedulerService } from "../../services/scheduler.service";
 
@@ -117,5 +120,43 @@ describe("SchedulerService.getDueCommits", () => {
         schedulerRepoMock.findDueCandidates.mockRejectedValue(new Error("db down"));
 
         await expect(new SchedulerService().getDueCommits()).rejects.toThrow("db down");
+    });
+});
+
+describe("SchedulerService.recordCompletion", () => {
+    beforeEach(() => {
+        runLogRepoMock.__reset();
+    });
+
+    it("delegates to the run_log repo", async () => {
+        runLogRepoMock.create.mockResolvedValue({ id: "r1", status: "committed" });
+
+        const result = await new SchedulerService().recordCompletion({
+            user_id: "u1",
+            target_date: "2026-01-04",
+            commit_count: 5,
+            status: "committed",
+        });
+
+        expect(runLogRepoMock.create).toHaveBeenCalledWith({
+            user_id: "u1",
+            target_date: "2026-01-04",
+            commit_count: 5,
+            status: "committed",
+        });
+        expect(result).toEqual({ id: "r1", status: "committed" });
+    });
+
+    it("propagates repo errors without swallowing them (e.g. a UNIQUE(user_id, target_date) conflict)", async () => {
+        runLogRepoMock.create.mockRejectedValue(new Error("duplicate key value"));
+
+        await expect(
+            new SchedulerService().recordCompletion({
+                user_id: "u1",
+                target_date: "2026-01-04",
+                commit_count: 5,
+                status: "committed",
+            }),
+        ).rejects.toThrow("duplicate key value");
     });
 });

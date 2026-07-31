@@ -1,4 +1,5 @@
 import SchedulerRepository from "../repository/scheduler.repo";
+import RunLogRepository from "../repository/runLog.repo";
 import { getIntensityForDate, getCommitCountForIntensity } from "./designs.schedule";
 import { computeCommitTimestamp } from "./scheduler.timing";
 import { computeNoreplyEmail } from "./github.service";
@@ -15,11 +16,20 @@ export interface iScheduledCommit {
     commitTimestamp: string; // ISO instant for GIT_AUTHOR_DATE/GIT_COMMITTER_DATE
 }
 
+export interface iCompletionReport {
+    user_id: string;
+    target_date: string;
+    commit_count: number;
+    status: "committed" | "failed";
+}
+
 export class SchedulerService {
     public repo: any;
+    public runLogRepo: any;
 
     constructor() {
         this.repo = SchedulerRepository.repo();
+        this.runLogRepo = RunLogRepository.repo();
     }
 
     /**
@@ -71,6 +81,23 @@ export class SchedulerService {
             }
 
             return commits;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    /** Records one due user's outcome in run_log; relies on its UNIQUE(user_id, target_date) as the dedupe safety net. */
+    public async recordCompletion(report: iCompletionReport) {
+        try {
+            const row = await this.runLogRepo.create({
+                user_id: report.user_id,
+                target_date: report.target_date,
+                commit_count: report.commit_count,
+                status: report.status,
+            });
+            return row;
 
         } catch(err: any) {
             logger.error(err);
