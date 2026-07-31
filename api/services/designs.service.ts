@@ -1,6 +1,7 @@
 import pool from "../config/db";
 import DesignsRepository from "../repository/designs.repo";
 import DesignSelectionsRepository from "../repository/designSelections.repo";
+import RunLogRepository from "../repository/runLog.repo";
 import {
     iDesignCreateInput,
     iDesignUpdateInput,
@@ -12,10 +13,12 @@ import { logger } from "../config/logger";
 export class DesignService {
     public repo: any;
     public selectionsRepo: any;
+    public runLogRepo: any;
 
     constructor() {
         this.repo = DesignsRepository.repo();
         this.selectionsRepo = DesignSelectionsRepository.repo();
+        this.runLogRepo = RunLogRepository.repo();
     }
 
     /**
@@ -114,6 +117,17 @@ export class DesignService {
         try {
             const count = await this.selectionsRepo.countActiveExcludingUser(designId, excludingUserId);
             return count;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    public async getLastRunStatuses(userId: string) {
+        try {
+            const statuses = await this.runLogRepo.getLatestPerDesignForUser(userId) || [];
+            return statuses;
 
         } catch(err: any) {
             logger.error(err);

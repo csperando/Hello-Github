@@ -111,3 +111,16 @@ export async function deleteSelection(designId: string): Promise<Response> {
 export async function getSelectionCount(designId: string): Promise<Response> {
   return apiFetch(`/design/${designId}/selections/count`)
 }
+
+export interface iDesignRunStatus {
+  design_id: string
+  target_date: string
+  commit_count: number
+  status: 'committed' | 'failed'
+  created_at: string
+}
+
+/** The caller's latest run_log status per design they've ever run - for a "last painted"/"failed" display. */
+export async function getLastRunStatuses(): Promise<Response> {
+  return apiFetch('/design/last-run')
+}

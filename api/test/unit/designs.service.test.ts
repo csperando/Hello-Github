@@ -1,11 +1,14 @@
 import type { iDesignsRepo } from "../../repository/designs.repo";
 import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
+import type { iRunLogRepo } from "../../repository/runLog.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 
 const designsRepoMock = createMockRepoProxy<iDesignsRepo>();
 mockRepo("repository/designs.repo", designsRepoMock);
 const selectionsRepoMock = createMockRepoProxy<iDesignSelectionsRepo>();
 mockRepo("repository/designSelections.repo", selectionsRepoMock);
+const runLogRepoMock = createMockRepoProxy<iRunLogRepo>();
+mockRepo("repository/runLog.repo", runLogRepoMock);
 
 import { DesignService } from "../../services/designs.service";
 
@@ -15,6 +18,7 @@ describe("DesignService (delegation methods)", () => {
     beforeEach(() => {
         designsRepoMock.__reset();
         selectionsRepoMock.__reset();
+        runLogRepoMock.__reset();
         service = new DesignService();
     });
 
@@ -94,5 +98,22 @@ describe("DesignService (delegation methods)", () => {
 
         expect(selectionsRepoMock.update).toHaveBeenCalledWith("u1", "d1", { is_active: true });
         expect(result).toEqual({ id: "s1", is_active: true });
+    });
+
+    it("getLastRunStatuses delegates to the run_log repo", async () => {
+        runLogRepoMock.getLatestPerDesignForUser.mockResolvedValue([{ design_id: "d1", status: "committed" }]);
+
+        const result = await service.getLastRunStatuses("u1");
+
+        expect(runLogRepoMock.getLatestPerDesignForUser).toHaveBeenCalledWith("u1");
+        expect(result).toEqual([{ design_id: "d1", status: "committed" }]);
+    });
+
+    it("getLastRunStatuses defaults to an empty array when the repo returns nothing", async () => {
+        runLogRepoMock.getLatestPerDesignForUser.mockResolvedValue(undefined as unknown as any[]);
+
+        const result = await service.getLastRunStatuses("u1");
+
+        expect(result).toEqual([]);
     });
 });

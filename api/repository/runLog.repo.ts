@@ -16,6 +16,7 @@ export interface iRunLogRepo {
     create: (input: iRunLogCreateInput) => Promise<any>;
     existsForUserAndDate: (userId: string, targetDate: string) => Promise<boolean>;
     pruneOlderThan: (days: number) => Promise<number>;
+    getLatestPerDesignForUser: (userId: string) => Promise<any[]>;
 }
 
 // main repo init function to be called in the service factories
@@ -74,10 +75,31 @@ const repo = (): iRunLogRepo => {
         }
     }
 
+    // Only a design's own author would ever see this be non-empty for more
+    // than one row per design_id in practice (design_id is set at insert
+    // time, before any deletion), one per design the user has ever run.
+    const getLatestPerDesignForUser = async (userId: string) => {
+        try {
+            const sqlString = `
+                SELECT DISTINCT ON (design_id) design_id, target_date, commit_count, status, created_at
+                FROM run_log
+                WHERE user_id = $1 AND design_id IS NOT NULL
+                ORDER BY design_id, created_at DESC;
+            `;
+            const result = await pool.query(sqlString, [userId]);
+            return result.rows;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     return {
         create,
         existsForUserAndDate,
         pruneOlderThan,
+        getLatestPerDesignForUser,
     }
 };
 

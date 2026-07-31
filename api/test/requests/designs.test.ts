@@ -33,12 +33,15 @@ const adminCookie = signedSidCookie(admin.id as string);
 
 import type { iDesignsRepo } from "../../repository/designs.repo";
 import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
+import type { iRunLogRepo } from "../../repository/runLog.repo";
 import type { iUserRepo } from "../../repository/users.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 const designsRepoMock = createMockRepoProxy<iDesignsRepo>();
 mockRepo("repository/designs.repo", designsRepoMock);
 const selectionsRepoMock = createMockRepoProxy<iDesignSelectionsRepo>();
 mockRepo("repository/designSelections.repo", selectionsRepoMock);
+const runLogRepoMock = createMockRepoProxy<iRunLogRepo>();
+mockRepo("repository/runLog.repo", runLogRepoMock);
 const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
 
@@ -95,6 +98,7 @@ describe("Design routes", () => {
     beforeEach(() => {
         designsRepoMock.__reset();
         selectionsRepoMock.__reset();
+        runLogRepoMock.__reset();
         usersRepoMock.__reset();
         usersRepoMock.getUserById.mockImplementation(async (userId: string) => {
             if (userId === admin.id) return admin;
@@ -173,6 +177,28 @@ describe("Design routes", () => {
 
         it("rejects an unauthenticated request with 401", async () => {
             const res = await request(server).get("/design");
+            expect(res.status).toBe(401);
+        });
+    });
+
+    describe("GET /design/last-run", () => {
+        it("returns the authenticated user's latest run status per design", async () => {
+            runLogRepoMock.getLatestPerDesignForUser.mockResolvedValue([
+                { design_id: "d1", target_date: "2026-01-04", commit_count: 5, status: "committed" },
+            ]);
+
+            const res = await request(server).get("/design/last-run").set("Cookie", ownerCookie);
+            const body: iResponse = JSON.parse(res.text);
+
+            expect(res.status).toBe(200);
+            expect(runLogRepoMock.getLatestPerDesignForUser).toHaveBeenCalledWith(owner.id);
+            expect(body.data).toEqual([
+                { design_id: "d1", target_date: "2026-01-04", commit_count: 5, status: "committed" },
+            ]);
+        });
+
+        it("rejects an unauthenticated request with 401", async () => {
+            const res = await request(server).get("/design/last-run");
             expect(res.status).toBe(401);
         });
     });

@@ -18,7 +18,22 @@ const authStore = useAuthStore()
 
 onMounted(() => {
   designsStore.fetchSelections()
+  designsStore.fetchRunStatuses()
 })
+
+/** "last painted 2 hours ago" / "last painted 3 days ago" / "last attempt failed" - optional/separable display, not required for anything else to work. */
+function formatRunStatusLabel(designId: string): string | null {
+  const status = designsStore.runStatuses[designId]
+  if (!status) return null
+  if (status.status === 'failed') return 'last attempt failed'
+
+  const when = new Date(status.created_at)
+  const diffHours = Math.round((Date.now() - when.getTime()) / (1000 * 60 * 60))
+  if (diffHours < 1) return 'last painted just now'
+  if (diffHours < 24) return `last painted ${diffHours} hour${diffHours === 1 ? '' : 's'} ago`
+  const diffDays = Math.round(diffHours / 24)
+  return `last painted ${diffDays} day${diffDays === 1 ? '' : 's'} ago`
+}
 
 const activeToggleError = ref('')
 
@@ -92,6 +107,7 @@ const designs = computed(() =>
       painted: available ? s.pattern.filter((l) => l > 0).length : 0,
       weeks: available ? s.pattern.length / DAYS : 0,
       previewCells: available ? s.pattern.map((level) => ({ bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })) : [],
+      runStatusLabel: formatRunStatusLabel(s.design_id),
     }
   }),
 )
@@ -163,7 +179,17 @@ const statCards = computed(() => [
                     }"
                   >{{ d.isPublic ? 'public' : 'private' }}</span>
                 </div>
-                <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--color-text-muted-4);margin-bottom:12px;">{{ d.startDateLabel }} · {{ d.painted }} squares</div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--color-text-muted-4);margin-bottom:4px;">{{ d.startDateLabel }} · {{ d.painted }} squares</div>
+                <div
+                  v-if="d.runStatusLabel"
+                  :style="{
+                    fontFamily: 'IBM Plex Mono, monospace',
+                    fontSize: '11.5px',
+                    marginBottom: '12px',
+                    color: d.runStatusLabel.includes('failed') ? 'oklch(70% 0.19 25)' : 'var(--color-text-muted-4)',
+                  }"
+                >{{ d.runStatusLabel }}</div>
+                <div v-else style="margin-bottom:12px;"></div>
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid oklch(100% 0 0 / 0.06);margin-bottom:8px;">
                   <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--color-text-muted-4);">active</span>
                   <ToggleSwitch :data-testid="'active-toggle-' + d.id" :checked="d.isActive" @click="toggleActive(d.id)" />

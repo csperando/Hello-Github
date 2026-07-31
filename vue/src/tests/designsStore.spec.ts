@@ -9,6 +9,7 @@ const selectDesignMock = vi.fn()
 const updateSelectionMock = vi.fn()
 const deleteSelectionMock = vi.fn()
 const getSelectionCountMock = vi.fn()
+const getLastRunStatusesMock = vi.fn()
 
 vi.mock('@/services/designs', () => ({
   createDesign: (...args: unknown[]) => createDesignMock(...args),
@@ -19,6 +20,7 @@ vi.mock('@/services/designs', () => ({
   updateSelection: (...args: unknown[]) => updateSelectionMock(...args),
   deleteSelection: (...args: unknown[]) => deleteSelectionMock(...args),
   getSelectionCount: (...args: unknown[]) => getSelectionCountMock(...args),
+  getLastRunStatuses: (...args: unknown[]) => getLastRunStatusesMock(...args),
 }))
 
 import { useDesignsStore } from '../stores/designs'
@@ -57,6 +59,7 @@ describe('designs store', () => {
     updateSelectionMock.mockReset()
     deleteSelectionMock.mockReset()
     getSelectionCountMock.mockReset()
+    getLastRunStatusesMock.mockReset()
   })
 
   it('fetchSelections populates selections from the API response', async () => {
@@ -182,5 +185,34 @@ describe('designs store', () => {
 
     expect(ok).toBe(false)
     expect(store.selections).toEqual([joinedRow1])
+  })
+
+  it('fetchRunStatuses indexes the response by design_id', async () => {
+    getLastRunStatusesMock.mockResolvedValue(
+      jsonResponse({
+        data: [
+          { design_id: 'd1', target_date: '2026-01-04', commit_count: 5, status: 'committed' },
+          { design_id: 'd2', target_date: '2026-01-03', commit_count: 0, status: 'failed' },
+        ],
+      }),
+    )
+
+    const store = useDesignsStore()
+    await store.fetchRunStatuses()
+
+    expect(store.runStatuses.d1).toEqual({ design_id: 'd1', target_date: '2026-01-04', commit_count: 5, status: 'committed' })
+    expect(store.runStatuses.d2?.status).toBe('failed')
+  })
+
+  it('fetchRunStatuses clears the map on a failed response', async () => {
+    getLastRunStatusesMock.mockResolvedValue(jsonResponse({}, false))
+
+    const store = useDesignsStore()
+    store.runStatuses = {
+      d1: { design_id: 'd1', target_date: '2026-01-04', commit_count: 5, status: 'committed', created_at: '2026-01-04T10:00:00Z' },
+    }
+    await store.fetchRunStatuses()
+
+    expect(store.runStatuses).toEqual({})
   })
 })

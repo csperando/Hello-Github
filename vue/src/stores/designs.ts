@@ -6,12 +6,14 @@ import {
   updateDesign as apiUpdateDesign,
   updateSelection as apiUpdateSelection,
   deleteSelection as apiDeleteSelection,
+  getLastRunStatuses as apiGetLastRunStatuses,
   type iDesign,
   type iDesignSelection,
   type iDesignSelectionWithDesign,
   type iDesignCreatePayload,
   type iDesignUpdatePayload,
   type iDesignSelectionUpdatePayload,
+  type iDesignRunStatus,
 } from '@/services/designs'
 
 function toJoinedRow(design: iDesign, selection: iDesignSelection): iDesignSelectionWithDesign {
@@ -27,6 +29,20 @@ function toJoinedRow(design: iDesign, selection: iDesignSelection): iDesignSelec
 export const useDesignsStore = defineStore('designs', () => {
   const selections = ref<iDesignSelectionWithDesign[]>([])
   const isLoading = ref(false)
+  // keyed by design_id, for O(1) lookup from a Dashboard card - optional/
+  // separable display data, not required for the rest of the store to work.
+  const runStatuses = ref<Record<string, iDesignRunStatus>>({})
+
+  async function fetchRunStatuses(): Promise<void> {
+    const res = await apiGetLastRunStatuses()
+    if (!res.ok) {
+      runStatuses.value = {}
+      return
+    }
+    const body = await res.json()
+    const statuses: iDesignRunStatus[] = body.data ?? []
+    runStatuses.value = Object.fromEntries(statuses.map((s) => [s.design_id, s]))
+  }
 
   async function fetchSelections(): Promise<void> {
     isLoading.value = true
@@ -123,7 +139,9 @@ export const useDesignsStore = defineStore('designs', () => {
   return {
     selections,
     isLoading,
+    runStatuses,
     fetchSelections,
+    fetchRunStatuses,
     createDesign,
     updateDesignContent,
     setActive,

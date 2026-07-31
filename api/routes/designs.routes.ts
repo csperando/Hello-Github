@@ -86,6 +86,24 @@ router.get("/", requireAuth, async (req: Request, res: Response, next: NextFunct
 });
 
 /**
+ * Latest run_log status per design the authenticated user has ever run, for
+ * a "last painted 2 hours ago" / "failed" display on the Dashboard. Must be
+ * registered before GET /:designId - otherwise "last-run" would be matched
+ * as a designId.
+ */
+router.get("/last-run", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const statuses = await designService.getLastRunStatuses(req.user!.id);
+        const response: iResponse = { status: 200, success: true, data: statuses };
+        res.status(200).json(response);
+
+    } catch(err) {
+        logger.error(err);
+        next(err);
+    }
+});
+
+/**
  * Get a single design's content - the owner, an admin, or anyone if it's public.
  */
 router.get("/:designId", requireAuth, async (req: Request, res: Response, next: NextFunction) => {

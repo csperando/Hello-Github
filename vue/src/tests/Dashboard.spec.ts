@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -10,6 +10,7 @@ const apiFetchMock = vi.fn()
 const updateProfileMock = vi.fn()
 const listSelectionsMock = vi.fn()
 const updateSelectionMock = vi.fn()
+const getLastRunStatusesMock = vi.fn()
 
 vi.mock('@/services/api', () => ({
   githubLoginUrl: () => 'https://api.test/auth/github/login',
@@ -26,6 +27,7 @@ vi.mock('@/services/designs', () => ({
   updateSelection: (...args: unknown[]) => updateSelectionMock(...args),
   deleteSelection: vi.fn(),
   getSelectionCount: vi.fn(),
+  getLastRunStatuses: (...args: unknown[]) => getLastRunStatusesMock(...args),
 }))
 
 function jsonResponse(body: unknown, ok = true) {
@@ -96,7 +98,9 @@ describe('Dashboard.vue', () => {
     updateProfileMock.mockReset()
     listSelectionsMock.mockReset()
     updateSelectionMock.mockReset()
+    getLastRunStatusesMock.mockReset()
     listSelectionsMock.mockResolvedValue(jsonResponse({ data: [] }))
+    getLastRunStatusesMock.mockResolvedValue(jsonResponse({ data: [] }))
   })
 
   it('stacks the stats row and main/sidebar split to a single column on narrow viewports', async () => {
@@ -253,5 +257,68 @@ describe('Dashboard.vue', () => {
 
     expect(wrapper.get('[data-testid="active-toggle-d1"]').attributes('aria-checked')).toBe('false')
     expect(wrapper.text()).toContain('You already have another design active.')
+  })
+
+  describe('last-run status', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-01-04T12:00:00Z'))
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('shows a relative "last painted" label for a committed run', async () => {
+      listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection()] }))
+      getLastRunStatusesMock.mockResolvedValue(
+        jsonResponse({
+          data: [
+            {
+              design_id: 'd1',
+              target_date: '2026-01-04',
+              commit_count: 5,
+              status: 'committed',
+              created_at: '2026-01-04T10:00:00Z',
+            },
+          ],
+        }),
+      )
+
+      const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+
+      expect(wrapper.text()).toContain('last painted 2 hours ago')
+    })
+
+    it('shows a failed-attempt label instead of a relative time when the last run failed', async () => {
+      listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection()] }))
+      getLastRunStatusesMock.mockResolvedValue(
+        jsonResponse({
+          data: [
+            {
+              design_id: 'd1',
+              target_date: '2026-01-04',
+              commit_count: 0,
+              status: 'failed',
+              created_at: '2026-01-04T10:00:00Z',
+            },
+          ],
+        }),
+      )
+
+      const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+
+      expect(wrapper.text()).toContain('last attempt failed')
+    })
+
+    it('shows no run-status label for a design that has never run', async () => {
+      listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection()] }))
+      getLastRunStatusesMock.mockResolvedValue(jsonResponse({ data: [] }))
+
+      const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+
+      expect(wrapper.text()).not.toContain('last painted')
+      expect(wrapper.text()).not.toContain('last attempt failed')
+    })
   })
 })

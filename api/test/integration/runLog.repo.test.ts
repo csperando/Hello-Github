@@ -132,4 +132,50 @@ describe("RunLogRepository", () => {
             expect(await runLogRepo.existsForUserAndDate(userId, "2026-01-11")).toBe(true);
         });
     });
+
+    describe("getLatestPerDesignForUser", () => {
+        it("returns the most recent row per design", async () => {
+            const secondDesign = await designsRepo.create(userId, { pattern: [0, 0, 0, 0, 0, 0, 0] });
+
+            await runLogRepo.create({
+                user_id: userId,
+                design_id: designId,
+                target_date: "2026-01-04",
+                commit_count: 5,
+                status: "committed",
+            });
+            await runLogRepo.create({
+                user_id: userId,
+                design_id: designId,
+                target_date: "2026-01-11",
+                commit_count: 3,
+                status: "failed",
+            });
+            // a different date: run_log's UNIQUE(user_id, target_date) means one row per
+            // day regardless of design (a user only ever has one active selection at a
+            // time), so two designs' runs for the same user can never share a date
+            await runLogRepo.create({
+                user_id: userId,
+                design_id: secondDesign.id,
+                target_date: "2026-01-18",
+                commit_count: 1,
+                status: "committed",
+            });
+
+            const latest = await runLogRepo.getLatestPerDesignForUser(userId);
+
+            expect(latest).toHaveLength(2);
+            const forFirst = latest.find((r: any) => r.design_id === designId);
+            expect(forFirst.target_date).toBe("2026-01-11");
+            expect(forFirst.status).toBe("failed");
+            const forSecond = latest.find((r: any) => r.design_id === secondDesign.id);
+            expect(forSecond.target_date).toBe("2026-01-18");
+
+            await pool.query("DELETE FROM designs WHERE id = $1;", [secondDesign.id]);
+        });
+
+        it("returns an empty array for a user with no runs", async () => {
+            expect(await runLogRepo.getLatestPerDesignForUser(userId)).toEqual([]);
+        });
+    });
 });
