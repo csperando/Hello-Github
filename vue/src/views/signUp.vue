@@ -4,11 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import BaseSelect from '@/components/ui/BaseSelect.vue'
 import CharityListItem from '@/components/ui/CharityListItem.vue'
 import StepProgress from '@/components/ui/StepProgress.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { githubLoginUrl, updateProfile } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import { timezoneOptions, detectTimezone } from '@/helpers/timezone'
 
 interface Charity {
   name: string
@@ -36,6 +38,9 @@ const saveError = ref('')
 const displayName = ref('')
 const charity = ref('GiveDirectly')
 const publicOptIn = ref(true)
+const timezone = ref(detectTimezone())
+const useRealEmail = ref(false)
+const timezoneOpts = timezoneOptions()
 
 const ghHandle = computed(() =>
   authStore.user?.github_username ? `@${authStore.user.github_username}` : '',
@@ -56,6 +61,8 @@ onMounted(async () => {
     displayName.value = authStore.user?.display_name ?? displayName.value
     charity.value = authStore.user?.default_charity ?? charity.value
     publicOptIn.value = authStore.user?.public_opt_in ?? publicOptIn.value
+    timezone.value = authStore.user?.timezone ?? timezone.value
+    useRealEmail.value = authStore.user?.use_real_email ?? useRealEmail.value
     step.value = 2
   }
   // else: stale/shared "?step=profile" link with no session - fall back to step 1 (the default)
@@ -72,6 +79,10 @@ function togglePublic() {
   publicOptIn.value = !publicOptIn.value
 }
 
+function toggleUseRealEmail() {
+  useRealEmail.value = !useRealEmail.value
+}
+
 function skip() {
   step.value = 3
 }
@@ -84,6 +95,8 @@ async function finish() {
       display_name: displayName.value,
       default_charity: charity.value,
       public_opt_in: publicOptIn.value,
+      timezone: timezone.value,
+      use_real_email: useRealEmail.value,
     })
     if (!res.ok) {
       saveError.value = 'Something went wrong saving your profile. Please try again.'
@@ -184,6 +197,20 @@ const firstName = computed(() => {
                 <div style="font-size:12.5px;color:oklch(65% 0.008 250);">let others see your design and which charity you supported</div>
               </div>
               <ToggleSwitch :checked="publicOptIn" @click="togglePublic" />
+            </div>
+
+            <label for="signup-timezone" style="display:block;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:oklch(70% 0.01 250);margin-bottom:7px;">timezone</label>
+            <div style="margin-bottom:18px;">
+              <BaseSelect id="signup-timezone" v-model="timezone" :options="timezoneOpts" />
+            </div>
+            <p style="font-size:12px;line-height:1.5;color:oklch(60% 0.008 250);margin:0 0 20px;">used to schedule your commits early in your own morning, not GitHub's.</p>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:8px;background:oklch(15% 0.012 250);border:1px solid oklch(100% 0 0 / 0.1);margin-bottom:28px;">
+              <div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:600;margin-bottom:3px;">use my real GitHub email for commits</div>
+                <div style="font-size:12.5px;color:oklch(65% 0.008 250);">off (recommended) keeps your real email out of the public commit history, using a private GitHub-provided address instead</div>
+              </div>
+              <ToggleSwitch data-testid="use-real-email-toggle" :checked="useRealEmail" @click="toggleUseRealEmail" />
             </div>
 
             <div v-if="saveError" style="font-size:13px;color:oklch(70% 0.19 25);margin-bottom:16px;">{{ saveError }}</div>

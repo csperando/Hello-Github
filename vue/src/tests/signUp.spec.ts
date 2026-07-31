@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 import SignUpView from '../views/signUp.vue'
+import { detectTimezone } from '../helpers/timezone'
 
 const apiFetchMock = vi.fn()
 const updateProfileMock = vi.fn()
@@ -82,6 +83,60 @@ describe('signUp.vue', () => {
     expect((wrapper.find('input').element as HTMLInputElement).value).toBe('Lena Ortiz')
   })
 
+  it('defaults timezone to the detected timezone and use_real_email to false for a user with no saved preference', async () => {
+    apiFetchMock.mockResolvedValue(authenticatedMeResponse())
+
+    const { wrapper } = await mountSignUp('/signup?step=profile')
+
+    expect((wrapper.get('select').element as HTMLSelectElement).value).toBe(detectTimezone())
+    expect(wrapper.get('[data-testid="use-real-email-toggle"]').attributes('aria-checked')).toBe('false')
+  })
+
+  it('prefills timezone and the real-email toggle from existing profile data', async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        data: [
+          {
+            id: 'u1',
+            github_username: 'lena',
+            timezone: 'America/Chicago',
+            use_real_email: true,
+          },
+        ],
+      }),
+    )
+
+    const { wrapper } = await mountSignUp('/signup?step=profile')
+
+    expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('America/Chicago')
+    expect(wrapper.get('[data-testid="use-real-email-toggle"]').attributes('aria-checked')).toBe('true')
+  })
+
+  it('toggling use-real-email flips its aria-checked state', async () => {
+    apiFetchMock.mockResolvedValue(authenticatedMeResponse())
+
+    const { wrapper } = await mountSignUp('/signup?step=profile')
+    const toggle = wrapper.get('[data-testid="use-real-email-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+
+    expect(wrapper.get('[data-testid="use-real-email-toggle"]').attributes('aria-checked')).toBe('true')
+  })
+
+  it('changing the timezone select updates what finish() saves', async () => {
+    apiFetchMock.mockResolvedValue(authenticatedMeResponse())
+    updateProfileMock.mockResolvedValue({ ok: true })
+
+    const { wrapper } = await mountSignUp('/signup?step=profile')
+    await wrapper.get('select').setValue('America/Chicago')
+
+    await findButton(wrapper, 'save & continue').trigger('click')
+    await flushPromises()
+
+    expect(updateProfileMock).toHaveBeenCalledWith('u1', expect.objectContaining({ timezone: 'America/Chicago' }))
+  })
+
   it('falls back to step 1 for an unauthenticated visitor even with ?step=profile', async () => {
     apiFetchMock.mockResolvedValue(jsonResponse({}, false))
 
@@ -127,6 +182,8 @@ describe('signUp.vue', () => {
       display_name: '',
       default_charity: 'GiveDirectly',
       public_opt_in: true,
+      timezone: detectTimezone(),
+      use_real_email: false,
     })
     expect(wrapper.text()).toContain("You're all set")
   })

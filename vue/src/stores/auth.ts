@@ -10,6 +10,8 @@ export interface iAuthUser {
     display_name?: string
     default_charity?: string
     public_opt_in?: boolean
+    timezone?: string
+    use_real_email?: boolean
     role?: 'admin' | 'user'
     is_active?: boolean
 }
