@@ -1,0 +1,100 @@
+name: Paint
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  API_URL: ${{ vars.API_URL || 'https://api.commitsforgood.com' }}
+  # Defaults to this same repo. Once the dedicated GitHub account/canvas
+  # repo exists, set the PAINT_TARGET_REPO variable and (if the target is
+  # no longer this repo) a PAINT_PUSH_TOKEN secret with write access to it -
+  # a config change, not a workflow rebuild.
+  TARGET_REPO: ${{ vars.PAINT_TARGET_REPO || github.repository }}
+
+jobs:
+  paint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout canvas repo
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          token: ${{ secrets.PAINT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      - name: Fetch due commits
+        id: due
+        env:
+          SCHEDULER_API_KEY: ${{ secrets.SCHEDULER_API_KEY }}
+        run: |
+          set -euo pipefail
+          curl -sf -H "X-API-Key: $SCHEDULER_API_KEY" "$API_URL/scheduler/due" -o due.json
+          count=$(jq 'length' due.json)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Due: $count"
+
+      - name: Build commits
+        if: steps.due.outputs.count != '0'
+        run: |
+          set -euo pipefail
+
+          git config user.name "commitsforgood-bot"
+          git config user.email "actions@users.noreply.github.com"
+
+          # lightly varied wording rather than identical text on every commit
+          MESSAGES=("Automated action" "painting" "contribution" "keeping the streak" "🎨")
+
+          echo "[]" > results.json
+          count=$(jq 'length' due.json)
+
+          for i in $(seq 0 $((count - 1))); do
+            entry=$(jq -c ".[$i]" due.json)
+            user_id=$(echo "$entry" | jq -r '.user_id')
+            target_date=$(echo "$entry" | jq -r '.target_date')
+            username=$(echo "$entry" | jq -r '.github_username')
+            email=$(echo "$entry" | jq -r '.commit_author_email')
+            timestamp=$(echo "$entry" | jq -r '.commit_timestamp')
+            commit_count=$(echo "$entry" | jq -r '.commit_count')
+
+            status="committed"
+            for c in $(seq 1 "$commit_count"); do
+              msg="${MESSAGES[$((RANDOM % ${#MESSAGES[@]}))]}"
+              echo "$timestamp $username $c" >> log.txt
+              git add log.txt
+              if ! GIT_AUTHOR_DATE="$timestamp" GIT_COMMITTER_DATE="$timestamp" \
+                  git commit --author="$username <$email>" -m "$msg" --quiet; then
+                status="failed"
+                break
+              fi
+            done
+
+            results=$(jq -c \
+              --arg user_id "$user_id" \
+              --arg target_date "$target_date" \
+              --argjson commit_count "$commit_count" \
+              --arg status "$status" \
+              '. + [{user_id: $user_id, target_date: $target_date, commit_count: $commit_count, status: $status}]' \
+              results.json)
+            echo "$results" > results.json
+          done
+
+      - name: Push
+        if: steps.due.outputs.count != '0'
+        run: git push
+
+      - name: Report completion
+        if: steps.due.outputs.count != '0'
+        env:
+          SCHEDULER_API_KEY: ${{ secrets.SCHEDULER_API_KEY }}
+        run: |
+          set -euo pipefail
+          curl -sf -X POST \
+            -H "X-API-Key: $SCHEDULER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @results.json \
+            "$API_URL/scheduler/due/complete"

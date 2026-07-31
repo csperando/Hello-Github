@@ -2,10 +2,13 @@ name: Hello
 
 on:
   # Cron Syntax Reference: https://en.wikipedia.org/wiki/Cron#Overview
-  schedule:
-   - cron: "*/60 */12 * * 1-5"
+  # Schedule disabled: superseded by paint.yml (the multi-user scheduler),
+  # which also commits to log.txt in this same repo - running both on a
+  # schedule would race. Left as workflow_dispatch/push for manual reference.
+  # schedule:
+  #  - cron: "*/60 */12 * * 1-5"
   push:
-  
+
   workflow_dispatch:
 
 jobs:
