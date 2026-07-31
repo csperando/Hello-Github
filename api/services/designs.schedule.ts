@@ -49,3 +49,23 @@ export function getIntensityForDate(pattern: number[], selection: iScheduleField
     if (idx === null) return null;
     return pattern[idx] ?? null;
 }
+
+/**
+ * Fixed commit-count tier per intensity level (0-4). GitHub's own graph
+ * shading is presumed to use roughly fixed absolute thresholds rather than
+ * being relative to each viewer's personal commit history (unconfirmed -
+ * worth verifying empirically against real accounts before scale). These
+ * numbers are a conservative best guess intended to land clearly within
+ * each shade's band for a typical low-activity account, not derived from
+ * an official spec, and are expected to be tuned once real rendering is
+ * observed in practice.
+ */
+const COMMIT_COUNT_BY_INTENSITY: readonly [number, number, number, number, number] = [0, 2, 5, 8, 12];
+
+export function getCommitCountForIntensity(intensity: number): number {
+    if (!Number.isInteger(intensity) || intensity < 0 || intensity > 4) {
+        throw new RangeError(`intensity must be an integer 0-4, got ${intensity}.`);
+    }
+    // safe: the range check above guarantees intensity is a valid tuple index
+    return COMMIT_COUNT_BY_INTENSITY[intensity]!;
+}
