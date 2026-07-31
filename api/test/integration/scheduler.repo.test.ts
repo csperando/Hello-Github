@@ -71,7 +71,8 @@ describe("SchedulerRepository.findDueCandidates", () => {
 
     it("returns a user whose local time is currently within the window, with an active design selection", async () => {
         const user = await makeUser(dueGitHubId, "octocat-scheduler-due");
-        await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
+        const tz = offsetTimezone(offsetForTargetLocalHour(2));
+        await profilesRepo.upsert(user.id, { timezone: tz as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
         await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
 
@@ -81,6 +82,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         expect(mine).toBeDefined();
         expect(mine.design_id).toBe(design.id);
         expect(mine.pattern).toEqual([0, 1, 2, 3, 4, 0, 0]);
+        expect(mine.timezone).toBe(tz);
         expect(mine.start_date).toBe("2026-01-04");
     });
 

@@ -2,6 +2,7 @@ import {
     exchangeCodeForToken,
     fetchGitHubUser,
     fetchPrimaryVerifiedEmail,
+    computeNoreplyEmail,
 } from "../../services/github.service";
 
 const mockFetchResponse = (body: any, ok = true, status = 200) => ({
@@ -101,6 +102,20 @@ describe("github.service", () => {
             fetchSpy.mockResolvedValue(mockFetchResponse({}, false, 401) as any);
 
             await expect(fetchPrimaryVerifiedEmail("bad-token")).rejects.toThrow();
+        });
+    });
+
+    describe("computeNoreplyEmail", () => {
+        it("formats {id}+{username}@users.noreply.github.com", () => {
+            expect(computeNoreplyEmail(583231, "octocat")).toBe("583231+octocat@users.noreply.github.com");
+        });
+
+        it("is deterministic for the same inputs", () => {
+            expect(computeNoreplyEmail(1, "a")).toBe(computeNoreplyEmail(1, "a"));
+        });
+
+        it("differs for different usernames with the same id (shouldn't happen, but not silently collide)", () => {
+            expect(computeNoreplyEmail(1, "a")).not.toBe(computeNoreplyEmail(1, "b"));
         });
     });
 });

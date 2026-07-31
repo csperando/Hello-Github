@@ -79,3 +79,14 @@ export const fetchPrimaryVerifiedEmail = async (accessToken: string): Promise<st
 
     return primary.email;
 };
+
+/**
+ * GitHub's own auto-generated "keep my email address private" noreply
+ * address format. Deterministic from data already captured at OAuth
+ * sign-in (github_id, github_username) - used as the default commit author
+ * email for painting commits so a user's real email never needs to appear
+ * in a public repo's history, and so no email OAuth scope is required.
+ */
+export const computeNoreplyEmail = (githubId: number, githubUsername: string): string => {
+    return `${githubId}+${githubUsername}@users.noreply.github.com`;
+};
