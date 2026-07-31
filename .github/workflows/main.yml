@@ -21,8 +21,8 @@ jobs:
           echo "N = $n"
           for(( i=1; i<=n; i++))
           do
-            git config --global user.name csperando
-            git config --global user.email csperando@gmail.com
+            git config --global user.name commitsforgood
+            git config --global user.email support@commitsforgood.com
             
             date +%s > log.txt
             git add log.txt
