@@ -17,6 +17,7 @@ const {
     GITHUB_CALLBACK_URL,
     SESSION_SECRET,
     FRONTEND_URL,
+    SCHEDULER_API_KEY,
 } = process.env;
 
 assert(REST_NODE_ENV, "[REST_NODE_ENV] is required.");
@@ -31,6 +32,7 @@ assert(GITHUB_CLIENT_SECRET, "[GITHUB_CLIENT_SECRET] is required.");
 assert(GITHUB_CALLBACK_URL, "[GITHUB_CALLBACK_URL] is required.");
 assert(SESSION_SECRET, "[SESSION_SECRET] is required.");
 assert(FRONTEND_URL, "[FRONTEND_URL] is required.");
+assert(SCHEDULER_API_KEY, "[SCHEDULER_API_KEY] is required.");
 
 export interface iConfig {
     REST_NODE_ENV: string;
@@ -45,6 +47,7 @@ export interface iConfig {
     GITHUB_CALLBACK_URL: string;
     SESSION_SECRET: string;
     FRONTEND_URL: string;
+    SCHEDULER_API_KEY: string;
 };
 
 export const config: iConfig = {
@@ -60,4 +63,5 @@ export const config: iConfig = {
     GITHUB_CALLBACK_URL: GITHUB_CALLBACK_URL,
     SESSION_SECRET: SESSION_SECRET,
     FRONTEND_URL: FRONTEND_URL,
+    SCHEDULER_API_KEY: SCHEDULER_API_KEY,
 };
