@@ -215,6 +215,65 @@ describe("User routes", () => {
             expect(profilesRepoMock.upsert).not.toHaveBeenCalled();
         });
 
+        it("lets a user update their timezone and use_real_email", async () => {
+            profilesRepoMock.upsert.mockResolvedValue({
+                user_id: mockUser.id,
+                timezone: "America/Chicago",
+                use_real_email: true,
+            });
+            usersRepoMock.getUserById.mockResolvedValue({
+                ...mockUser,
+                timezone: "America/Chicago",
+                use_real_email: true,
+            });
+
+            const res = await request(server)
+                .patch("/user/" + mockUser.id)
+                .set("Cookie", selfCookie)
+                .send({ timezone: "America/Chicago", use_real_email: true });
+            const body: iResponse = JSON.parse(res.text);
+
+            expect(res.status).toBe(200);
+            expect(profilesRepoMock.upsert).toHaveBeenCalledWith(mockUser.id, {
+                timezone: "America/Chicago",
+                use_real_email: true,
+            });
+            expect((body.data![0] as any).timezone).toBe("America/Chicago");
+            expect((body.data![0] as any).use_real_email).toBe(true);
+        });
+
+        it("rejects a non-string timezone with 400", async () => {
+            const res = await request(server)
+                .patch("/user/" + mockUser.id)
+                .set("Cookie", selfCookie)
+                .send({ timezone: 5 });
+
+            expect(res.status).toBe(400);
+            expect(profilesRepoMock.upsert).not.toHaveBeenCalled();
+        });
+
+        it("rejects a timezone that isn't a recognized IANA name with 400", async () => {
+            const res = await request(server)
+                .patch("/user/" + mockUser.id)
+                .set("Cookie", selfCookie)
+                .send({ timezone: "Not/A_Real_Zone" });
+            const body: iResponse = JSON.parse(res.text);
+
+            expect(res.status).toBe(400);
+            expect(body.success).toBe(false);
+            expect(profilesRepoMock.upsert).not.toHaveBeenCalled();
+        });
+
+        it("rejects a non-boolean use_real_email with 400", async () => {
+            const res = await request(server)
+                .patch("/user/" + mockUser.id)
+                .set("Cookie", selfCookie)
+                .send({ use_real_email: "yes" });
+
+            expect(res.status).toBe(400);
+            expect(profilesRepoMock.upsert).not.toHaveBeenCalled();
+        });
+
         it("rejects updating another user's profile when not an admin", async () => {
             usersRepoMock.getUserById.mockResolvedValue({ ...mockUser, role: "user" });
 

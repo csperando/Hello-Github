@@ -43,6 +43,8 @@ export interface iPublicUser {
     display_name?: String | undefined;
     default_charity?: String | undefined;
     public_opt_in?: Boolean | undefined;
+    timezone?: String | undefined;
+    use_real_email?: Boolean | undefined;
 
     role?: Role | undefined;
     is_active?: Boolean | undefined;
@@ -56,7 +58,7 @@ export interface iPublicUser {
  * join against user_profiles, since those aren't part of the bare iUser shape.
  */
 export function toPublicUser(
-    user: iUser & Partial<Pick<iUserProfile, "display_name" | "default_charity" | "public_opt_in">>,
+    user: iUser & Partial<Pick<iUserProfile, "display_name" | "default_charity" | "public_opt_in" | "timezone" | "use_real_email">>,
 ): iPublicUser {
     return {
         id: user.id,
@@ -66,6 +68,8 @@ export function toPublicUser(
         display_name: user.display_name,
         default_charity: user.default_charity,
         public_opt_in: user.public_opt_in,
+        timezone: user.timezone,
+        use_real_email: user.use_real_email,
         role: user.role,
         is_active: user.is_active,
     };
@@ -86,6 +90,8 @@ export interface iUserProfile {
     display_name?: String;
     default_charity?: String;
     public_opt_in: Boolean;
+    timezone: String; // IANA name, e.g. "America/Chicago"
+    use_real_email: Boolean; // commit author email preference: real verified email vs. noreply
 
     created_at?: String;
     updated_at?: String;
@@ -95,4 +101,6 @@ export interface iProfileUpdateInput {
     display_name?: String;
     default_charity?: String;
     public_opt_in?: Boolean;
+    timezone?: String;
+    use_real_email?: Boolean;
 }

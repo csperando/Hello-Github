@@ -30,6 +30,8 @@ const repo = (): iUserRepo => {
                     , p.display_name
                     , p.default_charity
                     , COALESCE(p.public_opt_in, TRUE) AS public_opt_in
+                    , COALESCE(p.timezone, 'UTC') AS timezone
+                    , COALESCE(p.use_real_email, FALSE) AS use_real_email
                 FROM users u
                 LEFT JOIN user_profiles p ON p.user_id = u.id;
             `
@@ -60,6 +62,8 @@ const repo = (): iUserRepo => {
                     , p.display_name
                     , p.default_charity
                     , COALESCE(p.public_opt_in, TRUE) AS public_opt_in
+                    , COALESCE(p.timezone, 'UTC') AS timezone
+                    , COALESCE(p.use_real_email, FALSE) AS use_real_email
                 FROM users u
                 LEFT JOIN user_profiles p ON p.user_id = u.id
                 WHERE u.id = $1;
@@ -92,6 +96,8 @@ const repo = (): iUserRepo => {
                     , p.display_name
                     , p.default_charity
                     , COALESCE(p.public_opt_in, TRUE) AS public_opt_in
+                    , COALESCE(p.timezone, 'UTC') AS timezone
+                    , COALESCE(p.use_real_email, FALSE) AS use_real_email
                 FROM users u
                 LEFT JOIN user_profiles p ON p.user_id = u.id
                 WHERE u.github_id = $1;

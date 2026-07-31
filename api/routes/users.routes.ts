@@ -8,6 +8,8 @@ import { logger } from "../config/logger";
 const router = Router();
 let userService: UserService;
 
+const VALID_TIME_ZONES = new Set(Intl.supportedValuesOf("timeZone"));
+
 /**
  * Picks only the known profile fields out of a PATCH body (silently ignoring
  * anything else, e.g. role/is_active, so they can't be mass-assigned), and
@@ -35,6 +37,20 @@ function extractProfileInput(body: Record<string, unknown>): { input: iProfileUp
             return { input, error: "public_opt_in must be a boolean." };
         }
         input.public_opt_in = body.public_opt_in;
+    }
+
+    if ("timezone" in body) {
+        if (typeof body.timezone !== "string" || !VALID_TIME_ZONES.has(body.timezone)) {
+            return { input, error: "timezone must be a recognized IANA time zone name." };
+        }
+        input.timezone = body.timezone;
+    }
+
+    if ("use_real_email" in body) {
+        if (typeof body.use_real_email !== "boolean") {
+            return { input, error: "use_real_email must be a boolean." };
+        }
+        input.use_real_email = body.use_real_email;
     }
 
     return { input };

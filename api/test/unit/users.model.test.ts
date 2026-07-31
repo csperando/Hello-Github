@@ -21,6 +21,8 @@ describe("toPublicUser", () => {
         display_name: "Lena",
         default_charity: "EFF",
         public_opt_in: false,
+        timezone: "America/Chicago",
+        use_real_email: true,
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-02T00:00:00Z",
         last_login_at: "2026-07-28T00:00:00Z",
@@ -37,6 +39,8 @@ describe("toPublicUser", () => {
             display_name: fullUser.display_name,
             default_charity: fullUser.default_charity,
             public_opt_in: fullUser.public_opt_in,
+            timezone: fullUser.timezone,
+            use_real_email: fullUser.use_real_email,
             role: fullUser.role,
             is_active: fullUser.is_active,
         });
@@ -81,6 +85,8 @@ describe("toPublicUser", () => {
             display_name: undefined,
             default_charity: undefined,
             public_opt_in: undefined,
+            timezone: undefined,
+            use_real_email: undefined,
             role: "user",
             is_active: true,
         });

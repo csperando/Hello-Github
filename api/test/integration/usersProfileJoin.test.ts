@@ -35,12 +35,14 @@ describe("users.repo profile join", () => {
         await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
     });
 
-    it("getUserById defaults display_name/default_charity to null and public_opt_in to true when no profile row exists", async () => {
+    it("getUserById defaults display_name/default_charity to null, public_opt_in to true, timezone to UTC, and use_real_email to false when no profile row exists", async () => {
         const user = await usersRepo.getUserById(userId);
 
         expect(user.display_name).toBeNull();
         expect(user.default_charity).toBeNull();
         expect(user.public_opt_in).toBe(true);
+        expect(user.timezone).toBe("UTC");
+        expect(user.use_real_email).toBe(false);
     });
 
     it("getUserById returns the joined profile fields once a profile row exists", async () => {
@@ -48,6 +50,8 @@ describe("users.repo profile join", () => {
             display_name: "Lena Ortiz",
             default_charity: "GiveDirectly",
             public_opt_in: false,
+            timezone: "America/Chicago",
+            use_real_email: true,
         });
 
         const user = await usersRepo.getUserById(userId);
@@ -55,16 +59,20 @@ describe("users.repo profile join", () => {
         expect(user.display_name).toBe("Lena Ortiz");
         expect(user.default_charity).toBe("GiveDirectly");
         expect(user.public_opt_in).toBe(false);
+        expect(user.timezone).toBe("America/Chicago");
+        expect(user.use_real_email).toBe(true);
         // core user fields untouched by the join
         expect(user.github_username).toBe("octocat-join-test");
     });
 
     it("getUserByGitHubId returns the same joined profile fields", async () => {
-        await profilesRepo.upsert(userId, { display_name: "Lena Ortiz" });
+        await profilesRepo.upsert(userId, { display_name: "Lena Ortiz", timezone: "Asia/Kolkata" });
 
         const user = await usersRepo.getUserByGitHubId(testGitHubId);
 
         expect(user.display_name).toBe("Lena Ortiz");
         expect(user.public_opt_in).toBe(true);
+        expect(user.timezone).toBe("Asia/Kolkata");
+        expect(user.use_real_email).toBe(false);
     });
 });

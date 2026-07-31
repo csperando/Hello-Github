@@ -35,13 +35,15 @@ describe("UserProfilesRepository.upsert", () => {
         await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
     });
 
-    it("creates a new profile row on first upsert, defaulting public_opt_in to true when omitted", async () => {
+    it("creates a new profile row on first upsert, defaulting public_opt_in to true, timezone to UTC, and use_real_email to false when omitted", async () => {
         const profile = await profilesRepo.upsert(userId, { display_name: "Lena Ortiz" });
 
         expect(profile.user_id).toBe(userId);
         expect(profile.display_name).toBe("Lena Ortiz");
         expect(profile.default_charity).toBeNull();
         expect(profile.public_opt_in).toBe(true);
+        expect(profile.timezone).toBe("UTC");
+        expect(profile.use_real_email).toBe(false);
     });
 
     it("only overwrites fields provided on a later upsert, leaving others as-is", async () => {
@@ -49,6 +51,8 @@ describe("UserProfilesRepository.upsert", () => {
             display_name: "Lena Ortiz",
             default_charity: "GiveDirectly",
             public_opt_in: false,
+            timezone: "America/Chicago",
+            use_real_email: true,
         });
 
         const updated = await profilesRepo.upsert(userId, { display_name: "Lena O." });
@@ -56,6 +60,34 @@ describe("UserProfilesRepository.upsert", () => {
         expect(updated.display_name).toBe("Lena O.");
         expect(updated.default_charity).toBe("GiveDirectly");
         expect(updated.public_opt_in).toBe(false);
+        expect(updated.timezone).toBe("America/Chicago");
+        expect(updated.use_real_email).toBe(true);
+    });
+
+    it("updates timezone and use_real_email independently without clobbering other fields", async () => {
+        await profilesRepo.upsert(userId, { display_name: "Lena Ortiz", timezone: "America/Chicago" });
+
+        const updated = await profilesRepo.upsert(userId, { timezone: "Asia/Kolkata", use_real_email: true });
+
+        expect(updated.display_name).toBe("Lena Ortiz");
+        expect(updated.timezone).toBe("Asia/Kolkata");
+        expect(updated.use_real_email).toBe(true);
+    });
+
+    it("does not clobber a true use_real_email back to false when omitted on a later upsert", async () => {
+        await profilesRepo.upsert(userId, { use_real_email: true });
+
+        const updated = await profilesRepo.upsert(userId, { display_name: "Lena O." });
+
+        expect(updated.use_real_email).toBe(true);
+    });
+
+    it("does not clobber a non-default timezone back to UTC when omitted on a later upsert", async () => {
+        await profilesRepo.upsert(userId, { timezone: "America/Chicago" });
+
+        const updated = await profilesRepo.upsert(userId, { display_name: "Lena O." });
+
+        expect(updated.timezone).toBe("America/Chicago");
     });
 
     it("bumps updated_at on a repeat upsert", async () => {

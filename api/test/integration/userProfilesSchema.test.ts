@@ -22,7 +22,10 @@ describe("0001_create_user_profiles migration", () => {
         );
 
         expect(Object.keys(byName).sort()).toEqual(
-            ["user_id", "display_name", "default_charity", "public_opt_in", "created_at", "updated_at"].sort(),
+            [
+                "user_id", "display_name", "default_charity", "public_opt_in",
+                "timezone", "use_real_email", "created_at", "updated_at",
+            ].sort(),
         );
         expect(byName.public_opt_in?.is_nullable).toBe("NO");
         expect(byName.public_opt_in?.column_default).toContain("true");
@@ -38,6 +41,27 @@ describe("0001_create_user_profiles migration", () => {
         `);
         const types = constraints.rows.map((row: { constraint_type: string }) => row.constraint_type);
         expect(types).toEqual(expect.arrayContaining(["PRIMARY KEY", "FOREIGN KEY"]));
+    });
+
+    describe("0003_add_user_profile_timezone_and_email_pref migration", () => {
+        it("adds timezone defaulting to UTC and use_real_email defaulting to false, both NOT NULL", async () => {
+            const columns = await pool.query(`
+                SELECT column_name, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_name = 'user_profiles' AND column_name IN ('timezone', 'use_real_email');
+            `);
+            const byName: Record<string, { is_nullable: string; column_default: string | null }> = Object.fromEntries(
+                columns.rows.map((row: { column_name: string; is_nullable: string; column_default: string | null }) => [
+                    row.column_name,
+                    row,
+                ]),
+            );
+
+            expect(byName.timezone?.is_nullable).toBe("NO");
+            expect(byName.timezone?.column_default).toContain("UTC");
+            expect(byName.use_real_email?.is_nullable).toBe("NO");
+            expect(byName.use_real_email?.column_default).toContain("false");
+        });
     });
 
     describe("cascade behavior", () => {
