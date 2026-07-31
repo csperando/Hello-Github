@@ -15,6 +15,10 @@ env:
   # no longer this repo) a PAINT_PUSH_TOKEN secret with write access to it -
   # a config change, not a workflow rebuild.
   TARGET_REPO: ${{ vars.PAINT_TARGET_REPO || github.repository }}
+  # Fail the run loudly once this many users' commits fail in one run,
+  # rather than on any single failure (isolated failures are expected at
+  # scale and shouldn't page anyone by themselves).
+  FAILURE_ALERT_THRESHOLD: ${{ vars.PAINT_FAILURE_ALERT_THRESHOLD || '3' }}
 
 jobs:
   paint:
@@ -98,3 +102,34 @@ jobs:
             -H "Content-Type: application/json" \
             -d @results.json \
             "$API_URL/scheduler/due/complete"
+
+      - name: Run summary
+        if: always()
+        run: |
+          set -euo pipefail
+
+          due="${{ steps.due.outputs.count || 0 }}"
+          if [ -f results.json ]; then
+            committed=$(jq '[.[] | select(.status == "committed")] | length' results.json)
+            failed=$(jq '[.[] | select(.status == "failed")] | length' results.json)
+          else
+            committed=0
+            failed=0
+          fi
+          # entries in due.json that never made it into a results.json outcome -
+          # shouldn't normally happen, a drift indicator if it does
+          skipped=$((due - committed - failed))
+
+          {
+            echo "## Paint run summary"
+            echo "| due | committed | failed | skipped |"
+            echo "|---|---|---|---|"
+            echo "| $due | $committed | $failed | $skipped |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "due=$due committed=$committed failed=$failed skipped=$skipped"
+
+          if [ "$failed" -ge "$FAILURE_ALERT_THRESHOLD" ]; then
+            echo "::error::$failed users failed to paint this run (threshold: $FAILURE_ALERT_THRESHOLD) - failing the job so it's visible."
+            exit 1
+          fi
