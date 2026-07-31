@@ -1,4 +1,9 @@
-import { iDesign } from "../models/designs";
+/** The scheduling fields of an iDesignSelection needed to place a pattern on the calendar. */
+export interface iScheduleFields {
+    start_date: string;
+    repeat_indefinitely: boolean;
+    recurrence_end_date?: string | null;
+}
 
 function daysSince(from: string, to: string): number {
     const fromMs = new Date(`${from}T00:00:00Z`).getTime();
@@ -8,19 +13,17 @@ function daysSince(from: string, to: string): number {
 
 /**
  * The day -> pattern-index lookup a future GitHub Actions runner will need
- * (see .claude/tmp/goal.md section 3): given a design row and a target date,
- * returns the index into design.pattern for that day, or null if the design
+ * (see .claude/tmp/goal.md): given a design's pattern, a user's selection of
+ * it (start_date/repeat_indefinitely/recurrence_end_date), and a target
+ * date, returns the index into pattern for that day, or null if it
  * contributes nothing that day (before start_date, or finished - a one-off
- * design past end_date, or a bounded repeat past its recurrence_end_date).
- * Tiles past end_date using the same modulo formula as the editor's
- * custom-range ghost-cell preview, applied along the calendar timeline
- * instead of visual grid columns.
+ * selection past its end, or a bounded repeat past its recurrence_end_date).
+ * Tiles past the pattern's natural end using the same modulo formula as the
+ * editor's custom-range ghost-cell preview, applied along the calendar
+ * timeline instead of visual grid columns.
  */
-export function getPatternIndexForDate(design: iDesign, targetDate: string): number | null {
-    const startDate = design.start_date as unknown as string;
-    const pattern = design.pattern as unknown as number[];
-    const repeatIndefinitely = design.repeat_indefinitely as unknown as boolean;
-    const recurrenceEndDate = design.recurrence_end_date as unknown as string | undefined;
+export function getPatternIndexForDate(pattern: number[], selection: iScheduleFields, targetDate: string): number | null {
+    const { start_date: startDate, repeat_indefinitely: repeatIndefinitely, recurrence_end_date: recurrenceEndDate } = selection;
 
     const daysSinceStart = daysSince(startDate, targetDate);
     if (daysSinceStart < 0) return null;
@@ -41,8 +44,8 @@ export function getPatternIndexForDate(design: iDesign, targetDate: string): num
 }
 
 /** Convenience wrapper: the pattern's intensity (0-4) for a given day, or null if none. */
-export function getIntensityForDate(design: iDesign, targetDate: string): number | null {
-    const idx = getPatternIndexForDate(design, targetDate);
+export function getIntensityForDate(pattern: number[], selection: iScheduleFields, targetDate: string): number | null {
+    const idx = getPatternIndexForDate(pattern, selection, targetDate);
     if (idx === null) return null;
-    return (design.pattern as unknown as number[])[idx] ?? null;
+    return pattern[idx] ?? null;
 }

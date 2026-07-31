@@ -1,4 +1,9 @@
-import { iDesign, iDesignCreateInput, iDesignUpdateInput } from "../models/designs";
+import {
+    iDesignCreateInput,
+    iDesignUpdateInput,
+    iDesignSelectionCreateInput,
+    iDesignSelectionUpdateInput,
+} from "../models/designs";
 
 // 10 years worth of weeks (520 weeks * 7 days) - a generous ceiling that still
 // blocks a pathologically large array from being persisted.
@@ -31,10 +36,11 @@ export function computeEndDate(startDate: string, patternLength: number): string
 }
 
 /**
- * Enforces the same rule as the designs_recurrence_end_date_consistency DB
- * CHECK: recurrence_end_date must be null when repeat_indefinitely is true;
- * when set, it must be after end_date. Both false/null together is valid -
- * that's a one-off design that doesn't repeat at all.
+ * Enforces the same rule as the design_selections_recurrence_end_date_consistency
+ * DB CHECK: recurrence_end_date must be null when repeat_indefinitely is
+ * true; when set, it must be after the pattern's (derived) end_date. Both
+ * false/null together is valid - that's a one-off selection that doesn't
+ * repeat at all.
  */
 export function validateRecurrencePairing(
     repeatIndefinitely: boolean,
@@ -54,10 +60,10 @@ export function validateRecurrencePairing(
 }
 
 /**
- * Allow-lists and validates a POST /design body. Only the fields named here
- * are ever read from the body, so extra fields (id, user_id, timestamps)
- * can't be mass-assigned. end_date is always derived from start_date +
- * pattern length, never taken from the client.
+ * Allow-lists and validates a POST /design body: design content plus the
+ * creator's own initial selection, since a design is never created
+ * pivot-less. Only the fields named here are ever read from the body, so
+ * extra fields (id, user_id, timestamps) can't be mass-assigned.
  */
 export function extractDesignCreateInput(
     body: Record<string, unknown>,
@@ -101,7 +107,6 @@ export function extractDesignCreateInput(
 
     const input: any = {
         start_date: startDate,
-        end_date: endDate,
         pattern,
     };
     if (body.name !== undefined) input.name = body.name;
@@ -113,15 +118,12 @@ export function extractDesignCreateInput(
 }
 
 /**
- * Allow-lists and validates a PATCH /design/:designId body against the
- * design's current row (needed so a partial patch that only touches one
- * side of the repeat_indefinitely/recurrence_end_date pair, or leaves
- * start_date/pattern untouched, can still be validated against the
- * design's *effective* end_date and recurrence state).
+ * Allow-lists and validates a PATCH /design/:designId body. Content only -
+ * name/is_public/pattern - since scheduling now lives on the selection, not
+ * the design. No mass-assignment of id/user_id/timestamps.
  */
 export function extractDesignUpdateInput(
     body: Record<string, unknown>,
-    current: iDesign,
 ): { input?: iDesignUpdateInput; error?: string } {
     const input: any = {};
 
@@ -139,6 +141,78 @@ export function extractDesignUpdateInput(
         input.is_public = body.is_public;
     }
 
+    if ("pattern" in body) {
+        if (!isValidPattern(body.pattern)) {
+            return {
+                error: `pattern must be a non-empty array of integers 0-4 whose length is a multiple of 7 (max ${MAX_PATTERN_LENGTH}).`,
+            };
+        }
+        input.pattern = body.pattern;
+    }
+
+    return { input };
+}
+
+/**
+ * Allow-lists and validates a POST /design/:designId/select body (a user
+ * selecting a design - their own new one, or an existing public one - for
+ * the first time). patternLength comes from the target design, since
+ * recurrence_end_date is validated against the pattern's derived end_date.
+ */
+export function extractDesignSelectionCreateInput(
+    body: Record<string, unknown>,
+    patternLength: number,
+): { input?: iDesignSelectionCreateInput; error?: string } {
+    if (!isValidDateString(body.start_date)) {
+        return { error: "start_date is required and must be a valid date." };
+    }
+    if (!isSunday(body.start_date)) {
+        return { error: "start_date must be a Sunday." };
+    }
+    if (body.repeat_indefinitely !== undefined && typeof body.repeat_indefinitely !== "boolean") {
+        return { error: "repeat_indefinitely must be a boolean." };
+    }
+    if (
+        body.recurrence_end_date !== undefined &&
+        body.recurrence_end_date !== null &&
+        !isValidDateString(body.recurrence_end_date)
+    ) {
+        return { error: "recurrence_end_date must be a valid date or null." };
+    }
+    if (body.is_active !== undefined && typeof body.is_active !== "boolean") {
+        return { error: "is_active must be a boolean." };
+    }
+
+    const startDate = body.start_date;
+    const repeatIndefinitely = (body.repeat_indefinitely as boolean | undefined) ?? false;
+    const recurrenceEndDate = body.recurrence_end_date as string | null | undefined;
+    const endDate = computeEndDate(startDate, patternLength);
+
+    const recurrenceError = validateRecurrencePairing(repeatIndefinitely, recurrenceEndDate, endDate);
+    if (recurrenceError) return { error: recurrenceError };
+
+    const input: any = { start_date: startDate };
+    if (body.repeat_indefinitely !== undefined) input.repeat_indefinitely = repeatIndefinitely;
+    if (body.recurrence_end_date !== undefined) input.recurrence_end_date = recurrenceEndDate;
+    if (body.is_active !== undefined) input.is_active = body.is_active;
+
+    return { input };
+}
+
+/**
+ * Allow-lists and validates a PATCH /design/:designId/select body against
+ * the requesting user's current selection row, needed so a partial patch
+ * (e.g. only toggling is_active) can still be validated against the
+ * selection's *effective* recurrence state. patternLength comes from the
+ * design the selection points at (fixed - not editable via the selection).
+ */
+export function extractDesignSelectionUpdateInput(
+    body: Record<string, unknown>,
+    current: { start_date: string; repeat_indefinitely: boolean; recurrence_end_date?: string | null },
+    patternLength: number,
+): { input?: iDesignSelectionUpdateInput; error?: string } {
+    const input: any = {};
+
     if ("start_date" in body) {
         if (!isValidDateString(body.start_date)) {
             return { error: "start_date must be a valid date." };
@@ -147,15 +221,6 @@ export function extractDesignUpdateInput(
             return { error: "start_date must be a Sunday." };
         }
         input.start_date = body.start_date;
-    }
-
-    if ("pattern" in body) {
-        if (!isValidPattern(body.pattern)) {
-            return {
-                error: `pattern must be a non-empty array of integers 0-4 whose length is a multiple of 7 (max ${MAX_PATTERN_LENGTH}).`,
-            };
-        }
-        input.pattern = body.pattern;
     }
 
     if ("repeat_indefinitely" in body) {
@@ -172,30 +237,26 @@ export function extractDesignUpdateInput(
         input.recurrence_end_date = body.recurrence_end_date;
     }
 
-    const startDateOrPatternChanged = "start_date" in input || "pattern" in input;
-    const nextStartDate: string = input.start_date ?? (current.start_date as unknown as string);
-    const nextPatternLength: number = input.pattern
-        ? input.pattern.length
-        : (current.pattern as unknown as number[]).length;
-    const endDate: string = startDateOrPatternChanged
-        ? computeEndDate(nextStartDate, nextPatternLength)
-        : (current.end_date as unknown as string);
+    if ("is_active" in body) {
+        if (typeof body.is_active !== "boolean") {
+            return { error: "is_active must be a boolean." };
+        }
+        input.is_active = body.is_active;
+    }
 
-    const recurrenceTouched = "repeat_indefinitely" in input || "recurrence_end_date" in input || startDateOrPatternChanged;
+    const startDateChanged = "start_date" in input;
+    const nextStartDate: string = input.start_date ?? current.start_date;
+    const endDate = computeEndDate(nextStartDate, patternLength);
+
+    const recurrenceTouched = "repeat_indefinitely" in input || "recurrence_end_date" in input || startDateChanged;
     if (recurrenceTouched) {
         const nextRepeatIndefinitely: boolean =
-            input.repeat_indefinitely !== undefined
-                ? input.repeat_indefinitely
-                : (current.repeat_indefinitely as unknown as boolean);
+            input.repeat_indefinitely !== undefined ? input.repeat_indefinitely : current.repeat_indefinitely;
         const nextRecurrenceEndDate: string | null | undefined =
-            "recurrence_end_date" in input ? input.recurrence_end_date : (current.recurrence_end_date as unknown as string | undefined);
+            "recurrence_end_date" in input ? input.recurrence_end_date : current.recurrence_end_date;
 
         const recurrenceError = validateRecurrencePairing(nextRepeatIndefinitely, nextRecurrenceEndDate ?? null, endDate);
         if (recurrenceError) return { error: recurrenceError };
-    }
-
-    if (startDateOrPatternChanged) {
-        input.end_date = endDate;
     }
 
     return { input };

@@ -1,27 +1,21 @@
 import type { iDesignsRepo } from "../../repository/designs.repo";
+import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 
 const designsRepoMock = createMockRepoProxy<iDesignsRepo>();
 mockRepo("repository/designs.repo", designsRepoMock);
+const selectionsRepoMock = createMockRepoProxy<iDesignSelectionsRepo>();
+mockRepo("repository/designSelections.repo", selectionsRepoMock);
 
 import { DesignService } from "../../services/designs.service";
 
-describe("DesignService", () => {
+describe("DesignService (delegation methods)", () => {
     let service: DesignService;
 
     beforeEach(() => {
         designsRepoMock.__reset();
+        selectionsRepoMock.__reset();
         service = new DesignService();
-    });
-
-    it("createDesign delegates to the repo and returns its result", async () => {
-        const input = { start_date: "2026-01-04", end_date: "2026-01-10", pattern: [0, 1, 2, 3, 4, 0, 0] };
-        designsRepoMock.create.mockResolvedValue({ id: "d1", user_id: "u1", ...input });
-
-        const result = await service.createDesign("u1", input as any);
-
-        expect(designsRepoMock.create).toHaveBeenCalledWith("u1", input);
-        expect(result).toEqual({ id: "d1", user_id: "u1", ...input });
     });
 
     it("getDesignById delegates to the repo", async () => {
@@ -51,18 +45,45 @@ describe("DesignService", () => {
         expect(result).toEqual({ id: "d1", name: "renamed" });
     });
 
-    it("deleteDesign delegates to the repo", async () => {
-        designsRepoMock.delete.mockResolvedValue({ id: "d1" });
-
-        const result = await service.deleteDesign("d1");
-
-        expect(designsRepoMock.delete).toHaveBeenCalledWith("d1");
-        expect(result).toEqual({ id: "d1" });
-    });
-
     it("propagates repo errors without swallowing them", async () => {
         designsRepoMock.getById.mockRejectedValue(new Error("db down"));
 
         await expect(service.getDesignById("d1")).rejects.toThrow("db down");
+    });
+
+    it("getSelectionsByUserId delegates to the selections repo", async () => {
+        selectionsRepoMock.getAllForUser.mockResolvedValue([{ id: "s1" }]);
+
+        const result = await service.getSelectionsByUserId("u1");
+
+        expect(selectionsRepoMock.getAllForUser).toHaveBeenCalledWith("u1");
+        expect(result).toEqual([{ id: "s1" }]);
+    });
+
+    it("getSelection delegates to the selections repo", async () => {
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ id: "s1" });
+
+        const result = await service.getSelection("u1", "d1");
+
+        expect(selectionsRepoMock.getByUserAndDesign).toHaveBeenCalledWith("u1", "d1");
+        expect(result).toEqual({ id: "s1" });
+    });
+
+    it("selectDesign delegates to the selections repo", async () => {
+        selectionsRepoMock.create.mockResolvedValue({ id: "s1" });
+
+        const result = await service.selectDesign("u1", "d1", { start_date: "2026-01-04" } as any);
+
+        expect(selectionsRepoMock.create).toHaveBeenCalledWith("u1", "d1", { start_date: "2026-01-04" });
+        expect(result).toEqual({ id: "s1" });
+    });
+
+    it("updateSelection delegates to the selections repo", async () => {
+        selectionsRepoMock.update.mockResolvedValue({ id: "s1", is_active: true });
+
+        const result = await service.updateSelection("u1", "d1", { is_active: true });
+
+        expect(selectionsRepoMock.update).toHaveBeenCalledWith("u1", "d1", { is_active: true });
+        expect(result).toEqual({ id: "s1", is_active: true });
     });
 });

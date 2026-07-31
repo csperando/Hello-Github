@@ -3,7 +3,7 @@ import { runMigrations } from "../../data/migrate";
 import UsersRepository from "../../repository/users.repo";
 import DesignsRepository from "../../repository/designs.repo";
 import { iGitHubUpsertInput } from "../../models/users";
-import { iDesignCreateInput } from "../../models/designs";
+import { iDesignContentInput } from "../../repository/designs.repo";
 
 describe("DesignsRepository", () => {
     const usersRepo = UsersRepository.repo();
@@ -22,9 +22,7 @@ describe("DesignsRepository", () => {
 
     let userId: string;
 
-    const minimalInput: iDesignCreateInput = {
-        start_date: "2026-01-04",
-        end_date: "2026-01-10",
+    const minimalInput: iDesignContentInput = {
         pattern: [0, 1, 2, 3, 4, 0, 0],
     };
 
@@ -44,43 +42,33 @@ describe("DesignsRepository", () => {
     });
 
     describe("create", () => {
-        it("defaults name/is_public/repeat_indefinitely when omitted", async () => {
+        it("defaults name/is_public when omitted", async () => {
             const design = await designsRepo.create(userId, minimalInput);
 
             expect(design.user_id).toBe(userId);
             expect(design.name).toBe("untitled design");
             expect(design.is_public).toBe(false);
-            expect(design.repeat_indefinitely).toBe(false);
-            expect(design.recurrence_end_date).toBeNull();
             expect(design.pattern).toEqual([0, 1, 2, 3, 4, 0, 0]);
-        });
-
-        it("returns date columns as plain YYYY-MM-DD strings, not Date objects/timestamps", async () => {
-            // pg's default type parser turns DATE columns into JS Date objects,
-            // which then serialize as full ISO timestamps (e.g.
-            // "2026-01-04T00:00:00.000Z") instead of the plain date string every
-            // caller (validation, the schedule lookup, the Vue frontend) assumes.
-            const design = await designsRepo.create(userId, minimalInput);
-
-            expect(typeof design.start_date).toBe("string");
-            expect(design.start_date).toBe("2026-01-04");
-            expect(design.end_date).toBe("2026-01-10");
         });
 
         it("persists all fields when fully specified", async () => {
             const design = await designsRepo.create(userId, {
                 name: "Heart 2026",
                 is_public: true,
-                start_date: "2026-01-04",
-                end_date: "2026-01-10",
                 pattern: [4, 4, 4, 4, 4, 4, 4],
-                repeat_indefinitely: true,
             });
 
             expect(design.name).toBe("Heart 2026");
             expect(design.is_public).toBe(true);
-            expect(design.repeat_indefinitely).toBe(true);
-            expect(design.recurrence_end_date).toBeNull();
+        });
+
+        it("does not persist any scheduling fields - designs holds content only", async () => {
+            const design = await designsRepo.create(userId, minimalInput);
+
+            expect(design).not.toHaveProperty("start_date");
+            expect(design).not.toHaveProperty("end_date");
+            expect(design).not.toHaveProperty("repeat_indefinitely");
+            expect(design).not.toHaveProperty("recurrence_end_date");
         });
     });
 
@@ -122,47 +110,14 @@ describe("DesignsRepository", () => {
 
             expect(updated.name).toBe("renamed");
             expect(updated.pattern).toEqual(minimalInput.pattern);
-            expect(updated.start_date).not.toBeNull();
         });
 
-        it("can set a bounded recurrence_end_date", async () => {
+        it("can update pattern", async () => {
             const created = await designsRepo.create(userId, minimalInput);
 
-            const updated = await designsRepo.update(created.id, {
-                repeat_indefinitely: false,
-                recurrence_end_date: "2027-01-01",
-            });
+            const updated = await designsRepo.update(created.id, { pattern: [4, 4, 4, 4, 4, 4, 4] });
 
-            expect(updated.recurrence_end_date).not.toBeNull();
-        });
-
-        it("can explicitly clear recurrence_end_date back to null when switching to indefinite", async () => {
-            const created = await designsRepo.create(userId, minimalInput);
-            await designsRepo.update(created.id, {
-                repeat_indefinitely: false,
-                recurrence_end_date: "2027-01-01",
-            });
-
-            const updated = await designsRepo.update(created.id, {
-                repeat_indefinitely: true,
-                recurrence_end_date: null as unknown as string,
-            });
-
-            expect(updated.repeat_indefinitely).toBe(true);
-            expect(updated.recurrence_end_date).toBeNull();
-        });
-
-        it("leaves recurrence_end_date untouched when the key is absent from the patch", async () => {
-            const created = await designsRepo.create(userId, {
-                ...minimalInput,
-                repeat_indefinitely: false,
-                recurrence_end_date: "2027-01-01",
-            });
-
-            const updated = await designsRepo.update(created.id, { name: "renamed only" });
-
-            expect(updated.name).toBe("renamed only");
-            expect(updated.recurrence_end_date).not.toBeNull();
+            expect(updated.pattern).toEqual([4, 4, 4, 4, 4, 4, 4]);
         });
 
         it("bumps updated_at", async () => {
