@@ -13,15 +13,21 @@ vi.mock('@/services/api', () => ({
 }))
 
 const createDesignMock = vi.fn()
+const listSelectionsMock = vi.fn()
 const getDesignMock = vi.fn()
 const updateDesignMock = vi.fn()
+const updateSelectionMock = vi.fn()
+const getSelectionCountMock = vi.fn()
 
 vi.mock('@/services/designs', () => ({
   createDesign: (...args: unknown[]) => createDesignMock(...args),
-  listDesigns: vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: [] }) }),
+  listSelections: (...args: unknown[]) => listSelectionsMock(...args),
   getDesign: (...args: unknown[]) => getDesignMock(...args),
   updateDesign: (...args: unknown[]) => updateDesignMock(...args),
-  deleteDesign: vi.fn(),
+  selectDesign: vi.fn(),
+  updateSelection: (...args: unknown[]) => updateSelectionMock(...args),
+  deleteSelection: vi.fn(),
+  getSelectionCount: (...args: unknown[]) => getSelectionCountMock(...args),
 }))
 
 function jsonResponse(body: unknown, ok = true) {
@@ -57,13 +63,38 @@ function findButton(wrapper: Awaited<ReturnType<typeof mountEditor>>['wrapper'],
   return el
 }
 
+const loadedDesignContent = {
+  id: 'd1',
+  user_id: 'u1',
+  name: 'Loaded Design',
+  is_public: true,
+  pattern: [0, 1, 2, 3, 4, 0, 0],
+}
+const loadedSelectionRow = {
+  id: 's1',
+  user_id: 'u1',
+  design_id: 'd1',
+  design_owner_id: 'u1',
+  is_active: true,
+  start_date: '2026-01-04',
+  repeat_indefinitely: false,
+  recurrence_end_date: null,
+  name: loadedDesignContent.name,
+  is_public: loadedDesignContent.is_public,
+  pattern: loadedDesignContent.pattern,
+}
+
 describe('Editor.vue', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-01-07T12:00:00Z')) // a Wednesday; todayAnchor -> 2026-01-04
     createDesignMock.mockReset()
+    listSelectionsMock.mockReset()
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [] }))
     getDesignMock.mockReset()
     updateDesignMock.mockReset()
+    updateSelectionMock.mockReset()
+    getSelectionCountMock.mockReset()
   })
 
   afterEach(() => {
@@ -89,7 +120,9 @@ describe('Editor.vue', () => {
   })
 
   it('saves a bounding-box-trimmed pattern when custom range is off', async () => {
-    createDesignMock.mockResolvedValue(jsonResponse({ data: [{ id: 'new-id' }] }))
+    createDesignMock.mockResolvedValue(
+      jsonResponse({ data: [{ design: { id: 'new-id' }, selection: { id: 'sel-id' } }] }),
+    )
 
     const { wrapper } = await mountEditor('/editor')
 
@@ -112,7 +145,9 @@ describe('Editor.vue', () => {
   })
 
   it('uses the explicit custom range and maps ghost-cell paints back into it', async () => {
-    createDesignMock.mockResolvedValue(jsonResponse({ data: [{ id: 'new-id' }] }))
+    createDesignMock.mockResolvedValue(
+      jsonResponse({ data: [{ design: { id: 'new-id' }, selection: { id: 'sel-id' } }] }),
+    )
 
     const { wrapper } = await mountEditor('/editor')
 
@@ -140,24 +175,9 @@ describe('Editor.vue', () => {
     expect(payload.recurrence_end_date).toBeNull()
   })
 
-  it('loads an existing design from the route param and reconstructs editor state', async () => {
-    getDesignMock.mockResolvedValue(
-      jsonResponse({
-        data: [
-          {
-            id: 'd1',
-            user_id: 'u1',
-            name: 'Loaded Design',
-            is_public: true,
-            start_date: '2026-01-04',
-            end_date: '2026-01-10',
-            pattern: [0, 1, 2, 3, 4, 0, 0],
-            repeat_indefinitely: false,
-            recurrence_end_date: null,
-          },
-        ],
-      }),
-    )
+  it('loads an existing design from the route param, joined with the caller\'s own selection', async () => {
+    getDesignMock.mockResolvedValue(jsonResponse({ data: [loadedDesignContent] }))
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [loadedSelectionRow] }))
 
     const { wrapper } = await mountEditor('/editor/d1')
 
@@ -171,5 +191,64 @@ describe('Editor.vue', () => {
 
     const saveButton = wrapper.findAll('button').find((b) => b.text().includes('save changes'))
     expect(saveButton).toBeTruthy()
+  })
+
+  it('saves content and schedule separately when updating an existing design', async () => {
+    getDesignMock.mockResolvedValue(jsonResponse({ data: [loadedDesignContent] }))
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [loadedSelectionRow] }))
+    updateDesignMock.mockResolvedValue(jsonResponse({ data: [{ ...loadedDesignContent, name: 'Renamed' }] }))
+    updateSelectionMock.mockResolvedValue(jsonResponse({ data: [loadedSelectionRow] }))
+
+    const { wrapper } = await mountEditor('/editor/d1')
+    await wrapper.find('input[placeholder="untitled design"]').setValue('Renamed')
+
+    await findButton(wrapper, 'save changes').trigger('click')
+    await flushPromises()
+
+    expect(updateDesignMock).toHaveBeenCalledWith(
+      'd1',
+      expect.objectContaining({ name: 'Renamed', is_public: true }),
+    )
+    expect(updateSelectionMock).toHaveBeenCalledWith(
+      'd1',
+      expect.objectContaining({ start_date: expect.any(String) }),
+    )
+  })
+
+  it('warns before making a design private when other users have it active, and does not flip until confirmed', async () => {
+    getDesignMock.mockResolvedValue(jsonResponse({ data: [loadedDesignContent] }))
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [loadedSelectionRow] }))
+    getSelectionCountMock.mockResolvedValue(jsonResponse({ data: [{ count: 3 }] }))
+
+    const { wrapper } = await mountEditor('/editor/d1')
+
+    const toggle = wrapper.get('[data-testid="visibility-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(getSelectionCountMock).toHaveBeenCalledWith('d1')
+    expect(wrapper.text()).toContain('3 other users have this design active')
+    // still public - hasn't flipped yet, pending confirmation
+    expect(wrapper.get('[data-testid="visibility-toggle"]').attributes('aria-checked')).toBe('true')
+
+    await findButton(wrapper, 'make private').trigger('click')
+
+    expect(wrapper.get('[data-testid="visibility-toggle"]').attributes('aria-checked')).toBe('false')
+  })
+
+  it('flips visibility immediately when no other users have the design active', async () => {
+    getDesignMock.mockResolvedValue(jsonResponse({ data: [loadedDesignContent] }))
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [loadedSelectionRow] }))
+    getSelectionCountMock.mockResolvedValue(jsonResponse({ data: [{ count: 0 }] }))
+
+    const { wrapper } = await mountEditor('/editor/d1')
+
+    const toggle = wrapper.get('[data-testid="visibility-toggle"]')
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('other users have this design active')
+    expect(wrapper.get('[data-testid="visibility-toggle"]').attributes('aria-checked')).toBe('false')
   })
 })

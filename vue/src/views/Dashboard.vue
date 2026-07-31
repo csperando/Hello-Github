@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
@@ -17,8 +17,32 @@ const designsStore = useDesignsStore()
 const authStore = useAuthStore()
 
 onMounted(() => {
-  designsStore.fetchDesigns()
+  designsStore.fetchSelections()
 })
+
+const activeToggleError = ref('')
+
+/**
+ * Toggles is_active on the caller's own selection - the backend enforces at
+ * most one active selection per user, so this can be rejected (e.g.
+ * activating a second design while another is already active); on that
+ * conflict the optimistic flip is rolled back and the server's message shown.
+ */
+async function toggleActive(designId: string) {
+  activeToggleError.value = ''
+  const row = designsStore.selections.find((s) => s.design_id === designId)
+  if (!row) return
+
+  const next = !row.is_active
+  const previous = row.is_active
+  row.is_active = next
+
+  const result = await designsStore.setActive(designId, next)
+  if (!result.ok) {
+    row.is_active = previous
+    activeToggleError.value = result.error
+  }
+}
 
 const displayName = computed(
   () => authStore.user?.display_name || authStore.user?.name || authStore.user?.github_username || '',
@@ -49,27 +73,39 @@ function formatDate(dateStr: string): string {
   })
 }
 
-// The schema has no status/charity fields yet, so the card shows only what
-// a design actually has: its name, visibility, start date, and how much of
-// it is painted. Richer dashboard metadata (charity, live/draft/archived
-// status) is future work once that data exists.
+// Lists both authored and adopted designs (the pivot table joins a
+// selection with whatever design content it points at). A design the
+// viewer didn't author and that's since gone private shows as "no longer
+// available" instead of its real content - their selection itself is
+// untouched/still scheduled, this only affects what's displayed here.
 const designs = computed(() =>
-  designsStore.designs.map((d) => ({
-    id: d.id,
-    name: d.name,
-    isPublic: d.is_public,
-    startDateLabel: formatDate(d.start_date),
-    painted: d.pattern.filter((l) => l > 0).length,
-    weeks: d.pattern.length / DAYS,
-    previewCells: d.pattern.map((level) => ({ bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })),
-  })),
+  designsStore.selections.map((s) => {
+    const isAuthor = s.design_owner_id === authStore.user?.id
+    const available = isAuthor || s.is_public
+    return {
+      id: s.design_id,
+      name: available ? s.name : 'no longer available',
+      isPublic: s.is_public,
+      isActive: s.is_active,
+      available,
+      startDateLabel: formatDate(s.start_date),
+      painted: available ? s.pattern.filter((l) => l > 0).length : 0,
+      weeks: available ? s.pattern.length / DAYS : 0,
+      previewCells: available ? s.pattern.map((level) => ({ bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })) : [],
+    }
+  }),
 )
 
 // Donation totals, charity counts, and receipts have no backing data model
 // yet (no donations/receipts table) - only design-derived stats are real.
+// Scoped to designs the user actually authored, not ones they've adopted
+// from someone else, matching what these labels mean.
+const authoredSelections = computed(() =>
+  designsStore.selections.filter((s) => s.design_owner_id === authStore.user?.id),
+)
 const statCards = computed(() => [
-  { value: String(designsStore.designs.length), label: 'designs created' },
-  { value: designsStore.designs.filter((d) => d.is_public).length + ' public', label: 'on your profile now' },
+  { value: String(authoredSelections.value.length), label: 'designs created' },
+  { value: authoredSelections.value.filter((s) => s.is_public).length + ' public', label: 'on your profile now' },
 ])
 </script>
 
@@ -102,17 +138,20 @@ const statCards = computed(() => [
         <!-- YOUR DESIGNS -->
         <div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-3);letter-spacing:0.02em;margin-bottom:16px;">your designs</div>
+          <div v-if="activeToggleError" style="font-size:13px;color:oklch(70% 0.19 25);margin-bottom:16px;">{{ activeToggleError }}</div>
           <div v-if="designsStore.isLoading" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-4);">loading…</div>
           <div v-else-if="designs.length === 0" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--color-text-muted-4);">no designs yet - head to the editor to create one.</div>
           <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div v-for="d in designs" :key="d.id" style="background:var(--color-bg-raised);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;">
-              <div style="padding:14px;">
+              <div v-if="d.available" style="padding:14px;">
                 <ContributionGridPreview :cells="d.previewCells" :weeks="d.weeks" height="90px" />
               </div>
+              <div v-else style="padding:14px;height:90px;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--color-text-muted-4);">preview unavailable</div>
               <div style="padding:0 16px 16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                   <span style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:600;">{{ d.name }}</span>
                   <span
+                    v-if="d.available"
                     :style="{
                       fontFamily: 'IBM Plex Mono, monospace',
                       fontSize: '10.5px',
@@ -125,6 +164,10 @@ const statCards = computed(() => [
                   >{{ d.isPublic ? 'public' : 'private' }}</span>
                 </div>
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--color-text-muted-4);margin-bottom:12px;">{{ d.startDateLabel }} · {{ d.painted }} squares</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid oklch(100% 0 0 / 0.06);margin-bottom:8px;">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--color-text-muted-4);">active</span>
+                  <ToggleSwitch :data-testid="'active-toggle-' + d.id" :checked="d.isActive" @click="toggleActive(d.id)" />
+                </div>
                 <div style="display:flex;gap:8px;">
                   <BaseButton as="router-link" :to="'/editor/' + d.id" variant="secondary" style="flex:1;font-size:12px;background:oklch(15% 0.012 250);color:oklch(85% 0.006 250);border:1px solid oklch(100% 0 0 / 0.1);border-radius:6px;padding:8px;text-decoration:none;text-align:center;">edit</BaseButton>
                   <BaseButton variant="secondary" style="flex:1;font-size:12px;color:var(--color-text-muted-4);border:1px solid oklch(100% 0 0 / 0.1);border-radius:6px;padding:8px;">receipt</BaseButton>

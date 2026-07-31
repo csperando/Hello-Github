@@ -7,7 +7,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import CustomRangeSlider from '@/components/ui/CustomRangeSlider.vue'
 import { LEVEL_COLORS, todayAnchor, currentYearAnchor, toDateString } from '@/helpers/grid'
-import { getDesign, type iDesign, type iDesignCreatePayload } from '@/services/designs'
+import { getDesign, getSelectionCount, type iDesign, type iDesignCreatePayload } from '@/services/designs'
 import { useDesignsStore } from '@/stores/designs'
 
 const WEEKS = 53
@@ -79,6 +79,40 @@ const painting = ref(false)
 const activeTab = ref<TabKey>('today')
 const publicOptIn = ref(true)
 const designName = ref('my first design')
+
+// Confirmation before making a design private that other users currently
+// have selected - making it private doesn't touch their selections or
+// scheduling, it only means they'll no longer be able to see its content
+// (Dashboard shows "no longer available" for them) - so this is a warning,
+// not a hard block.
+const otherUsersCount = ref(0)
+const showPrivacyWarning = ref(false)
+
+async function onTogglePublic() {
+  const goingPrivate = publicOptIn.value
+  if (goingPrivate && loadedDesign.value) {
+    const res = await getSelectionCount(loadedDesign.value.id)
+    if (res.ok) {
+      const body = await res.json()
+      const count = body.data?.[0]?.count ?? 0
+      if (count > 0) {
+        otherUsersCount.value = count
+        showPrivacyWarning.value = true
+        return
+      }
+    }
+  }
+  publicOptIn.value = !publicOptIn.value
+}
+
+function confirmMakePrivate() {
+  publicOptIn.value = false
+  showPrivacyWarning.value = false
+}
+
+function cancelMakePrivate() {
+  showPrivacyWarning.value = false
+}
 
 // Recurrence: "repeat every year" (annual carry-forward of the whole design)
 // and "custom range" (tile a narrower slice across the rest of the grid) are
@@ -167,9 +201,17 @@ function applyTemplate(key: string) {
 
 // The design currently being edited, if the route carries a :designId - see
 // onMounted below. While set, it overrides the tab-based anchor with the
-// design's own saved start_date, so the grid re-anchors to exactly where it
-// was when saved rather than to "today"/"this year" as of right now.
+// selection's own saved start_date, so the grid re-anchors to exactly where
+// it was when saved rather than to "today"/"this year" as of right now.
+// Content (name/is_public/pattern) and scheduling (start_date/repeat_
+// indefinitely/recurrence_end_date) come from two different resources now -
+// loadedDesign is content-only, loadedSelection carries the schedule.
 const loadedDesign = ref<iDesign | null>(null)
+const loadedSelection = ref<{
+  start_date: string
+  repeat_indefinitely: boolean
+  recurrence_end_date?: string | null
+} | null>(null)
 
 // The grid's first column is always the most recent Sunday on/before this
 // anchor date - "today" gives a rolling window starting now, "year" starts
@@ -178,7 +220,7 @@ const loadedDesign = ref<iDesign | null>(null)
 // designs future contributions, unlike GitHub's own profile graph which runs
 // backward from today).
 const anchorDate = computed(() => {
-  if (loadedDesign.value) return new Date(`${loadedDesign.value.start_date}T00:00:00Z`)
+  if (loadedSelection.value) return new Date(`${loadedSelection.value.start_date}T00:00:00Z`)
   return activeTab.value === 'today' ? todayAnchor() : currentYearAnchor()
 })
 const anchorDateLabel = computed(() =>
@@ -194,31 +236,36 @@ function selectTab(key: TabKey) {
   // This also detaches from any loaded design: further edits become a new
   // design rather than continuing to edit the one that was loaded.
   loadedDesign.value = null
+  loadedSelection.value = null
   grid.value = emptyGrid()
   selectedTemplate.value = 'blank'
 }
 
 /**
- * Reconstructs editor state from a saved design. The schema doesn't record
- * which UI mode ("repeat every year" vs "custom range") produced a given
- * repeat_indefinitely/recurrence_end_date pairing, so this is a best-effort
- * reconstruction: a pattern narrower than the full grid is treated as a
- * custom range; a full-width pattern's repeat_indefinitely maps back to
- * "repeat every year".
+ * Reconstructs editor state from a saved design + the caller's own
+ * selection of it. The schema doesn't record which UI mode ("repeat every
+ * year" vs "custom range") produced a given repeat_indefinitely/
+ * recurrence_end_date pairing, so this is a best-effort reconstruction: a
+ * pattern narrower than the full grid is treated as a custom range; a
+ * full-width pattern's repeat_indefinitely maps back to "repeat every year".
  */
-function applyLoadedDesign(design: iDesign) {
+function applyLoadedDesign(
+  design: iDesign,
+  selection: { start_date: string; repeat_indefinitely: boolean; recurrence_end_date?: string | null },
+) {
   loadedDesign.value = design
+  loadedSelection.value = selection
 
   designName.value = design.name
   publicOptIn.value = design.is_public
-  repeatIndefinitely.value = design.repeat_indefinitely
-  recurrenceEndDate.value = design.recurrence_end_date ?? ''
+  repeatIndefinitely.value = selection.repeat_indefinitely
+  recurrenceEndDate.value = selection.recurrence_end_date ?? ''
 
   const patternWeeks = design.pattern.length / DAYS
   const isFullWidth = patternWeeks >= WEEKS
 
   customRangeEnabled.value = !isFullWidth
-  repeatEveryYear.value = isFullWidth && design.repeat_indefinitely
+  repeatEveryYear.value = isFullWidth && selection.repeat_indefinitely
   if (!isFullWidth) {
     rangeStart.value = 0
     rangeEnd.value = patternWeeks - 1
@@ -243,7 +290,14 @@ onMounted(async () => {
 
   const body = await res.json()
   const design: iDesign | undefined = body.data?.[0]
-  if (design) applyLoadedDesign(design)
+  if (!design) return
+
+  // GET /design/:id returns content only - the caller's own scheduling of it
+  // (start_date/repeat_indefinitely/recurrence_end_date) comes from their
+  // selections list.
+  await designsStore.fetchSelections()
+  const selection = designsStore.selections.find((s) => s.design_id === designId)
+  if (selection) applyLoadedDesign(design, selection)
 })
 
 function cellDateLabel(week: number, day: number): string {
@@ -400,25 +454,41 @@ async function saveDesign(): Promise<boolean> {
   const finalRecurrenceEndDate =
     recurrenceActive && !repeatIndefinitely.value && recurrenceEndDate.value ? recurrenceEndDate.value : null
 
-  const payload: iDesignCreatePayload = {
-    name: designName.value,
-    is_public: publicOptIn.value,
-    start_date: extracted.start_date,
-    pattern: extracted.pattern,
-    repeat_indefinitely: finalRepeatIndefinitely,
-    recurrence_end_date: finalRecurrenceEndDate,
-  }
-
   isSaving.value = true
   try {
     if (loadedDesign.value) {
-      const updated = await designsStore.updateDesign(loadedDesign.value.id, payload)
-      if (!updated) {
+      const updatedDesign = await designsStore.updateDesignContent(loadedDesign.value.id, {
+        name: designName.value,
+        is_public: publicOptIn.value,
+        pattern: extracted.pattern,
+      })
+      if (!updatedDesign) {
         saveError.value = 'Could not save changes.'
         return false
       }
-      loadedDesign.value = updated
+
+      const updatedSelection = await designsStore.updateSelectionSchedule(loadedDesign.value.id, {
+        start_date: extracted.start_date,
+        repeat_indefinitely: finalRepeatIndefinitely,
+        recurrence_end_date: finalRecurrenceEndDate,
+      })
+      if (!updatedSelection) {
+        saveError.value = 'Could not save changes.'
+        return false
+      }
+
+      loadedDesign.value = updatedDesign
+      loadedSelection.value = updatedSelection
       return true
+    }
+
+    const payload: iDesignCreatePayload = {
+      name: designName.value,
+      is_public: publicOptIn.value,
+      start_date: extracted.start_date,
+      pattern: extracted.pattern,
+      repeat_indefinitely: finalRepeatIndefinitely,
+      recurrence_end_date: finalRecurrenceEndDate,
     }
 
     const created = await designsStore.createDesign(payload)
@@ -426,8 +496,9 @@ async function saveDesign(): Promise<boolean> {
       saveError.value = 'Could not save this design.'
       return false
     }
-    loadedDesign.value = created
-    router.replace(`/editor/${created.id}`)
+    loadedDesign.value = created.design
+    loadedSelection.value = created.selection
+    router.replace(`/editor/${created.design.id}`)
     return true
   } finally {
     isSaving.value = false
@@ -607,7 +678,14 @@ async function onContinueToCheckout() {
             <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-bottom:2px;">share to gallery</div>
             <div style="font-size:11.5px;color:oklch(60% 0.008 250);">visible to community</div>
           </div>
-          <ToggleSwitch :checked="publicOptIn" @click="publicOptIn = !publicOptIn" />
+          <ToggleSwitch data-testid="visibility-toggle" :checked="publicOptIn" @click="onTogglePublic" />
+        </div>
+        <div v-if="showPrivacyWarning" style="margin-top:10px;padding:14px;border-radius:10px;background:oklch(24% 0.05 30 / 0.25);border:1px solid oklch(70% 0.18 30 / 0.4);">
+          <div style="font-size:12.5px;line-height:1.5;margin-bottom:10px;">{{ otherUsersCount }} other {{ otherUsersCount === 1 ? 'user has' : 'users have' }} this design active. Making it private won't stop their commits, but they'll no longer be able to see its content. Make it private anyway?</div>
+          <div style="display:flex;gap:8px;">
+            <BaseButton variant="secondary" @click="cancelMakePrivate" style="font-size:12px;background:oklch(15% 0.012 250);color:oklch(85% 0.006 250);border:1px solid oklch(100% 0 0 / 0.1);border-radius:6px;padding:8px 14px;">cancel</BaseButton>
+            <BaseButton @click="confirmMakePrivate" style="font-size:12px;border-radius:6px;padding:8px 14px;">make private</BaseButton>
+          </div>
         </div>
 
         <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:oklch(60% 0.01 250);letter-spacing:0.04em;margin:24px 0 14px;">recurrence</div>

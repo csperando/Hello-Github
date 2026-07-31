@@ -5,11 +5,11 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 
 import DashboardView from '../views/Dashboard.vue'
 import { useAuthStore, type iAuthUser } from '../stores/auth'
-import { useDesignsStore } from '../stores/designs'
 
 const apiFetchMock = vi.fn()
 const updateProfileMock = vi.fn()
-const listDesignsMock = vi.fn()
+const listSelectionsMock = vi.fn()
+const updateSelectionMock = vi.fn()
 
 vi.mock('@/services/api', () => ({
   githubLoginUrl: () => 'https://api.test/auth/github/login',
@@ -18,11 +18,14 @@ vi.mock('@/services/api', () => ({
 }))
 
 vi.mock('@/services/designs', () => ({
-  listDesigns: (...args: unknown[]) => listDesignsMock(...args),
+  listSelections: (...args: unknown[]) => listSelectionsMock(...args),
   createDesign: vi.fn(),
   getDesign: vi.fn(),
   updateDesign: vi.fn(),
-  deleteDesign: vi.fn(),
+  selectDesign: vi.fn(),
+  updateSelection: (...args: unknown[]) => updateSelectionMock(...args),
+  deleteSelection: vi.fn(),
+  getSelectionCount: vi.fn(),
 }))
 
 function jsonResponse(body: unknown, ok = true) {
@@ -39,6 +42,23 @@ function buildUser(overrides: Partial<iAuthUser> = {}): iAuthUser {
     public_opt_in: true,
     role: 'user',
     is_active: true,
+    ...overrides,
+  }
+}
+
+function buildSelection(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 's1',
+    user_id: 'u1',
+    design_id: 'd1',
+    design_owner_id: 'u1',
+    is_active: false,
+    is_public: false,
+    name: 'My Heart',
+    pattern: [0, 1, 2, 3, 4, 0, 0],
+    start_date: '2026-01-04',
+    repeat_indefinitely: false,
+    recurrence_end_date: null,
     ...overrides,
   }
 }
@@ -74,8 +94,9 @@ describe('Dashboard.vue', () => {
   beforeEach(() => {
     apiFetchMock.mockReset()
     updateProfileMock.mockReset()
-    listDesignsMock.mockReset()
-    listDesignsMock.mockResolvedValue(jsonResponse({ data: [] }))
+    listSelectionsMock.mockReset()
+    updateSelectionMock.mockReset()
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [] }))
   })
 
   it('stacks the stats row and main/sidebar split to a single column on narrow viewports', async () => {
@@ -143,5 +164,94 @@ describe('Dashboard.vue', () => {
     expect(wrapper.text()).toContain('no receipts yet')
     expect(wrapper.text()).not.toContain('total donated')
     expect(wrapper.text()).not.toContain('charities supported')
+  })
+
+  it('lists authored and adopted selections together, from the joined GET /design response', async () => {
+    listSelectionsMock.mockResolvedValue(
+      jsonResponse({
+        data: [
+          buildSelection({ design_id: 'd1', name: 'My Heart', design_owner_id: 'u1' }),
+          buildSelection({ design_id: 'd2', name: "Someone Else's Smiley", design_owner_id: 'u2', is_public: true }),
+        ],
+      }),
+    )
+
+    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+
+    expect(wrapper.text()).toContain('My Heart')
+    expect(wrapper.text()).toContain("Someone Else's Smiley")
+  })
+
+  it('only counts designs the user actually authored in the stat cards, not adopted ones', async () => {
+    listSelectionsMock.mockResolvedValue(
+      jsonResponse({
+        data: [
+          buildSelection({ design_id: 'd1', design_owner_id: 'u1', is_public: true }),
+          buildSelection({ design_id: 'd2', design_owner_id: 'u2', is_public: true }),
+        ],
+      }),
+    )
+
+    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+
+    expect(wrapper.text()).toContain('1')
+    expect(wrapper.text()).toContain('designs created')
+  })
+
+  it('shows "no longer available" for an adopted design that has since gone private', async () => {
+    listSelectionsMock.mockResolvedValue(
+      jsonResponse({
+        data: [buildSelection({ design_id: 'd2', name: 'Private Now', design_owner_id: 'u2', is_public: false })],
+      }),
+    )
+
+    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+
+    expect(wrapper.text()).toContain('no longer available')
+    expect(wrapper.text()).not.toContain('Private Now')
+  })
+
+  it('still shows full details for the viewer\'s own private design', async () => {
+    listSelectionsMock.mockResolvedValue(
+      jsonResponse({
+        data: [buildSelection({ design_id: 'd1', name: 'My Private Heart', design_owner_id: 'u1', is_public: false })],
+      }),
+    )
+
+    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+
+    expect(wrapper.text()).toContain('My Private Heart')
+    expect(wrapper.text()).not.toContain('no longer available')
+  })
+
+  it('toggles a design active via the active toggle', async () => {
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ is_active: false })] }))
+    updateSelectionMock.mockResolvedValue(jsonResponse({ data: [{ is_active: true }] }))
+
+    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+
+    const toggle = wrapper.get('[data-testid="active-toggle-d1"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(updateSelectionMock).toHaveBeenCalledWith('d1', { is_active: true })
+    expect(wrapper.get('[data-testid="active-toggle-d1"]').attributes('aria-checked')).toBe('true')
+  })
+
+  it('rolls back the active toggle and shows the server error on a one-active-per-user conflict', async () => {
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ is_active: false })] }))
+    updateSelectionMock.mockResolvedValue(
+      jsonResponse({ success: false, error: 'You already have another design active.' }, false),
+    )
+
+    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+
+    await wrapper.get('[data-testid="active-toggle-d1"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="active-toggle-d1"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.text()).toContain('You already have another design active.')
   })
 })

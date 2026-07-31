@@ -2,17 +2,23 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 const createDesignMock = vi.fn()
-const listDesignsMock = vi.fn()
+const listSelectionsMock = vi.fn()
 const getDesignMock = vi.fn()
 const updateDesignMock = vi.fn()
-const deleteDesignMock = vi.fn()
+const selectDesignMock = vi.fn()
+const updateSelectionMock = vi.fn()
+const deleteSelectionMock = vi.fn()
+const getSelectionCountMock = vi.fn()
 
 vi.mock('@/services/designs', () => ({
   createDesign: (...args: unknown[]) => createDesignMock(...args),
-  listDesigns: (...args: unknown[]) => listDesignsMock(...args),
+  listSelections: (...args: unknown[]) => listSelectionsMock(...args),
   getDesign: (...args: unknown[]) => getDesignMock(...args),
   updateDesign: (...args: unknown[]) => updateDesignMock(...args),
-  deleteDesign: (...args: unknown[]) => deleteDesignMock(...args),
+  selectDesign: (...args: unknown[]) => selectDesignMock(...args),
+  updateSelection: (...args: unknown[]) => updateSelectionMock(...args),
+  deleteSelection: (...args: unknown[]) => deleteSelectionMock(...args),
+  getSelectionCount: (...args: unknown[]) => getSelectionCountMock(...args),
 }))
 
 import { useDesignsStore } from '../stores/designs'
@@ -21,90 +27,160 @@ function jsonResponse(body: unknown, ok = true) {
   return { ok, json: async () => body } as Response
 }
 
-const design1 = { id: 'd1', user_id: 'u1', name: 'first', is_public: false, start_date: '2026-01-04', end_date: '2026-01-10', pattern: [0, 1, 2, 3, 4, 0, 0], repeat_indefinitely: false }
-const design2 = { id: 'd2', user_id: 'u1', name: 'second', is_public: true, start_date: '2026-01-04', end_date: '2026-01-10', pattern: [0, 0, 0, 0, 0, 0, 0], repeat_indefinitely: false }
+const design1 = { id: 'd1', user_id: 'u1', name: 'first', is_public: false, pattern: [0, 1, 2, 3, 4, 0, 0] }
+const selection1 = {
+  id: 's1',
+  user_id: 'u1',
+  design_id: 'd1',
+  is_active: true,
+  start_date: '2026-01-04',
+  repeat_indefinitely: false,
+  recurrence_end_date: null,
+}
+const joinedRow1 = {
+  ...selection1,
+  name: design1.name,
+  is_public: design1.is_public,
+  pattern: design1.pattern,
+  design_owner_id: design1.user_id,
+}
+const joinedRow2 = { ...joinedRow1, id: 's2', design_id: 'd2', name: 'second', is_active: false }
 
 describe('designs store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     createDesignMock.mockReset()
-    listDesignsMock.mockReset()
+    listSelectionsMock.mockReset()
     getDesignMock.mockReset()
     updateDesignMock.mockReset()
-    deleteDesignMock.mockReset()
+    selectDesignMock.mockReset()
+    updateSelectionMock.mockReset()
+    deleteSelectionMock.mockReset()
+    getSelectionCountMock.mockReset()
   })
 
-  it('fetchDesigns populates designs from the API response', async () => {
-    listDesignsMock.mockResolvedValue(jsonResponse({ data: [design1, design2] }))
+  it('fetchSelections populates selections from the API response', async () => {
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [joinedRow1, joinedRow2] }))
 
     const store = useDesignsStore()
-    await store.fetchDesigns()
+    await store.fetchSelections()
 
-    expect(store.designs).toEqual([design1, design2])
+    expect(store.selections).toEqual([joinedRow1, joinedRow2])
     expect(store.isLoading).toBe(false)
   })
 
-  it('fetchDesigns clears the list on a failed response', async () => {
-    listDesignsMock.mockResolvedValue(jsonResponse({}, false))
+  it('fetchSelections clears the list on a failed response', async () => {
+    listSelectionsMock.mockResolvedValue(jsonResponse({}, false))
 
     const store = useDesignsStore()
-    store.designs = [design1]
-    await store.fetchDesigns()
+    store.selections = [joinedRow1]
+    await store.fetchSelections()
 
-    expect(store.designs).toEqual([])
+    expect(store.selections).toEqual([])
   })
 
-  it('createDesign prepends the created design to the list on success', async () => {
-    createDesignMock.mockResolvedValue(jsonResponse({ data: [design1] }))
+  it('createDesign prepends a joined row (built from the design + selection response) to the list', async () => {
+    createDesignMock.mockResolvedValue(jsonResponse({ data: [{ design: design1, selection: selection1 }] }))
 
     const store = useDesignsStore()
-    const result = await store.createDesign({ start_date: '2026-01-04', pattern: [0, 1, 2, 3, 4, 0, 0] })
+    const result = await store.createDesign({ start_date: '2026-01-04', pattern: design1.pattern })
 
-    expect(result).toEqual(design1)
-    expect(store.designs).toEqual([design1])
+    expect(result).toEqual({ design: design1, selection: selection1 })
+    expect(store.selections).toEqual([joinedRow1])
   })
 
   it('createDesign returns null and leaves the list untouched on failure', async () => {
     createDesignMock.mockResolvedValue(jsonResponse({}, false))
 
     const store = useDesignsStore()
-    const result = await store.createDesign({ start_date: '2026-01-04', pattern: [0, 1, 2, 3, 4, 0, 0] })
+    const result = await store.createDesign({ start_date: '2026-01-04', pattern: design1.pattern })
 
     expect(result).toBeNull()
-    expect(store.designs).toEqual([])
+    expect(store.selections).toEqual([])
   })
 
-  it('updateDesign replaces the matching entry in the list', async () => {
-    const updated = { ...design1, name: 'renamed' }
-    updateDesignMock.mockResolvedValue(jsonResponse({ data: [updated] }))
+  it('updateDesignContent updates content fields on the matching row without touching its selection fields', async () => {
+    const updatedDesign = { ...design1, name: 'renamed' }
+    updateDesignMock.mockResolvedValue(jsonResponse({ data: [updatedDesign] }))
 
     const store = useDesignsStore()
-    store.designs = [design1, design2]
-    const result = await store.updateDesign('d1', { name: 'renamed' })
+    store.selections = [joinedRow1, joinedRow2]
+    const result = await store.updateDesignContent('d1', { name: 'renamed' })
 
-    expect(result).toEqual(updated)
-    expect(store.designs).toEqual([updated, design2])
+    expect(result).toEqual(updatedDesign)
+    expect(store.selections[0]!.name).toBe('renamed')
+    expect(store.selections[0]!.is_active).toBe(true) // untouched
+    expect(store.selections[1]).toEqual(joinedRow2)
   })
 
-  it('deleteDesign removes the design from the list on success', async () => {
-    deleteDesignMock.mockResolvedValue(jsonResponse({}))
+  it('setActive updates is_active on the matching row on success', async () => {
+    updateSelectionMock.mockResolvedValue(jsonResponse({ data: [{ ...selection1, is_active: false }] }))
 
     const store = useDesignsStore()
-    store.designs = [design1, design2]
-    const ok = await store.deleteDesign('d1')
+    store.selections = [joinedRow1]
+    const result = await store.setActive('d1', false)
+
+    expect(result).toEqual({ ok: true })
+    expect(store.selections[0]!.is_active).toBe(false)
+  })
+
+  it('setActive returns the server error message and leaves the list untouched on a conflict', async () => {
+    updateSelectionMock.mockResolvedValue(
+      jsonResponse({ success: false, error: 'You already have another design active.' }, false),
+    )
+
+    const store = useDesignsStore()
+    store.selections = [joinedRow1]
+    const result = await store.setActive('d1', true)
+
+    expect(result).toEqual({ ok: false, error: 'You already have another design active.' })
+    expect(store.selections[0]!.is_active).toBe(true) // untouched
+  })
+
+  it('updateSelectionSchedule updates schedule fields on the matching row without touching content fields', async () => {
+    const updatedSelection = { ...selection1, start_date: '2026-02-01', repeat_indefinitely: true, recurrence_end_date: null }
+    updateSelectionMock.mockResolvedValue(jsonResponse({ data: [updatedSelection] }))
+
+    const store = useDesignsStore()
+    store.selections = [joinedRow1]
+    const result = await store.updateSelectionSchedule('d1', { start_date: '2026-02-01', repeat_indefinitely: true })
+
+    expect(result).toEqual(updatedSelection)
+    expect(store.selections[0]!.start_date).toBe('2026-02-01')
+    expect(store.selections[0]!.repeat_indefinitely).toBe(true)
+    expect(store.selections[0]!.name).toBe(joinedRow1.name) // content untouched
+  })
+
+  it('updateSelectionSchedule returns null and leaves the list untouched on failure', async () => {
+    updateSelectionMock.mockResolvedValue(jsonResponse({}, false))
+
+    const store = useDesignsStore()
+    store.selections = [joinedRow1]
+    const result = await store.updateSelectionSchedule('d1', { start_date: '2026-02-01' })
+
+    expect(result).toBeNull()
+    expect(store.selections).toEqual([joinedRow1])
+  })
+
+  it('removeSelection removes the matching row on success', async () => {
+    deleteSelectionMock.mockResolvedValue(jsonResponse({}))
+
+    const store = useDesignsStore()
+    store.selections = [joinedRow1, joinedRow2]
+    const ok = await store.removeSelection('d1')
 
     expect(ok).toBe(true)
-    expect(store.designs).toEqual([design2])
+    expect(store.selections).toEqual([joinedRow2])
   })
 
-  it('deleteDesign leaves the list untouched on failure', async () => {
-    deleteDesignMock.mockResolvedValue(jsonResponse({}, false))
+  it('removeSelection leaves the list untouched on failure', async () => {
+    deleteSelectionMock.mockResolvedValue(jsonResponse({}, false))
 
     const store = useDesignsStore()
-    store.designs = [design1]
-    const ok = await store.deleteDesign('d1')
+    store.selections = [joinedRow1]
+    const ok = await store.removeSelection('d1')
 
     expect(ok).toBe(false)
-    expect(store.designs).toEqual([design1])
+    expect(store.selections).toEqual([joinedRow1])
   })
 })
