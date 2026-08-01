@@ -93,13 +93,7 @@ const steps = STEPS
   <div style="font-family:'IBM Plex Sans',sans-serif;background:oklch(14% 0.012 250);color:oklch(96% 0.004 250);min-height:100vh;">
 
     <!-- NAV -->
-    <AppNavbar sticky show-links>
-      <template #links>
-        <a href="#how" style="color:oklch(85% 0.006 250);">how it works</a>
-        <a href="#give" style="color:oklch(85% 0.006 250);">pricing</a>
-        <a href="#community" style="color:oklch(85% 0.006 250);">community</a>
-      </template>
-    </AppNavbar>
+    <AppNavbar />
 
     <!-- HERO -->
     <section style="position:relative;overflow:hidden;padding:clamp(56px,8vw,110px) clamp(20px,4vw,48px) 70px;background-image:radial-gradient(oklch(100% 0 0 / 0.05) 1px, transparent 1px);background-size:22px 22px;">
