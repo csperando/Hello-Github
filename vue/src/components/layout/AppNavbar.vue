@@ -48,20 +48,22 @@
                 <RouterLink v-if="authStore.isAdmin" to="/admin" class="nav-link">admin</RouterLink>
                 <LogoutButton />
             </template>
-
+            
             <template v-else>
                 <a href="#how" class="nav-link">how it works</a>
                 <a href="#give" class="nav-link">pricing</a>
                 <a href="#community" class="nav-link">community</a>
                 <BaseButton variant="secondary" @click="connect" class="button-dark">sign in</BaseButton>
-                <BaseButton as="router-link" to="/signup" class="button-green"> connect github →</BaseButton>
+                <RouterLink to="/signup">
+                    <BaseButton class="button-green"> connect github →</BaseButton>
+                </RouterLink>
             </template>
         </nav>
     </header>
-
+    
     <!-- desktop navbar -->
     <header 
-        :class='["hidden md:flex lg:flex flex-row flex-wrap items-center justify-between gap-x-4 gap-y-2"
+    :class='["hidden md:flex lg:flex flex-row flex-wrap items-center justify-between gap-x-4 gap-y-2"
         , sticky ? "header-sticky" : "header-not-sticky"]' >
 
         <Commitment />
@@ -74,16 +76,18 @@
             </template>
 
             <template v-else>
-                <a href="#how" class="nav-link">how it works</a>
-                <a href="#give" class="nav-link">pricing</a>
-                <a href="#community" class="nav-link">community</a>
+                <RouterLink to="/#how" class="nav-link">how it works</RouterLink>
+                <RouterLink to="/#give" class="nav-link">pricing</RouterLink>
+                <RouterLink to="/#community" class="nav-link">community</RouterLink>
             </template>
             
             <span v-if="!authStore.isLoading" class="flex flex-wrap items-center gap-2.5">
                 <NavAccount v-if="authStore.isAuthenticated" />
                 <template v-else>
                     <BaseButton variant="secondary" @click="connect" class="button-dark">sign in</BaseButton>
-                    <BaseButton as="router-link" to="/signup" class="button-green"> connect github →</BaseButton>
+                    <RouterLink to="/signup">
+                        <BaseButton class="button-green"> connect github →</BaseButton>
+                    </RouterLink>
                 </template>
             </span>
         </nav>
@@ -113,21 +117,19 @@
     .nav-link {
         color: oklch(85% 0.006 250);
     }
-
-    /* TODO - refactor button styles in button component */
-    .button-dark {
-        font-size: 13.5px;
-        color: oklch(94% 0.004 250);
-        border: 1px solid oklch(100% 0 0 / 0.18);
-        border-radius: 6px;
-        padding: 8px 14px;
+    
+    .nav-link:hover {
+        text-decoration: underline;
     }
 
-    .button-green {
-        font-size: 13.5px;
-        border-radius: 6px;
-        padding: 9px 16px;
-        text-decoration:none;
+    /* 
+        TODO - maybe? 
+        if this 'dark' style becomes repeated, then
+        refactor as a variant in the base button component 
+    */
+    .button-dark {
+        color: oklch(94% 0.004 250);
+        border: 1px solid oklch(100% 0 0 / 0.18);   
     }
 
 </style>

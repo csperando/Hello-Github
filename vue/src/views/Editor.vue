@@ -542,7 +542,7 @@ async function onContinueToCheckout() {
           :disabled="isSaving"
           style="font-size:13.5px;background:oklch(19% 0.012 250);color:oklch(85% 0.006 250);border:1px solid oklch(100% 0 0 / 0.14);border-radius:7px;padding:10px 18px;"
         >{{ loadedDesign ? 'save changes' : 'save as draft' }}</BaseButton>
-        <BaseButton @click="onContinueToCheckout" :loading="isSaving" style="font-size:13.5px;border-radius:7px;padding:10px 18px;text-decoration:none;">continue to checkout →</BaseButton>
+        <BaseButton @click="onContinueToCheckout" :loading="isSaving" >continue to checkout →</BaseButton>
       </div>
     </div>
 

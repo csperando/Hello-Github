@@ -24,4 +24,10 @@
         color: oklch(72% 0.16 145);
         animation: blink 1.1s step-end infinite;
     }
+
+
+    @keyframes blink {
+        0%, 49% { opacity: 1; }
+        50%, 100% { opacity: 0; }
+    }
 </style>
