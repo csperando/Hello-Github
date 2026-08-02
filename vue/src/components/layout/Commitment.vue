@@ -9,19 +9,19 @@
         display: flex;
         align-items: center;
         gap: 2px;
-        font-family:'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-weight: 600;
         font-size: 19px;
         letter-spacing: -0.02em;
-        color: oklch(96% 0.004 250);
+        color: var(--color-text);
     }
 
     .ment {
-        color: oklch(72% 0.16 145);
+        color: var(--color-accent-bright);
     }
 
     ._ {
-        color: oklch(72% 0.16 145);
+        color: var(--color-accent-bright);
         animation: blink 1.1s step-end infinite;
     }
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-    import AccountButton from '@/components/layout/AccountButton.vue';
-    import LogoutButton from '@/components/layout/LogoutButton.vue';
+    import AccountButton from "@/components/layout/AccountButton.vue"
+    import LogoutButton from "@/components/layout/LogoutButton.vue"
 </script>
 
 <template>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
     interface iBaseButton {
         loading?: boolean
-        variant?: 'primary' | 'secondary'
-        as?: 'button'
+        variant?: "primary" | "secondary"
+        as?: "button"
         disabled?: boolean
     }
 
@@ -45,8 +45,8 @@
         width: 100%;
         height: 100%;
         border-radius: 50%;
-        border: 2px solid oklch(14% 0.03 145 / 0.35);
-        border-top-color: oklch(14% 0.03 145);
+        border: 2px solid oklch(14% 0.03 145 / 0.35); /* var(--color-accent-on) at 35% alpha - no alpha-suffix support for CSS vars here */
+        border-top-color: var(--color-accent-on);
         display: inline-block;
         animation:spin 0.7s linear infinite;
     }

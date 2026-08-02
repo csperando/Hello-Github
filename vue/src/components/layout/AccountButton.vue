@@ -1,15 +1,15 @@
 <script setup lang="ts">
-    import { computed } from 'vue'
-    import { useAuthStore } from '@/stores/auth'
-    import UserAvatarChip from '@/components/ui/UserAvatarChip.vue'
+    import { computed } from "vue"
+    import { useAuthStore } from "@/stores/auth"
+    import UserAvatarChip from "@/components/ui/UserAvatarChip.vue"
 
     const authStore = useAuthStore();
 
     const displayName = computed(() => {
-        return authStore.user?.display_name || authStore.user?.github_username || '';
+        return authStore.user?.display_name || authStore.user?.github_username || "";
     });
 
-    const initial = computed(() => (displayName.value.charAt(0) || '?').toUpperCase());
+    const initial = computed(() => (displayName.value.charAt(0) || "?").toUpperCase());
 </script>
 
 <template>

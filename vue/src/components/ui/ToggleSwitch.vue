@@ -1,21 +1,49 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-
-const props = defineProps<{
-  checked: boolean
-}>()
-
-const trackBg = computed(() => (props.checked ? 'oklch(58% 0.16 145)' : 'oklch(100% 0 0 / 0.14)'))
-const knobLeft = computed(() => (props.checked ? '18px' : '2px'))
+    defineProps<{
+        checked: boolean
+    }>()
 </script>
 
 <template>
-  <button
-    type="button"
-    role="switch"
-    :aria-checked="checked"
-    :style="{ flex: 'none', width: '38px', height: '22px', borderRadius: '11px', background: trackBg, position: 'relative', border: 'none', padding: '0', cursor: 'pointer' }"
-  >
-    <span :style="{ position: 'absolute', top: '2px', left: knobLeft, width: '18px', height: '18px', borderRadius: '50%', background: 'oklch(96% 0.004 250)', transition: 'left 0.15s' }"></span>
-  </button>
+    <button
+        type="button"
+        role="switch"
+        :aria-checked="checked"
+        :class="['toggle-track', checked ? 'is-checked' : '']"
+    >
+        <span :class="['toggle-knob', checked ? 'is-checked' : '']"></span>
+    </button>
 </template>
+
+<style scoped>
+    .toggle-track {
+        flex: none;
+        width: 38px;
+        height: 22px;
+        border-radius: 11px;
+        background: var(--color-border-mid);
+        position: relative;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+    }
+
+    .toggle-track.is-checked {
+        background: var(--color-accent);
+    }
+
+    .toggle-knob {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--color-text);
+        transition: left 0.15s;
+    }
+
+    .toggle-knob.is-checked {
+        left: 18px;
+    }
+</style>

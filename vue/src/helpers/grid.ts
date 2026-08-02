@@ -1,9 +1,11 @@
+// Mirrors main.css's --color-grid-0..4 tokens exactly - kept in sync by hand
+// since this is consumed as per-cell data, not CSS, and can't reference var().
 export const LEVEL_COLORS = [
-  'oklch(24% 0.01 250)',
-  'oklch(32% 0.07 145)',
-  'oklch(45% 0.12 145)',
-  'oklch(58% 0.16 145)',
-  'oklch(72% 0.19 145)',
+  "oklch(24% 0.01 250)",
+  "oklch(32% 0.07 145)",
+  "oklch(45% 0.12 145)",
+  "oklch(58% 0.16 145)",
+  "oklch(72% 0.19 145)",
 ]
 
 /** Most recent Sunday on/before `date` (UTC, date-only - time of day is ignored). */

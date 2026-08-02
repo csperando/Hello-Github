@@ -1,13 +1,13 @@
 <script setup lang="ts">
-    import { useRouter } from 'vue-router'
-    import { useAuthStore } from '@/stores/auth'
+    import { useRouter } from "vue-router"
+    import { useAuthStore } from "@/stores/auth"
 
     const authStore = useAuthStore();
     const router = useRouter();
 
     async function handleLogout() {
         await authStore.logout();
-        router.push('/');
+        router.push("/");
     }
 </script>
 
@@ -16,13 +16,13 @@
 </template>
 
 <style scoped>
-    /* TODO - refactor using button component */
+    /* TODO - refactor using button component; identical to Hamburger.vue's .menu-button */
     .logout-button {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-size: 12px;
-        color: oklch(65% 0.01 250);
+        color: var(--color-text-muted-4);
         background: transparent;
-        border: 1px solid oklch(100% 0 0 / 0.14);
+        border: 1px solid var(--color-border-mid);
         border-radius: 6px;
         padding: 6px 10px;
         cursor: pointer;

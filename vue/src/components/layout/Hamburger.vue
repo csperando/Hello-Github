@@ -8,11 +8,11 @@
 
 <style scoped>
     .menu-button {
-        font-family: 'IBM Plex Mono', monospace;
+        font-family: var(--font-mono);
         font-size: 12px;
-        color: oklch(65% 0.01 250);
+        color: var(--color-text-muted-4);
         background: transparent;
-        border: 1px solid oklch(100% 0 0 / 0.14);
+        border: 1px solid var(--color-border-mid);
         border-radius: 6px;
         padding: 6px 10px;
         cursor: pointer;
