@@ -126,6 +126,7 @@ router.patch("/:userId", [vUser.patchUserReq], async (req: Request, res: Respons
         res.status(200).json(response);
 
     } catch(err) {
+        logger.info(err);
         logger.error(err);
         next(err);
     }
@@ -145,5 +146,3 @@ router.delete("/:userId", [requireRole("admin")], async (req: Request, res: Resp
 });
 
 export default router;
-
-export const userRouter = router;

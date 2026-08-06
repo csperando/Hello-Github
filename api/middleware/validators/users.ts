@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { iResponse } from "../../models/response";
 import { validateProfileInput } from "../../models/users";
-import { UserService } from "../../services/users.service";
-import { logger } from "../../config/logger";
 
 export function patchUserReq(req: Request, res: Response, next: NextFunction) {
     if (!req.user) {
