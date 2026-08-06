@@ -12,45 +12,68 @@
         },
     )
 
-    const stepMeta = computed(() =>
-        props.steps.map((label, i) => {
-            const n = i + 1
-            const active = n === props.current
-            const complete = n < props.current
-            return {
-                n,
-                label,
-                showLine: i < props.steps.length - 1,
-                dotBg: complete ? "var(--color-accent)" : active ? "var(--color-accent-soft)" : "transparent",
-                dotColor: complete ? "var(--color-accent-on)" : active ? "var(--color-accent-bright)" : "var(--color-text-muted-5)",
-                dotBorder: complete ? "transparent" : active ? "var(--color-accent)" : "var(--color-border-strong)",
-                labelColor: active || complete ? "var(--color-text)" : "var(--color-text-muted-5)",
-            }
+    const stepData = computed(() =>
+        props.steps.map((text, i) => {
+            const number = i + 1;
+            const status = (i === props.current) ? "active"
+                : (i < props.current) ? "complete"
+                : "todo";
+            
+            return { number, text, status };
         }),
     )
 </script>
 
 <template>
     <div class="step-progress">
-        <template v-for="s in stepMeta" :key="s.n">
+        <template v-for="(s, i) in stepData" :key="i">
             <div class="step">
-                <div class="step-dot-label">
-                    <span
-                        class="step-dot"
-                        :style="{ background: s.dotBg, color: s.dotColor, border: `1px solid ${s.dotBorder}` }"
-                    >{{ s.n }}</span>
-                    <span :style="{ color: s.labelColor }">{{ s.label }}</span>
+                <div :class="['step-dot-label', s.status]">
+                    <span class="step-dot">{{ s.number }}</span>
+                    <span class="step-text">{{ s.text }}</span>
                 </div>
-                <span v-if="s.showLine" class="step-line" :style="{ width: lineWidth }"></span>
+                <span v-if="i < steps.length-1" class="step-line" :style="{ width: lineWidth }"></span>
             </div>
         </template>
     </div>
 </template>
 
 <style scoped>
+    .complete>.step-dot {
+        background: var(--color-accent);
+        color: var(--color-accent-on);
+        border: 1px solid transparent;
+    }
+    
+    .complete>.step-text {
+        color: var(--color-text);
+    }
+    
+    .active>.step-dot {
+        background: var(--color-accent-soft);
+        color: var(--color-accent-bright);
+        border: 1px solid var(--color-accent);
+    }
+    
+    .active>.step-text {
+        color: var(--color-text);
+    }
+    
+    .todo>.step-dot {
+        background: transparent;
+        color: var(--color-text-muted-5);
+        border: 1px solid var(--color-border-strong);
+
+    }
+
+    .todo>.step-text {
+        color: var(--color-text-muted-5);
+    }
+
     .step-progress {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 10px;
         margin-bottom: 32px;
         font-family: var(--font-mono);

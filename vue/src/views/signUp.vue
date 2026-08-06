@@ -139,7 +139,6 @@
 
                 <!-- CARD -->
                 <BaseCard>
-
                     <!-- STEP 1: CONNECT GITHUB -->
                     <div v-if="step === 1" class="step-centered">
                         <div class="connect-icon">
