@@ -36,9 +36,9 @@ export class UserService {
         }
     }
     
-    public async getUserByGitHubId(ghId: number) {
+    public async getUserByGitHubUsername(ghUsername: string): Promise<iUser[]> {
         try {
-            const users = await this.repo.getUserByGitHubId(ghId) || [];
+            const users = await this.repo.getUserByGitHubUsername(ghUsername) || [];
             return users;
 
         } catch(err: any) {

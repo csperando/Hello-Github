@@ -6,7 +6,7 @@ import { iUser, iGitHubUpsertInput } from "../models/users";
 export interface iUserRepo {
     getAllUsers: () => Promise<any>;
     getUserById: (userId: string) => Promise<any>;
-    getUserByGitHubId: (userId: number) => Promise<any>;
+    getUserByGitHubUsername: (ghUsername: string) => Promise<any>;
     upsertFromGitHub: (input: iGitHubUpsertInput) => Promise<any>;
 }
 
@@ -78,7 +78,7 @@ const repo = (): iUserRepo => {
         }
     }
 
-    const getUserByGitHubId = async (ghId: number) => {
+    const getUserByGitHubUsername = async (ghUsername: string) => {
         try {
             const sqlString = `
                 SELECT u.id
@@ -100,10 +100,10 @@ const repo = (): iUserRepo => {
                     , COALESCE(p.use_real_email, FALSE) AS use_real_email
                 FROM users u
                 LEFT JOIN user_profiles p ON p.user_id = u.id
-                WHERE u.github_id = $1;
+                WHERE u.github_username = $1;
             `
 
-            const result = await pool.query(sqlString, [ghId]);
+            const result = await pool.query(sqlString, [ghUsername]);
             return result.rows[0];
 
         } catch(err: any) {
@@ -167,7 +167,7 @@ const repo = (): iUserRepo => {
     return {
         getAllUsers,
         getUserById,
-        getUserByGitHubId,
+        getUserByGitHubUsername,
         upsertFromGitHub,
     }
 };

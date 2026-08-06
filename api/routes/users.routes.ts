@@ -2,65 +2,18 @@ import { Router, NextFunction, Request, Response } from "express";
 import { iResponse } from "../models/response";
 import { UserService } from "../services/users.service";
 import { requireAuth, requireRole } from "../middleware/auth.middleware";
-import { iProfileUpdateInput, toPublicUser } from "../models/users";
+import { extractProfileInput, toPublicUser } from "../models/users";
+import * as vUser from "../middleware/validators/users";
 import { logger } from "../config/logger";
 
 const router = Router();
 let userService: UserService;
 
-const VALID_TIME_ZONES = new Set(Intl.supportedValuesOf("timeZone"));
-
-/**
- * Picks only the known profile fields out of a PATCH body (silently ignoring
- * anything else, e.g. role/is_active, so they can't be mass-assigned), and
- * validates the type of whichever of those fields are actually present.
- */
-function extractProfileInput(body: Record<string, unknown>): { input: iProfileUpdateInput; error?: string } {
-    const input: iProfileUpdateInput = {};
-
-    if ("display_name" in body) {
-        if (typeof body.display_name !== "string") {
-            return { input, error: "display_name must be a string." };
-        }
-        input.display_name = body.display_name;
-    }
-
-    if ("default_charity" in body) {
-        if (typeof body.default_charity !== "string") {
-            return { input, error: "default_charity must be a string." };
-        }
-        input.default_charity = body.default_charity;
-    }
-
-    if ("public_opt_in" in body) {
-        if (typeof body.public_opt_in !== "boolean") {
-            return { input, error: "public_opt_in must be a boolean." };
-        }
-        input.public_opt_in = body.public_opt_in;
-    }
-
-    if ("timezone" in body) {
-        if (typeof body.timezone !== "string" || !VALID_TIME_ZONES.has(body.timezone)) {
-            return { input, error: "timezone must be a recognized IANA time zone name." };
-        }
-        input.timezone = body.timezone;
-    }
-
-    if ("use_real_email" in body) {
-        if (typeof body.use_real_email !== "boolean") {
-            return { input, error: "use_real_email must be a boolean." };
-        }
-        input.use_real_email = body.use_real_email;
-    }
-
-    return { input };
-}
-
 function isActiveAdmin(user: any): boolean {
     return !!user && !Array.isArray(user) && user.role === "admin" && user.is_active !== false;
 }
 
-router.all("/{*splat}", [], async (req: Request, res: Response, next: NextFunction) => {
+router.all("/{*splat}", [requireAuth], async (req: Request, res: Response, next: NextFunction) => {
     userService = new UserService();
     next();
 });
@@ -68,7 +21,7 @@ router.all("/{*splat}", [], async (req: Request, res: Response, next: NextFuncti
 /**
  * Get all users
  */
-router.get("/", requireAuth, requireRole("admin"), async (req: Request, res: Response, next: NextFunction) => {
+router.get("/", [requireRole("admin")], async (req: Request, res: Response, next: NextFunction) => {
     try {
         const users = await userService.getAllUsers();
         const response: iResponse = { success: true, status: 200, data: users };
@@ -82,7 +35,7 @@ router.get("/", requireAuth, requireRole("admin"), async (req: Request, res: Res
 /**
  * Get user by id
  */
-router.get("/:userId", requireAuth, requireRole("admin"), async (req: Request, res: Response, next: NextFunction) => {
+router.get("/:userId", [requireRole("admin")], async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = (req.params.userId) as string || "0";
         const users = await userService.getUserById(userId);
@@ -102,12 +55,12 @@ router.get("/:userId", requireAuth, requireRole("admin"), async (req: Request, r
 });
 
 /**
- * Get user by id
+ * Get user by github username
  */
-router.get("/gh/:ghId", requireAuth, requireRole("admin"), async (req: Request, res: Response, next: NextFunction) => {
+router.get("/gh/:ghUsername", async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const ghId = (req.params.ghId) as string || "0";
-        const users = await userService.getUserByGitHubId(parseInt(ghId));
+        const ghUsername = (req.params.ghUsername) as string || "0";
+        const users = await userService.getUserByGitHubUsername(ghUsername);
 
         const response: iResponse = {
             status: 200,
@@ -128,8 +81,8 @@ router.get("/gh/:ghId", requireAuth, requireRole("admin"), async (req: Request, 
  */
 router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const response: iResponse = { success: false, status: 403 };
-        res.status(403).json(response);
+        const response: iResponse = { success: false, status: 405 };
+        res.status(405).json(response);
     } catch(err) {
         logger.error(err);
         next(err);
@@ -140,7 +93,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
  * Update the authenticated user's own profile (display name, default
  * charity, public gallery opt-in), or - for an admin - another user's.
  */
-router.patch("/:userId", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+router.patch("/:userId", [vUser.patchUserReq], async (req: Request, res: Response, next: NextFunction) => {
     try {
         const targetUserId = req.params.userId as string;
         const requestingUserId = req.user!.id;
@@ -165,13 +118,7 @@ router.patch("/:userId", requireAuth, async (req: Request, res: Response, next: 
             }
         }
 
-        const { input, error } = extractProfileInput(req.body ?? {});
-
-        if (error) {
-            const response: iResponse = { status: 400, success: false, error };
-            res.status(400).json(response);
-            return;
-        }
+        const input = extractProfileInput(req.body ?? {});
 
         const user = await userService.updateProfile(targetUserId, input);
         const responseData = isSelfService ? toPublicUser(user) : user;
@@ -187,10 +134,10 @@ router.patch("/:userId", requireAuth, async (req: Request, res: Response, next: 
 /**
  * Delete an existing user by id
  */
-router.delete("/:userId", async (req: Request, res: Response, next: NextFunction) => {
+router.delete("/:userId", [requireRole("admin")], async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const response: iResponse = { success: false, status: 403 };
-        res.status(403).json(response);
+        const response: iResponse = { success: false, status: 405 };
+        res.status(405).json(response);
     } catch(err) {
         logger.error(err);
         next(err);
@@ -198,3 +145,5 @@ router.delete("/:userId", async (req: Request, res: Response, next: NextFunction
 });
 
 export default router;
+
+export const userRouter = router;

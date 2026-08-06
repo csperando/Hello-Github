@@ -1,5 +1,8 @@
+import { iRequestErrors } from "./response";
+
 export const ROLES = ["admin", "user"] as const;
 export type Role = typeof ROLES[number];
+export const VALID_TIME_ZONES = new Set(Intl.supportedValuesOf("timeZone"));
 
 export interface iUser {
     id: String; // uuid
@@ -103,4 +106,80 @@ export interface iProfileUpdateInput {
     public_opt_in?: Boolean;
     timezone?: String;
     use_real_email?: Boolean;
+}
+
+/**
+ * Picks only the known profile fields out of a PATCH body (silently ignoring
+ * anything else, e.g. role/is_active, so they can't be mass-assigned), and
+ * validates the type of whichever of those fields are actually present.
+ */
+export function extractProfileInput(body: Record<string, unknown>): iProfileUpdateInput {
+    const input: iProfileUpdateInput = {};
+
+    if ("display_name" in body) input.display_name = body.display_name as string;
+
+    if ("default_charity" in body) input.default_charity = body.default_charity as string;
+
+    if ("public_opt_in" in body) input.public_opt_in = body.public_opt_in as boolean;
+
+    if ("timezone" in body) input.timezone = body.timezone as string;
+
+    if ("use_real_email" in body) input.use_real_email = body.use_real_email as boolean;
+
+    return input;
+}
+
+export function validateProfileInput(body: Record<string, unknown>): iRequestErrors[] {
+    const errors: iRequestErrors[] = [];
+
+    display_name: {
+        if ("display_name" in body) {
+            if (typeof body.display_name !== "string") {
+                errors.push({property: "display_name", error: "display_name must be a string."});
+                break display_name;
+            }
+    
+            if (body.display_name.length < 3) {
+                errors.push({property: "display_name", error: "display_name must be at least 3 characters"});
+            }
+        }
+    }
+
+    default_charity: {
+        if ("default_charity" in body) {
+            if (typeof body.default_charity !== "string") {
+                errors.push({property: "default_charity", error: "default_charity must be a string."});
+                break default_charity;
+            }
+        }
+    }
+
+    public_opt_in: {
+        if ("public_opt_in" in body) {
+            if (typeof body.public_opt_in !== "boolean") {
+                errors.push({property: "public_opt_in", error: "public_opt_in must be a boolean."});
+                break public_opt_in;
+            }
+        }
+    }
+
+    timezone: {
+        if ("timezone" in body) {
+            if (typeof body.timezone !== "string" || !VALID_TIME_ZONES.has(body.timezone)) {
+                errors.push({property: "timezone", error: "timezone must be a recognized IANA time zone name."});
+                break timezone;
+            }
+        }
+    }
+
+    use_real_email: {
+        if ("use_real_email" in body) {
+            if (typeof body.use_real_email !== "boolean") {
+                errors.push({property: "use_real_email", error: "use_real_email must be a boolean."});
+                break use_real_email;
+            }
+        }
+    }
+
+    return errors;
 }
