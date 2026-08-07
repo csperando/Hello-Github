@@ -45,7 +45,11 @@
 
 <style scoped>
     .charity-results {
+        padding: 10px;
         margin-bottom: 18px;
+        background-color: var(--color-bg-inset);
+        max-height: 500px;
+        overflow-y: scroll;
     }
 
     .results-list {

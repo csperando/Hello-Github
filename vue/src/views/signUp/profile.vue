@@ -173,6 +173,7 @@
             :query="searchQuery"
             :selected-id="selectedSearchCharity?.id ?? null"
             @select="handleCharitySearchSelect"
+            v-show="searchResults.length"
         />
 
         <!--
@@ -209,15 +210,23 @@
         </div>
         <p class="hint">used to schedule your commits early in your own morning, not GitHub's.</p>
 
-        <div class="toggle-row toggle-row-wide gap-2">
-            <div>
-                <div class="toggle-row-title">use my real GitHub email for commits</div>
-                <div class="toggle-row-desc">off (recommended) keeps your real email out of the public commit history, using a private GitHub-provided address instead</div>
+        <div class="toggle-row flex-col items-start justify-start">
+            <div class="flex flex-row justify-center items-center gap-2">
+                <div>
+                    <div class="toggle-row-title">use my real GitHub email for commits</div>
+                    <div class="toggle-row-desc">off (recommended) keeps your real email out of the public commit history, using a private GitHub-provided address instead</div>
+                </div>
+                <ToggleSwitch data-testid="use-real-email-toggle" :checked="useRealEmail" @click="toggleUseRealEmail" />
             </div>
-            <ToggleSwitch data-testid="use-real-email-toggle" :checked="useRealEmail" @click="toggleUseRealEmail" />
+
+            <div class="overflow-hidden">
+                <div class="git-config-preview">
+                    <div class="line">git config --global user.name "{{ ghHandle }}"</div>
+                    <div class="line">git config --global user.email "{{ effectiveEmail }}"</div>
+                </div>
+            </div>
         </div>
 
-        <GitConfigPreview :username="ghHandle" :email="effectiveEmail" />
 
         <div v-if="saveError" class="save-error">{{ saveError }}</div>
 
@@ -398,6 +407,19 @@
     .toggle-row-desc {
         font-size: 12.5px;
         color: var(--color-text-muted-4);
+    }
+
+    .git-config-preview {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        line-height: 1.7;
+        color: var(--color-text-muted-3);
+        background: var(--color-bg-inset);
+        border: 1px solid var(--color-border-mid);
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin: 10px 0 24px;
+        /* white-space: pre; */
     }
 
     .select-wrap {
