@@ -63,6 +63,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
             github_id: githubId,
             github_username: username,
             github_email: `${username}@example.com`,
+            github_noreply_email: `${githubId}+${username}@users.noreply.github.com`,
             github_node_id: `node-${githubId}`,
             github_profile_url: `https://github.com/${username}`,
             avatar_url: `https://avatars.githubusercontent.com/u/${Math.abs(githubId)}?v=4`,

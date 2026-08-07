@@ -14,6 +14,7 @@ describe("users.repo profile join", () => {
         github_id: testGitHubId,
         github_username: "octocat-join-test",
         github_email: "octocat-join-test@example.com",
+        github_noreply_email: `${testGitHubId}+octocat-join-test@users.noreply.github.com`,
         github_node_id: "MDQ6VXNlcjQ=",
         github_profile_url: "https://github.com/octocat-join-test",
         avatar_url: "https://avatars.githubusercontent.com/u/4?v=4",

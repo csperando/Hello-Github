@@ -104,6 +104,7 @@ describe("0001_create_user_profiles migration", () => {
             github_id: testGitHubId,
             github_username: "octocat-profile-test",
             github_email: "octocat-profile-test@example.com",
+            github_noreply_email: `${testGitHubId}+octocat-profile-test@users.noreply.github.com`,
             github_node_id: "MDQ6VXNlcjI=",
             github_profile_url: "https://github.com/octocat-profile-test",
             avatar_url: "https://avatars.githubusercontent.com/u/2?v=4",

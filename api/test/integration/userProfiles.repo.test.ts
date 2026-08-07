@@ -14,6 +14,7 @@ describe("UserProfilesRepository.upsert", () => {
         github_id: testGitHubId,
         github_username: "octocat-profile-repo-test",
         github_email: "octocat-profile-repo-test@example.com",
+        github_noreply_email: `${testGitHubId}+octocat-profile-repo-test@users.noreply.github.com`,
         github_node_id: "MDQ6VXNlcjM=",
         github_profile_url: "https://github.com/octocat-profile-repo-test",
         avatar_url: "https://avatars.githubusercontent.com/u/3?v=4",

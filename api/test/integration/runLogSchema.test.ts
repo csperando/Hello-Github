@@ -22,6 +22,7 @@ describe("0005_create_run_log migration", () => {
             github_id: testGitHubId,
             github_username: "octocat-runlog-schema-test",
             github_email: "octocat-runlog-schema-test@example.com",
+            github_noreply_email: `${testGitHubId}+octocat-runlog-schema-test@users.noreply.github.com`,
             github_node_id: "MDE6VXNlcjEx",
             github_profile_url: "https://github.com/octocat-runlog-schema-test",
             avatar_url: "https://avatars.githubusercontent.com/u/11?v=4",

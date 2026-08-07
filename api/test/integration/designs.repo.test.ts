@@ -15,6 +15,7 @@ describe("DesignsRepository", () => {
         github_id: testGitHubId,
         github_username: "octocat-designs-repo-test",
         github_email: "octocat-designs-repo-test@example.com",
+        github_noreply_email: `${testGitHubId}+octocat-designs-repo-test@users.noreply.github.com`,
         github_node_id: "MDQ6VXNlcjY=",
         github_profile_url: "https://github.com/octocat-designs-repo-test",
         avatar_url: "https://avatars.githubusercontent.com/u/6?v=4",

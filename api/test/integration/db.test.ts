@@ -24,6 +24,7 @@ describe("upsertFromGitHub", () => {
         github_id: testGitHubId,
         github_username: "octocat-test",
         github_email: "octocat-test@example.com",
+        github_noreply_email: "1+octocat-test@users.noreply.github.com",
         github_node_id: "MDQ6VXNlcjE=",
         github_profile_url: "https://github.com/octocat-test",
         avatar_url: "https://avatars.githubusercontent.com/u/1?v=4",

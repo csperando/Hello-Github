@@ -12,6 +12,7 @@ describe("0002_create_designs / 0004_create_design_selections migrations", () =>
         github_id: testGitHubId,
         github_username: "octocat-designs-schema-test",
         github_email: "octocat-designs-schema-test@example.com",
+        github_noreply_email: `${testGitHubId}+octocat-designs-schema-test@users.noreply.github.com`,
         github_node_id: "MDQ6VXNlcjU=",
         github_profile_url: "https://github.com/octocat-designs-schema-test",
         avatar_url: "https://avatars.githubusercontent.com/u/5?v=4",

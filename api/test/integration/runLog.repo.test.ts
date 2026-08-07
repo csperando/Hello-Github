@@ -24,6 +24,7 @@ describe("RunLogRepository", () => {
             github_id: testGitHubId,
             github_username: "octocat-runlog-repo-test",
             github_email: "octocat-runlog-repo-test@example.com",
+            github_noreply_email: `${testGitHubId}+octocat-runlog-repo-test@users.noreply.github.com`,
             github_node_id: "MDE6VXNlcjEy",
             github_profile_url: "https://github.com/octocat-runlog-repo-test",
             avatar_url: "https://avatars.githubusercontent.com/u/12?v=4",
