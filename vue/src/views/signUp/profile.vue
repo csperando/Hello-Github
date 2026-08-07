@@ -1,12 +1,16 @@
 <script setup lang="ts">
     import { computed, onMounted, ref } from "vue"
     import { useRoute, useRouter } from "vue-router"
-    
+
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseSelect from "@/components/ui/BaseSelect.vue"
+    import BaseTextInput from "@/components/ui/BaseTextInput.vue"
     import CharityListItem from "@/components/ui/CharityListItem.vue"
+    import CharityResultsList from "@/components/ui/CharityResultsList.vue"
+    import CharitySearchInput from "@/components/ui/CharitySearchInput.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
-    import { githubLoginUrl, updateProfile } from "@/services/api"
+    import { githubLoginUrl, searchOrgs, updateProfile } from "@/services/api"
+    import type { iOrg } from "@/services/api"
     import { useAuthStore } from "@/stores/auth"
     import { timezoneOptions, detectTimezone } from "@/helpers/timezone"
 
@@ -28,12 +32,61 @@
 
     const saving = ref(false)
     const saveError = ref("")
-    const displayName = ref(authStore.user?.github_username)
+    const displayName = ref(authStore.user?.github_username ?? "")
     const charity = ref("Mesa County SAR")
     const publicOptIn = ref(true)
     const timezone = ref(detectTimezone())
     const useRealEmail = ref(false)
     const timezoneOpts = timezoneOptions()
+
+    // kept separate from `charity` (the hardcoded featured-charity picker) since
+    // a search result carries a real eo_bmf id, not a name - nothing wires these
+    // two into a single default_charity selection yet (out of scope here)
+    const searchResults = ref<iOrg[]>([])
+    const searchLoading = ref(false)
+    const searchError = ref(false)
+    const searchQuery = ref("")
+    const selectedSearchCharity = ref<iOrg | null>(null)
+    let searchRequestId = 0
+
+    async function handleCharitySearch(query: string) {
+        const requestId = ++searchRequestId
+        searchQuery.value = query
+        searchLoading.value = true
+        searchError.value = false
+
+        try {
+            const res = await searchOrgs(query)
+            if (requestId !== searchRequestId) return
+
+            if (!res.ok) {
+                searchError.value = true
+                searchResults.value = []
+                return
+            }
+
+            const body = await res.json()
+            searchResults.value = body.data ?? []
+        } catch {
+            if (requestId !== searchRequestId) return
+            searchError.value = true
+            searchResults.value = []
+        } finally {
+            if (requestId === searchRequestId) searchLoading.value = false
+        }
+    }
+
+    function handleCharitySearchCleared() {
+        searchRequestId++
+        searchResults.value = []
+        searchLoading.value = false
+        searchError.value = false
+        searchQuery.value = ""
+    }
+
+    function handleCharitySearchSelect(org: iOrg) {
+        selectedSearchCharity.value = org
+    }
 
     const ghHandle = computed(() =>
         authStore.user?.github_username ? `${authStore.user.github_username}` : "",
@@ -98,8 +151,8 @@
             </div>
         </div>
 
-        <label class="field-label">display name</label>
-        <input v-model="displayName" placeholder="your public username" class="text-input" />
+        <label class="field-label" for="profile-display-name">display name</label>
+        <BaseTextInput id="profile-display-name" v-model="displayName" placeholder="your public username" />
         
         <!-- todo - add filter inputs here for orgs' state, etc. -->
         <label class="field-label">default charity</label>
@@ -115,7 +168,15 @@
                 :selected="c.selected"
                 @click="charity = c.name"
             />
-        <input placeholder="search for a charity" class="text-input my-2" />
+        <CharitySearchInput @search="handleCharitySearch" @cleared="handleCharitySearchCleared" />
+        <CharityResultsList
+            :results="searchResults"
+            :loading="searchLoading"
+            :error="searchError"
+            :query="searchQuery"
+            :selected-id="selectedSearchCharity?.id ?? null"
+            @select="handleCharitySearchSelect"
+        />
 
         <label class="field-label">featured charities</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 charity-grid">
@@ -302,19 +363,6 @@
         font-size: 12.5px;
         color: var(--color-text-muted-3);
         margin-bottom: 7px;
-    }
-
-    .text-input {
-        width: 100%;
-        box-sizing: border-box;
-        font-family: var(--font-sans);
-        font-size: 14.5px;
-        background: var(--color-bg-inset);
-        color: var(--color-text);
-        border: 1px solid var(--color-border-input);
-        border-radius: 8px;
-        padding: 12px 14px;
-        margin-bottom: 18px;
     }
 
     .charity-grid {
