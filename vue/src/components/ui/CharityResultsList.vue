@@ -1,6 +1,7 @@
 <script setup lang="ts">
     import type { iOrg } from "@/services/api"
     import CharityListItem from "./CharityListItem.vue"
+    import { charityLocation } from "@/helpers/charity"
 
     withDefaults(
         defineProps<{
@@ -29,9 +30,10 @@
         <ul v-else-if="results.length" class="results-list">
             <li v-for="org in results" :key="org.id">
                 <CharityListItem
-                    size="sm"
+                    size="md"
                     :name="org.name"
                     :letter="org.name.charAt(0).toUpperCase()"
+                    :focus="charityLocation(org)"
                     :border-color="org.id === selectedId ? 'var(--color-accent-border)' : 'var(--color-border)'"
                     :selected="org.id === selectedId"
                     @click="$emit('select', org)"

@@ -47,6 +47,13 @@ describe("CharityResultsList.vue", () => {
         expect(findButton(wrapper, "GiveWell")).toBeTruthy()
     })
 
+    it("shows a city/state line under each result's name", () => {
+        const wrapper = mount(CharityResultsList, { props: { results: orgs, query: "give" } })
+
+        expect(findButton(wrapper, "GiveDirectly").text()).toContain("New York, NY")
+        expect(findButton(wrapper, "GiveWell").text()).toContain("Oakland, CA")
+    })
+
     it("marks the row matching selectedId as selected", () => {
         const wrapper = mount(CharityResultsList, { props: { results: orgs, query: "give", selectedId: 2 } })
 
