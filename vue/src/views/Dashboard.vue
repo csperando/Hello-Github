@@ -63,8 +63,12 @@
         () => authStore.user?.display_name || authStore.user?.name || authStore.user?.github_username || "",
     )
 
-    const defaultCharityLabel = computed(() => authStore.user?.default_charity || "no charity selected")
-    const defaultCharityLetter = computed(() => (authStore.user?.default_charity?.charAt(0) || "–").toUpperCase())
+    // default_charity is now an eo_bmf id, not a name - the auth payload doesn't
+    // carry a display name for it yet (that needs a backend join, tracked
+    // separately alongside migrating this picker to real charity search), so
+    // this can only say whether one is set, not which one.
+    const defaultCharityLabel = computed(() => (authStore.user?.default_charity ? "charity selected" : "no charity selected"))
+    const defaultCharityLetter = computed(() => (authStore.user?.default_charity ? "♥" : "–"))
 
     async function togglePublicOptIn() {
         const user = authStore.user

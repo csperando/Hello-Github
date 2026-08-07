@@ -398,8 +398,10 @@
     const isSaving = ref(false)
     const saveError = ref("")
 
-    const defaultCharityLabel = computed(() => authStore.user?.default_charity || "no charity selected")
-    const defaultCharityLetter = computed(() => (authStore.user?.default_charity?.charAt(0) || "–").toUpperCase())
+    // default_charity is now an eo_bmf id, not a name - see the matching note
+    // in Dashboard.vue.
+    const defaultCharityLabel = computed(() => (authStore.user?.default_charity ? "charity selected" : "no charity selected"))
+    const defaultCharityLetter = computed(() => (authStore.user?.default_charity ? "♥" : "–"))
 
     /**
      * Extracts the pattern actually being saved, plus the resulting start_date:

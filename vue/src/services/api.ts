@@ -31,7 +31,7 @@ export async function searchOrgs(query: string): Promise<Response> {
 
 export interface iProfileUpdatePayload {
     display_name?: string
-    default_charity?: string
+    default_charity?: number
     public_opt_in?: boolean
     timezone?: string
     use_real_email?: boolean

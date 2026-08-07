@@ -8,7 +8,7 @@ export interface iAuthUser {
     avatar_url?: string
     name?: string
     display_name?: string
-    default_charity?: string
+    default_charity?: number
     public_opt_in?: boolean
     timezone?: string
     use_real_email?: boolean

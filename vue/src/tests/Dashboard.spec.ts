@@ -40,7 +40,7 @@ function buildUser(overrides: Partial<iAuthUser> = {}): iAuthUser {
     github_username: 'lena',
     avatar_url: 'https://avatars.example/lena.png',
     display_name: 'Lena Ortiz',
-    default_charity: 'EFF',
+    default_charity: 42,
     public_opt_in: true,
     role: 'user',
     is_active: true,
@@ -125,11 +125,11 @@ describe('Dashboard.vue', () => {
     expect(wrapper.find('h1').text()).toBe('lena')
   })
 
-  it('reflects the user\'s real default charity and public-opt-in state', async () => {
-    const { wrapper } = await mountDashboard(buildUser({ default_charity: 'EFF', public_opt_in: false }))
+  it('shows a generic "charity selected" label since default_charity is an id, not a name', async () => {
+    const { wrapper } = await mountDashboard(buildUser({ default_charity: 42, public_opt_in: false }))
 
-    expect(wrapper.text()).toContain('EFF')
-    expect(wrapper.text()).not.toContain('GiveDirectly')
+    expect(wrapper.text()).toContain('charity selected')
+    expect(wrapper.text()).not.toContain('no charity selected')
   })
 
   it('shows an honest placeholder when no default charity is set', async () => {
