@@ -64,6 +64,37 @@ describe("0001_create_user_profiles migration", () => {
         });
     });
 
+    describe("0006_change_default_charity_to_eo_bmf_fk migration", () => {
+        it("changes default_charity to an integer column", async () => {
+            const columns = await pool.query(`
+                SELECT data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_name = 'user_profiles' AND column_name = 'default_charity';
+            `);
+
+            expect(columns.rows[0]?.data_type).toBe("bigint");
+            expect(columns.rows[0]?.is_nullable).toBe("YES");
+        });
+
+        it("adds a foreign key from default_charity to eo_bmf(id)", async () => {
+            const fks = await pool.query(`
+                SELECT ccu.table_name AS referenced_table, ccu.column_name AS referenced_column
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                    ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+                JOIN information_schema.constraint_column_usage ccu
+                    ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+                WHERE tc.table_name = 'user_profiles'
+                    AND tc.constraint_type = 'FOREIGN KEY'
+                    AND kcu.column_name = 'default_charity';
+            `);
+
+            expect(fks.rows).toEqual(
+                expect.arrayContaining([expect.objectContaining({ referenced_table: "eo_bmf", referenced_column: "id" })]),
+            );
+        });
+    });
+
     describe("cascade behavior", () => {
         const repo = UsersRepository.repo();
         // fixed, out-of-range-for-real-GitHub id so this test never collides with real data
