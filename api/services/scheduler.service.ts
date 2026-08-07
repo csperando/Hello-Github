@@ -64,9 +64,15 @@ export class SchedulerService {
                 const commitCount = getCommitCountForIntensity(intensity);
                 if (commitCount === 0) continue;
 
-                const authorEmail = candidate.use_real_email && candidate.github_email
-                    ? candidate.github_email
-                    : computeNoreplyEmail(candidate.github_id, candidate.github_username);
+                // candidate.email (the synced "effective" address, see
+                // UserService.updateProfile) is preferred when present;
+                // recomputing here is a defensive fallback, not the primary
+                // path - a NULL author email reaching a real `git commit` is
+                // a worse failure mode than this extra branch.
+                const authorEmail = candidate.email
+                    ?? (candidate.use_real_email && candidate.github_email
+                        ? candidate.github_email
+                        : computeNoreplyEmail(candidate.github_id, candidate.github_username));
 
                 commits.push({
                     userId: candidate.user_id,

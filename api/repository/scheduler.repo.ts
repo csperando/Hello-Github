@@ -28,6 +28,7 @@ const repo = (): iSchedulerRepo => {
                     , u.github_id
                     , u.github_username
                     , u.github_email
+                    , u.email
                     , COALESCE(up.use_real_email, FALSE) AS use_real_email
                     , COALESCE(up.timezone, 'UTC') AS timezone
                     , ds.design_id

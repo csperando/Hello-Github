@@ -66,6 +66,16 @@ describe("SchedulerService.getDueCommits", () => {
         expect(commits[0]!.authorEmail).toBe("583231+octocat@users.noreply.github.com");
     });
 
+    it("uses the stored email column verbatim when present, taking priority over the use_real_email/github_email recompute", async () => {
+        schedulerRepoMock.findDueCandidates.mockResolvedValue([
+            baseCandidate({ email: "stored@example.com", use_real_email: true, github_email: "real@example.com" }),
+        ]);
+
+        const commits = await new SchedulerService().getDueCommits();
+
+        expect(commits[0]!.authorEmail).toBe("stored@example.com");
+    });
+
     it("drops a candidate whose selection has lapsed (pattern contributes nothing that day)", async () => {
         schedulerRepoMock.findDueCandidates.mockResolvedValue([
             baseCandidate({ target_date: "2026-01-20" }), // well past a 1-week, non-repeating pattern
