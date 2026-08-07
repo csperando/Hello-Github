@@ -10,6 +10,7 @@ export interface iUserRepo {
     getUserByGitHubId: (ghId: number) => Promise<any>;
     upsertFromGitHub: (input: iGitHubUpsertInput) => Promise<any>;
     insertFromGitHub: (input: iGitHubUpsertInput) => Promise<any>;
+    updateEmailPreference: (userId: string, email: string) => Promise<any>;
 }
 
 // main repo init function to be called in the service factories
@@ -21,6 +22,7 @@ const repo = (): iUserRepo => {
                     , u.github_id
                     , u.github_username
                     , u.github_email
+                    , u.github_noreply_email
                     , u.github_node_id
                     , u.github_profile_url
                     , u.avatar_url
@@ -53,6 +55,7 @@ const repo = (): iUserRepo => {
                     , u.github_id
                     , u.github_username
                     , u.github_email
+                    , u.github_noreply_email
                     , u.github_node_id
                     , u.github_profile_url
                     , u.avatar_url
@@ -87,6 +90,7 @@ const repo = (): iUserRepo => {
                     , u.github_id
                     , u.github_username
                     , u.github_email
+                    , u.github_noreply_email
                     , u.github_node_id
                     , u.github_profile_url
                     , u.avatar_url
@@ -121,6 +125,7 @@ const repo = (): iUserRepo => {
                     , u.github_id
                     , u.github_username
                     , u.github_email
+                    , u.github_noreply_email
                     , u.github_node_id
                     , u.github_profile_url
                     , u.avatar_url
@@ -155,23 +160,30 @@ const repo = (): iUserRepo => {
                     github_id
                     , github_username
                     , github_email
+                    , github_noreply_email
                     , github_node_id
                     , github_profile_url
                     , avatar_url
                     , last_login_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                 ON CONFLICT (github_id) DO UPDATE
                 SET github_username = EXCLUDED.github_username
                     , github_email = EXCLUDED.github_email
+                    , github_noreply_email = EXCLUDED.github_noreply_email
                     , github_node_id = EXCLUDED.github_node_id
                     , github_profile_url = EXCLUDED.github_profile_url
                     , avatar_url = EXCLUDED.avatar_url
                     , updated_at = NOW()
                     , last_login_at = NOW()
+                    -- email deliberately not in this SET list: it's the
+                    -- user's chosen effective address, only resynced by
+                    -- UserService.updateProfile on a profile save, not
+                    -- silently rewritten here on every login.
                 RETURNING id
                     , github_id
                     , github_username
                     , github_email
+                    , github_noreply_email
                     , github_node_id
                     , github_profile_url
                     , avatar_url
@@ -188,6 +200,7 @@ const repo = (): iUserRepo => {
                 input.github_id,
                 input.github_username,
                 input.github_email,
+                input.github_noreply_email,
                 input.github_node_id,
                 input.github_profile_url,
                 input.avatar_url,
@@ -207,16 +220,18 @@ const repo = (): iUserRepo => {
                     github_id
                     , github_username
                     , github_email
+                    , github_noreply_email
                     , github_node_id
                     , github_profile_url
                     , avatar_url
                     , last_login_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                 ON CONFLICT (github_id) DO NOTHING
                 RETURNING id
                     , github_id
                     , github_username
                     , github_email
+                    , github_noreply_email
                     , github_node_id
                     , github_profile_url
                     , avatar_url
@@ -232,11 +247,31 @@ const repo = (): iUserRepo => {
                 input.github_id,
                 input.github_username,
                 input.github_email,
+                input.github_noreply_email,
                 input.github_node_id,
                 input.github_profile_url,
                 input.avatar_url,
             ]);
 
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    const updateEmailPreference = async (userId: string, email: string) => {
+        try {
+            const sqlString = `
+                UPDATE users
+                SET email = $2
+                    , updated_at = NOW()
+                WHERE id = $1
+                RETURNING id, email;
+            `
+
+            const result = await pool.query(sqlString, [userId, email]);
             return result.rows[0];
 
         } catch(err: any) {
@@ -252,6 +287,7 @@ const repo = (): iUserRepo => {
         getUserByGitHubId,
         upsertFromGitHub,
         insertFromGitHub,
+        updateEmailPreference,
     }
 };
 
