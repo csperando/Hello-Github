@@ -29,6 +29,10 @@ export async function searchOrgs(query: string): Promise<Response> {
     return apiFetch(`/org?name=${encodeURIComponent(query)}`)
 }
 
+export async function getOrgById(orgId: number): Promise<Response> {
+    return apiFetch(`/org/${orgId}`)
+}
+
 export interface iProfileUpdatePayload {
     display_name?: string
     default_charity?: number
