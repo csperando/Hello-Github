@@ -17,14 +17,24 @@ router.all("/{*splat}", [requireAuth], async (req: Request, res: Response, next:
  */
 router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // filters
-        const filters = {
-            state: req.query.state,
-        };
+        // search
+        let query: string = req.query.name as string || "";
+        query = query.toUpperCase();
 
-        console.log(filters);
+        // TODO - filters 
         
-        const orgs = await orgsService.getAllOrgs();
+        // // filters
+        // const filters = { 
+        //     state: req.query.state,
+        //     city: req.query.city,
+        //     zip: req.query.zip,
+        // };
+
+        // // pagination
+        // const limit = parseInt(req.query.limit as string) || 20;
+        // const offset = parseInt(req.query.size as string) || 0;
+        
+        const orgs = await orgsService.searchOrgs(query);
         const response: iResponse = { success: true, status: 200, data: orgs };
         res.status(200).json(response);
     } catch(err) {

@@ -11,9 +11,9 @@ export class OrgsService {
         this.repo = OrgsRepository.repo();
     }
 
-    public async getAllOrgs(): Promise<iOrg[]> {
+    public async searchOrgs(query: string, limit?: number, offset?: number, filters?: any): Promise<iOrg[]> {
         try {
-            const orgs = await this.repo.getAllOrgs() || [];
+            const orgs = await this.repo.searchOrgs(query, limit, offset, filters) || [];
             return orgs;
 
         } catch(err: any) {
@@ -21,6 +21,18 @@ export class OrgsService {
             throw(err);
         }
     }
+
+    // There are over a million records in that database... get all is not a good idea
+    // public async getAllOrgs(limit?: number, offset?: number, filters?: any): Promise<iOrg[]> {
+    //     try {
+    //         const orgs = await this.repo.getAllOrgs(limit, offset, filters) || [];
+    //         return orgs;
+
+    //     } catch(err: any) {
+    //         logger.error(err);
+    //         throw(err);
+    //     }
+    // }
 
     public async getOrgById(orgId: number): Promise<iOrg[]> {
         try {
