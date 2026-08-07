@@ -9,10 +9,11 @@
     import CharityResultsList from "@/components/ui/CharityResultsList.vue"
     import CharitySearchInput from "@/components/ui/CharitySearchInput.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
-    import { githubLoginUrl, searchOrgs, updateProfile } from "@/services/api"
+    import { githubLoginUrl, updateProfile } from "@/services/api"
     import type { iOrg } from "@/services/api"
     import { useAuthStore } from "@/stores/auth"
     import { timezoneOptions, detectTimezone } from "@/helpers/timezone"
+    import { useCharitySearch } from "@/composables/useCharitySearch"
 
     interface Charity {
         name: string
@@ -42,47 +43,15 @@
     // kept separate from `charity` (the hardcoded featured-charity picker) since
     // a search result carries a real eo_bmf id, not a name - nothing wires these
     // two into a single default_charity selection yet (out of scope here)
-    const searchResults = ref<iOrg[]>([])
-    const searchLoading = ref(false)
-    const searchError = ref(false)
-    const searchQuery = ref("")
     const selectedSearchCharity = ref<iOrg | null>(null)
-    let searchRequestId = 0
-
-    async function handleCharitySearch(query: string) {
-        const requestId = ++searchRequestId
-        searchQuery.value = query
-        searchLoading.value = true
-        searchError.value = false
-
-        try {
-            const res = await searchOrgs(query)
-            if (requestId !== searchRequestId) return
-
-            if (!res.ok) {
-                searchError.value = true
-                searchResults.value = []
-                return
-            }
-
-            const body = await res.json()
-            searchResults.value = body.data ?? []
-        } catch {
-            if (requestId !== searchRequestId) return
-            searchError.value = true
-            searchResults.value = []
-        } finally {
-            if (requestId === searchRequestId) searchLoading.value = false
-        }
-    }
-
-    function handleCharitySearchCleared() {
-        searchRequestId++
-        searchResults.value = []
-        searchLoading.value = false
-        searchError.value = false
-        searchQuery.value = ""
-    }
+    const {
+        searchResults,
+        searchLoading,
+        searchError,
+        searchQuery,
+        handleSearch: handleCharitySearch,
+        handleCleared: handleCharitySearchCleared,
+    } = useCharitySearch()
 
     function handleCharitySearchSelect(org: iOrg) {
         selectedSearchCharity.value = org
