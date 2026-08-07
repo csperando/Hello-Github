@@ -15,6 +15,20 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     })
 }
 
+export interface iOrg {
+    id: number
+    ein: string
+    name: string
+    street: string
+    city: string
+    state: string
+    zip: string
+}
+
+export async function searchOrgs(query: string): Promise<Response> {
+    return apiFetch(`/org?name=${encodeURIComponent(query)}`)
+}
+
 export interface iProfileUpdatePayload {
     display_name?: string
     default_charity?: string
