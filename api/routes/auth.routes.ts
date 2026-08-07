@@ -3,7 +3,14 @@ import crypto from "crypto";
 import { iResponse } from "../models/response";
 import { iGitHubUpsertInput, toPublicUser } from "../models/users";
 import { UserService } from "../services/users.service";
-import { exchangeCodeForToken, fetchGitHubUser, fetchPrimaryVerifiedEmail } from "../services/github.service";
+import {
+    exchangeCodeForToken,
+    fetchGitHubUser,
+    fetchGitHubEmails,
+    pickPrimaryVerifiedEmail,
+    pickNoreplyEmail,
+    computeNoreplyEmail,
+} from "../services/github.service";
 import { requireAuth } from "../middleware/auth.middleware";
 import { config } from "../config/config";
 import { logger } from "../config/logger";
@@ -68,12 +75,15 @@ router.get("/github/callback", async (req: Request, res: Response) => {
 
         const accessToken = await exchangeCodeForToken(code);
         const ghUser = await fetchGitHubUser(accessToken);
-        const email = await fetchPrimaryVerifiedEmail(accessToken);
+        const emails = await fetchGitHubEmails(accessToken);
+        const email = pickPrimaryVerifiedEmail(emails);
+        const noreplyEmail = pickNoreplyEmail(emails) ?? computeNoreplyEmail(ghUser.id, ghUser.login);
 
         const upsertInput: iGitHubUpsertInput = {
             github_id: ghUser.id,
             github_username: ghUser.login,
             github_email: email,
+            github_noreply_email: noreplyEmail,
             github_node_id: ghUser.node_id,
             github_profile_url: ghUser.html_url,
             avatar_url: ghUser.avatar_url,

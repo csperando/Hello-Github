@@ -10,6 +10,7 @@ export interface iUser {
     github_id: Number;
     github_username: String;
     github_email?: String;
+    github_noreply_email?: String;
     github_node_id?: Number;
     github_profile_url?: String;
     avatar_url?: String;
@@ -40,6 +41,8 @@ export interface iPublicUser {
     id: String; // uuid
 
     github_username: String;
+    github_email?: String | undefined;
+    github_noreply_email?: String | undefined;
     avatar_url?: String | undefined;
 
     name?: String | undefined;
@@ -66,6 +69,8 @@ export function toPublicUser(
     return {
         id: user.id,
         github_username: user.github_username,
+        github_email: user.github_email,
+        github_noreply_email: user.github_noreply_email,
         avatar_url: user.avatar_url,
         name: user.name,
         display_name: user.display_name,
@@ -82,6 +87,7 @@ export interface iGitHubUpsertInput {
     github_id: Number;
     github_username: String;
     github_email: String;
+    github_noreply_email: String;
     github_node_id?: String;
     github_profile_url?: String;
     avatar_url?: String;

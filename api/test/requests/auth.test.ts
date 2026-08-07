@@ -15,7 +15,10 @@ jest.mock("../../services/github.service", () => ({
     __esModule: true,
     exchangeCodeForToken: jest.fn(),
     fetchGitHubUser: jest.fn(),
-    fetchPrimaryVerifiedEmail: jest.fn(),
+    fetchGitHubEmails: jest.fn(),
+    pickPrimaryVerifiedEmail: jest.fn(),
+    pickNoreplyEmail: jest.fn(),
+    computeNoreplyEmail: jest.fn(),
 }));
 import * as githubService from "../../services/github.service";
 
@@ -64,7 +67,10 @@ describe("Auth routes", () => {
         usersRepoMock.__reset();
         (githubService.exchangeCodeForToken as jest.Mock).mockReset();
         (githubService.fetchGitHubUser as jest.Mock).mockReset();
-        (githubService.fetchPrimaryVerifiedEmail as jest.Mock).mockReset();
+        (githubService.fetchGitHubEmails as jest.Mock).mockReset();
+        (githubService.pickPrimaryVerifiedEmail as jest.Mock).mockReset();
+        (githubService.pickNoreplyEmail as jest.Mock).mockReset();
+        (githubService.computeNoreplyEmail as jest.Mock).mockReset();
     });
 
     it("should work on this test suite again later", () => {

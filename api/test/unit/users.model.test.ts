@@ -6,6 +6,7 @@ describe("toPublicUser", () => {
         github_id: 42,
         github_username: "lena",
         github_email: "lena@example.com",
+        github_noreply_email: "42+lena@users.noreply.github.com",
         github_node_id: 8675309,
         github_profile_url: "https://github.com/lena",
         avatar_url: "https://avatars.example/lena.png",
@@ -34,6 +35,8 @@ describe("toPublicUser", () => {
         expect(result).toEqual({
             id: fullUser.id,
             github_username: fullUser.github_username,
+            github_email: fullUser.github_email,
+            github_noreply_email: fullUser.github_noreply_email,
             avatar_url: fullUser.avatar_url,
             name: fullUser.name,
             display_name: fullUser.display_name,
@@ -53,7 +56,6 @@ describe("toPublicUser", () => {
             "github_id",
             "github_node_id",
             "github_profile_url",
-            "github_email",
             "email",
             "bio",
             "access_token",
@@ -80,6 +82,8 @@ describe("toPublicUser", () => {
         expect(toPublicUser(minimalUser)).toEqual({
             id: "u2",
             github_username: "dev",
+            github_email: undefined,
+            github_noreply_email: undefined,
             avatar_url: undefined,
             name: undefined,
             display_name: undefined,
