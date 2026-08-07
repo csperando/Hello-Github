@@ -9,6 +9,13 @@ import { config } from "./config";
 // instead, so a DATE column is a DATE column end-to-end.
 types.setTypeParser(1082, (value: string) => value);
 
+// pg's default type parser returns BIGINT/BIGSERIAL (OID 20) as a string,
+// to avoid silent precision loss past Number.MAX_SAFE_INTEGER - but every
+// bigserial id in this app (eo_bmf.id, user_profiles.default_charity) is
+// modeled as a number everywhere else (models, validation, the Vue
+// frontend) and will never get remotely close to that limit.
+types.setTypeParser(20, (value: string) => Number(value));
+
 const pool = new Pool({
     host: config.POSTGRES_HOST,
     port: Number(config.POSTGRES_PORT) || 5432,
