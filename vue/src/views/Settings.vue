@@ -1,34 +1,26 @@
 <script setup lang="ts">
-    import { computed, ref } from "vue"
+    import { onMounted, ref } from "vue"
     import AppNavbar from "@/components/layout/AppNavbar.vue"
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseCard from "@/components/ui/BaseCard.vue"
     import BaseSelect from "@/components/ui/BaseSelect.vue"
     import BaseTextInput from "@/components/ui/BaseTextInput.vue"
     import CharityListItem from "@/components/ui/CharityListItem.vue"
+    import CharityResultsList from "@/components/ui/CharityResultsList.vue"
+    import CharitySearchInput from "@/components/ui/CharitySearchInput.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
-    import { updateProfile } from "@/services/api"
+    import { getOrgById, updateProfile } from "@/services/api"
+    import type { iOrg } from "@/services/api"
     import { useAuthStore } from "@/stores/auth"
     import { timezoneOptions } from "@/helpers/timezone"
-
-    interface Charity {
-        name: string
-        letter: string
-    }
-
-    const CHARITIES: Charity[] = [
-        { name: "GiveDirectly", letter: "G" },
-        { name: "Khan Academy", letter: "K" },
-        { name: "EFF", letter: "E" },
-        { name: "Code.org", letter: "C" },
-    ]
+    import { useCharitySearch } from "@/composables/useCharitySearch"
 
     // authStore.user is already populated here: the router's requiresAuth guard
     // (vue/src/router/index.ts) awaits fetchMe() before this route resolves.
     const authStore = useAuthStore()
 
     const displayName = ref(authStore.user?.display_name ?? "")
-    const charity = ref(authStore.user?.default_charity ?? "GiveDirectly")
+    const selectedCharity = ref<iOrg | null>(null)
     const publicOptIn = ref(authStore.user?.public_opt_in ?? true)
     const timezone = ref(authStore.user?.timezone ?? "UTC")
     const useRealEmail = ref(authStore.user?.use_real_email ?? false)
@@ -37,6 +29,33 @@
     const saving = ref(false)
     const saveError = ref("")
     const saved = ref(false)
+
+    const {
+        searchResults,
+        searchLoading,
+        searchError,
+        searchQuery,
+        handleSearch: handleCharitySearch,
+        handleCleared: handleCharitySearchCleared,
+    } = useCharitySearch()
+
+    onMounted(async () => {
+        const currentId = authStore.user?.default_charity
+        if (!currentId) return
+
+        try {
+            const res = await getOrgById(currentId)
+            if (!res.ok) return
+
+            const body = await res.json()
+            // getOrgById's response shape is a single org object when found,
+            // or [] (not an object) when not - unlike searchOrgs' always-an-array shape
+            const org = Array.isArray(body.data) ? undefined : body.data
+            if (org) selectedCharity.value = org
+        } catch {
+            // not fatal - the field just starts empty and the user can search/select fresh
+        }
+    })
 
     function togglePublic() {
         publicOptIn.value = !publicOptIn.value
@@ -48,16 +67,8 @@
         saved.value = false
     }
 
-    const charities = computed(() =>
-        CHARITIES.map((c) => ({
-            ...c,
-            selected: c.name === charity.value,
-            borderColor: c.name === charity.value ? "var(--color-accent-border)" : "var(--color-border)",
-        })),
-    )
-
-    function selectCharity(name: string) {
-        charity.value = name
+    function selectCharity(org: iOrg) {
+        selectedCharity.value = org
         saved.value = false
     }
 
@@ -70,7 +81,7 @@
         try {
             const res = await updateProfile(authStore.user.id, {
                 display_name: displayName.value,
-                default_charity: charity.value,
+                default_charity: selectedCharity.value?.id,
                 public_opt_in: publicOptIn.value,
                 timezone: timezone.value,
                 use_real_email: useRealEmail.value,
@@ -80,7 +91,7 @@
                 return
             }
             authStore.user.display_name = displayName.value
-            authStore.user.default_charity = charity.value
+            authStore.user.default_charity = selectedCharity.value?.id
             authStore.user.public_opt_in = publicOptIn.value
             authStore.user.timezone = timezone.value
             authStore.user.use_real_email = useRealEmail.value
@@ -113,18 +124,23 @@
                     />
 
                     <label class="field-label">default charity</label>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 charity-grid">
-                        <CharityListItem
-                            v-for="c in charities"
-                            :key="c.name"
-                            size="sm"
-                            :name="c.name"
-                            :letter="c.letter"
-                            :border-color="c.borderColor"
-                            :selected="c.selected"
-                            @click="selectCharity(c.name)"
-                        />
-                    </div>
+                    <CharityListItem
+                        v-if="selectedCharity"
+                        size="sm"
+                        :name="selectedCharity.name"
+                        :letter="selectedCharity.name.charAt(0).toUpperCase()"
+                        border-color="var(--color-accent-border)"
+                        :selected="true"
+                    />
+                    <CharitySearchInput @search="handleCharitySearch" @cleared="handleCharitySearchCleared" />
+                    <CharityResultsList
+                        :results="searchResults"
+                        :loading="searchLoading"
+                        :error="searchError"
+                        :query="searchQuery"
+                        :selected-id="selectedCharity?.id ?? null"
+                        @select="selectCharity"
+                    />
 
                     <div class="toggle-row toggle-row-tall">
                         <div>
@@ -204,10 +220,6 @@
         font-size: 12.5px;
         color: var(--color-text-muted-3);
         margin-bottom: 7px;
-    }
-
-    .charity-grid {
-        margin-bottom: 20px;
     }
 
     .toggle-row {

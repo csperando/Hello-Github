@@ -1,25 +1,37 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 import SettingsView from '../views/Settings.vue'
 import { useAuthStore, type iAuthUser } from '../stores/auth'
+import type { iOrg } from '../services/api'
 
 const updateProfileMock = vi.fn()
+const getOrgByIdMock = vi.fn()
+const searchOrgsMock = vi.fn()
 
 vi.mock('@/services/api', () => ({
   githubLoginUrl: () => 'https://api.test/auth/github/login',
   apiFetch: vi.fn(),
   updateProfile: (...args: unknown[]) => updateProfileMock(...args),
+  getOrgById: (...args: unknown[]) => getOrgByIdMock(...args),
+  searchOrgs: (...args: unknown[]) => searchOrgsMock(...args),
 }))
+
+function jsonResponse(body: unknown, ok = true) {
+  return { ok, json: async () => body } as Response
+}
+
+const effOrg: iOrg = { id: 42, ein: '424242424', name: 'EFF', street: '', city: 'San Francisco', state: 'CA', zip: '94109' }
+const giveDirectlyOrg: iOrg = { id: 7, ein: '777777777', name: 'GiveDirectly', street: '', city: 'New York', state: 'NY', zip: '10001' }
 
 function buildUser(overrides: Partial<iAuthUser> = {}): iAuthUser {
   return {
     id: 'u1',
     github_username: 'lena',
     display_name: 'Lena Ortiz',
-    default_charity: 'EFF',
+    default_charity: 42,
     public_opt_in: true,
     timezone: 'America/Chicago',
     use_real_email: false,
@@ -59,16 +71,26 @@ function findButton(wrapper: Awaited<ReturnType<typeof mountSettings>>['wrapper'
 describe('Settings.vue', () => {
   beforeEach(() => {
     updateProfileMock.mockReset()
+    getOrgByIdMock.mockReset()
+    searchOrgsMock.mockReset()
+    getOrgByIdMock.mockResolvedValue(jsonResponse({ data: effOrg }))
   })
 
-  it('prefills every field from the authenticated user', async () => {
+  it('prefills every field from the authenticated user, resolving default_charity by id', async () => {
     const { wrapper } = await mountSettings(buildUser())
 
     expect((wrapper.find('input').element as HTMLInputElement).value).toBe('Lena Ortiz')
     expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('America/Chicago')
     expect(wrapper.get('[data-testid="public-opt-in-toggle"]').attributes('aria-checked')).toBe('true')
     expect(wrapper.get('[data-testid="use-real-email-toggle"]').attributes('aria-checked')).toBe('false')
+    expect(getOrgByIdMock).toHaveBeenCalledWith(42)
     expect(wrapper.text()).toContain('EFF')
+  })
+
+  it('does not call getOrgById when the user has no default_charity set', async () => {
+    await mountSettings(buildUser({ default_charity: undefined }))
+
+    expect(getOrgByIdMock).not.toHaveBeenCalled()
   })
 
   it('saves all fields together via updateProfile', async () => {
@@ -83,7 +105,7 @@ describe('Settings.vue', () => {
 
     expect(updateProfileMock).toHaveBeenCalledWith('u1', {
       display_name: 'New Name',
-      default_charity: 'EFF',
+      default_charity: 42,
       public_opt_in: true,
       timezone: 'America/Chicago',
       use_real_email: true,
@@ -127,16 +149,45 @@ describe('Settings.vue', () => {
     expect(wrapper.text()).not.toContain('Saved.')
   })
 
-  it('selecting a different charity updates which one is marked selected', async () => {
-    const { wrapper } = await mountSettings(buildUser({ default_charity: 'EFF' }))
+  describe('charity search', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
 
-    const giveDirectlyButton = wrapper.findAll('button').find((b) => b.text().includes('GiveDirectly'))
-    expect(giveDirectlyButton).toBeTruthy()
-    await giveDirectlyButton!.trigger('click')
+    afterEach(() => {
+      vi.useRealTimers()
+    })
 
-    await findButton(wrapper, 'save changes').trigger('click')
-    await flushPromises()
+    it('searching and selecting a result updates what gets saved', async () => {
+      searchOrgsMock.mockResolvedValue(jsonResponse({ data: [giveDirectlyOrg] }))
+      updateProfileMock.mockResolvedValue({ ok: true })
+      const { wrapper } = await mountSettings(buildUser())
 
-    expect(updateProfileMock).toHaveBeenCalledWith('u1', expect.objectContaining({ default_charity: 'GiveDirectly' }))
+      await wrapper.get('input[placeholder="search for a charity"]').setValue('give')
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+
+      const giveDirectlyButton = wrapper.findAll('button').find((b) => b.text().includes('GiveDirectly'))
+      expect(giveDirectlyButton).toBeTruthy()
+      await giveDirectlyButton!.trigger('click')
+
+      await findButton(wrapper, 'save changes').trigger('click')
+      await flushPromises()
+
+      expect(updateProfileMock).toHaveBeenCalledWith('u1', expect.objectContaining({ default_charity: 7 }))
+    })
+
+    it('replaces the "currently selected" charity display once a new one is picked', async () => {
+      searchOrgsMock.mockResolvedValue(jsonResponse({ data: [giveDirectlyOrg] }))
+      const { wrapper } = await mountSettings(buildUser())
+      expect(wrapper.text()).toContain('EFF')
+
+      await wrapper.get('input[placeholder="search for a charity"]').setValue('give')
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+      await findButton(wrapper, 'GiveDirectly').trigger('click')
+
+      expect(findButton(wrapper, 'GiveDirectly').attributes('aria-pressed')).toBe('true')
+    })
   })
 })
