@@ -1,4 +1,4 @@
-import { toPublicUser } from "../../models/users";
+import { toPublicUser, extractProfileInput, validateProfileInput } from "../../models/users";
 
 describe("toPublicUser", () => {
     const fullUser = {
@@ -19,7 +19,7 @@ describe("toPublicUser", () => {
         token_expires_at: "2026-08-01T00:00:00Z",
         scope: "read:user user:email",
         display_name: "Lena",
-        default_charity: "EFF",
+        default_charity: 42,
         public_opt_in: false,
         timezone: "America/Chicago",
         use_real_email: true,
@@ -90,5 +90,44 @@ describe("toPublicUser", () => {
             role: "user",
             is_active: true,
         });
+    });
+});
+
+describe("extractProfileInput", () => {
+    it("passes through a numeric default_charity", () => {
+        expect(extractProfileInput({ default_charity: 7 })).toEqual({ default_charity: 7 });
+    });
+
+    it("omits default_charity when absent from the body", () => {
+        expect(extractProfileInput({ display_name: "Lena" })).toEqual({ display_name: "Lena" });
+    });
+});
+
+describe("validateProfileInput - default_charity", () => {
+    it("accepts a positive integer", () => {
+        expect(validateProfileInput({ default_charity: 7 })).toEqual([]);
+    });
+
+    it("rejects a string", () => {
+        const errors = validateProfileInput({ default_charity: "EFF" });
+        expect(errors).toEqual([{ property: "default_charity", error: expect.any(String) }]);
+    });
+
+    it("rejects a non-integer number", () => {
+        const errors = validateProfileInput({ default_charity: 7.5 });
+        expect(errors).toEqual([{ property: "default_charity", error: expect.any(String) }]);
+    });
+
+    it("rejects zero and negative ids", () => {
+        expect(validateProfileInput({ default_charity: 0 })).toEqual([
+            { property: "default_charity", error: expect.any(String) },
+        ]);
+        expect(validateProfileInput({ default_charity: -1 })).toEqual([
+            { property: "default_charity", error: expect.any(String) },
+        ]);
+    });
+
+    it("is not required - passes when absent", () => {
+        expect(validateProfileInput({ display_name: "Lena Ortiz" })).toEqual([]);
     });
 });

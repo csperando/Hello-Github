@@ -44,7 +44,7 @@ export interface iPublicUser {
 
     name?: String | undefined;
     display_name?: String | undefined;
-    default_charity?: String | undefined;
+    default_charity?: Number | undefined;
     public_opt_in?: Boolean | undefined;
     timezone?: String | undefined;
     use_real_email?: Boolean | undefined;
@@ -91,7 +91,7 @@ export interface iUserProfile {
     user_id: String; // uuid, FK -> users.id
 
     display_name?: String;
-    default_charity?: String;
+    default_charity?: Number;
     public_opt_in: Boolean;
     timezone: String; // IANA name, e.g. "America/Chicago"
     use_real_email: Boolean; // commit author email preference: real verified email vs. noreply
@@ -102,7 +102,7 @@ export interface iUserProfile {
 
 export interface iProfileUpdateInput {
     display_name?: String;
-    default_charity?: String;
+    default_charity?: Number;
     public_opt_in?: Boolean;
     timezone?: String;
     use_real_email?: Boolean;
@@ -118,7 +118,7 @@ export function extractProfileInput(body: Record<string, unknown>): iProfileUpda
 
     if ("display_name" in body) input.display_name = body.display_name as string;
 
-    if ("default_charity" in body) input.default_charity = body.default_charity as string;
+    if ("default_charity" in body) input.default_charity = body.default_charity as number;
 
     if ("public_opt_in" in body) input.public_opt_in = body.public_opt_in as boolean;
 
@@ -147,8 +147,12 @@ export function validateProfileInput(body: Record<string, unknown>): iRequestErr
 
     default_charity: {
         if ("default_charity" in body) {
-            if (typeof body.default_charity !== "string") {
-                errors.push({property: "default_charity", error: "default_charity must be a string."});
+            if (
+                typeof body.default_charity !== "number" ||
+                !Number.isInteger(body.default_charity) ||
+                body.default_charity <= 0
+            ) {
+                errors.push({property: "default_charity", error: "default_charity must be a positive integer id."});
                 break default_charity;
             }
         }
