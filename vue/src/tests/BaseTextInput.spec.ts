@@ -65,4 +65,25 @@ describe("BaseTextInput.vue", () => {
 
         expect(wrapper.emitted("update:modelValue")?.[0]).toEqual(["gi"])
     })
+
+    it("defaults to the standard visual style when no variant is given", () => {
+        const wrapper = mount(BaseTextInput, { props: { modelValue: "" } })
+
+        expect(wrapper.get("input").classes()).not.toContain("text-input--compact")
+    })
+
+    it("applies the compact variant's style for Editor.vue's denser sidebar inputs", () => {
+        const wrapper = mount(BaseTextInput, { props: { modelValue: "", variant: "compact" } })
+
+        expect(wrapper.get("input").classes()).toContain("text-input--compact")
+    })
+
+    it("still shows a working clear button under the compact variant", async () => {
+        const wrapper = mount(BaseTextInput, { props: { modelValue: "untitled", variant: "compact" } })
+
+        expect(wrapper.find(".clear-button").exists()).toBe(true)
+        await wrapper.get(".clear-button").trigger("click")
+
+        expect(wrapper.emitted("update:modelValue")?.[0]).toEqual([""])
+    })
 })

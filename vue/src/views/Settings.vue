@@ -4,6 +4,7 @@
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseCard from "@/components/ui/BaseCard.vue"
     import BaseSelect from "@/components/ui/BaseSelect.vue"
+    import BaseTextInput from "@/components/ui/BaseTextInput.vue"
     import CharityListItem from "@/components/ui/CharityListItem.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import { updateProfile } from "@/services/api"
@@ -103,8 +104,13 @@
                 <h1 class="title">Profile settings</h1>
 
                 <BaseCard>
-                    <label class="field-label">display name</label>
-                    <input v-model="displayName" @input="saved = false" placeholder="e.g. Lena Ortiz" class="text-input" />
+                    <label class="field-label" for="settings-display-name">display name</label>
+                    <BaseTextInput
+                        id="settings-display-name"
+                        :model-value="displayName"
+                        placeholder="e.g. Lena Ortiz"
+                        @update:model-value="(v) => { displayName = v; saved = false }"
+                    />
 
                     <label class="field-label">default charity</label>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 charity-grid">
@@ -198,19 +204,6 @@
         font-size: 12.5px;
         color: var(--color-text-muted-3);
         margin-bottom: 7px;
-    }
-
-    .text-input {
-        width: 100%;
-        box-sizing: border-box;
-        font-family: var(--font-sans);
-        font-size: 14.5px;
-        background: var(--color-bg-inset);
-        color: var(--color-text);
-        border: 1px solid var(--color-border-input);
-        border-radius: 8px;
-        padding: 12px 14px;
-        margin-bottom: 18px;
     }
 
     .charity-grid {

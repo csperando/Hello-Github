@@ -4,6 +4,7 @@
     import AppNavbar from "@/components/layout/AppNavbar.vue"
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseCard from "@/components/ui/BaseCard.vue"
+    import BaseTextInput from "@/components/ui/BaseTextInput.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import CustomRangeSlider from "@/components/ui/CustomRangeSlider.vue"
     import GridLegend from "@/components/ui/GridLegend.vue"
@@ -659,8 +660,8 @@
 
             <!-- RIGHT SIDEBAR: STATS + CHARITY PREVIEW -->
             <aside class="sidebar-right order-3 md:col-span-2 lg:col-span-1">
-                <div class="panel-label panel-label--tight">design name</div>
-                <input v-model="designName" placeholder="untitled design" class="design-name-input" />
+                <label class="panel-label panel-label--tight" for="editor-design-name">design name</label>
+                <BaseTextInput id="editor-design-name" v-model="designName" placeholder="untitled design" variant="compact" />
 
                 <div class="panel-label panel-label--stats">design stats</div>
                 <div class="stats-box">
@@ -846,6 +847,7 @@
     }
 
     .panel-label--tight {
+        display: block;
         margin-bottom: 10px;
     }
 
@@ -1046,19 +1048,6 @@
         border-left: 1px solid var(--color-border);
         padding: 22px 20px;
         overflow-y: auto;
-    }
-
-    .design-name-input {
-        width: 100%;
-        box-sizing: border-box;
-        font-family: var(--font-mono);
-        font-size: 13px;
-        background: var(--color-bg-raised);
-        color: var(--color-text);
-        border: 1px solid var(--color-border-mid);
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 24px;
     }
 
     .stats-box {

@@ -8,9 +8,12 @@
             placeholder?: string
             /** Accessible name for the clear button - override for context, e.g. "Clear search". */
             clearLabel?: string
+            /** "compact" matches Editor.vue's denser sidebar inputs (mono font, tighter padding). */
+            variant?: "default" | "compact"
         }>(),
         {
             clearLabel: "Clear",
+            variant: "default",
         },
     )
 
@@ -37,7 +40,7 @@
 </script>
 
 <template>
-    <div class="base-text-input-wrap">
+    <div class="base-text-input-wrap" :class="{ 'base-text-input-wrap--compact': variant === 'compact' }">
         <span v-if="hasLeadingIcon" class="leading-icon" aria-hidden="true">
             <slot name="leading-icon" />
         </span>
@@ -46,7 +49,11 @@
             :id="id"
             type="text"
             class="text-input"
-            :class="{ 'has-leading-icon': hasLeadingIcon, 'has-clear': showClear }"
+            :class="{
+                'has-leading-icon': hasLeadingIcon,
+                'has-clear': showClear,
+                'text-input--compact': variant === 'compact',
+            }"
             :placeholder="placeholder"
             :value="modelValue"
             @input="onInput"
@@ -72,6 +79,10 @@
         margin-bottom: 18px;
     }
 
+    .base-text-input-wrap--compact {
+        margin-bottom: 24px;
+    }
+
     .text-input {
         width: 100%;
         box-sizing: border-box;
@@ -91,6 +102,22 @@
 
     .text-input.has-clear {
         padding-right: 40px;
+    }
+
+    .text-input--compact {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        background: var(--color-bg-raised);
+        border-color: var(--color-border-mid);
+        padding: 10px 12px;
+    }
+
+    .text-input--compact.has-leading-icon {
+        padding-left: 36px;
+    }
+
+    .text-input--compact.has-clear {
+        padding-right: 36px;
     }
 
     .text-input::placeholder {
