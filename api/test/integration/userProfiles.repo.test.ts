@@ -20,9 +20,22 @@ describe("UserProfilesRepository.upsert", () => {
     };
 
     let userId: string;
+    let fixtureOrgId: number;
+    // fixed, reserved-range EIN so this fixture never collides with real eo_bmf data
+    const fixtureEin = "000000001";
 
     beforeAll(async () => {
         await runMigrations();
+
+        const org = await pool.query(
+            "INSERT INTO eo_bmf (ein, name) VALUES ($1, $2) RETURNING id;",
+            [fixtureEin, "Repo Test Charity"],
+        );
+        fixtureOrgId = org.rows[0].id;
+    });
+
+    afterAll(async () => {
+        await pool.query("DELETE FROM eo_bmf WHERE ein = $1;", [fixtureEin]);
     });
 
     beforeEach(async () => {
@@ -49,7 +62,7 @@ describe("UserProfilesRepository.upsert", () => {
     it("only overwrites fields provided on a later upsert, leaving others as-is", async () => {
         await profilesRepo.upsert(userId, {
             display_name: "Lena Ortiz",
-            default_charity: "GiveDirectly",
+            default_charity: fixtureOrgId,
             public_opt_in: false,
             timezone: "America/Chicago",
             use_real_email: true,
@@ -58,7 +71,7 @@ describe("UserProfilesRepository.upsert", () => {
         const updated = await profilesRepo.upsert(userId, { display_name: "Lena O." });
 
         expect(updated.display_name).toBe("Lena O.");
-        expect(updated.default_charity).toBe("GiveDirectly");
+        expect(updated.default_charity).toBe(fixtureOrgId);
         expect(updated.public_opt_in).toBe(false);
         expect(updated.timezone).toBe("America/Chicago");
         expect(updated.use_real_email).toBe(true);

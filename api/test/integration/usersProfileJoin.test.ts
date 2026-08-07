@@ -20,9 +20,22 @@ describe("users.repo profile join", () => {
     };
 
     let userId: string;
+    let fixtureOrgId: number;
+    // fixed, reserved-range EIN so this fixture never collides with real eo_bmf data
+    const fixtureEin = "000000002";
 
     beforeAll(async () => {
         await runMigrations();
+
+        const org = await pool.query(
+            "INSERT INTO eo_bmf (ein, name) VALUES ($1, $2) RETURNING id;",
+            [fixtureEin, "Join Test Charity"],
+        );
+        fixtureOrgId = org.rows[0].id;
+    });
+
+    afterAll(async () => {
+        await pool.query("DELETE FROM eo_bmf WHERE ein = $1;", [fixtureEin]);
     });
 
     beforeEach(async () => {
@@ -48,7 +61,7 @@ describe("users.repo profile join", () => {
     it("getUserById returns the joined profile fields once a profile row exists", async () => {
         await profilesRepo.upsert(userId, {
             display_name: "Lena Ortiz",
-            default_charity: "GiveDirectly",
+            default_charity: fixtureOrgId,
             public_opt_in: false,
             timezone: "America/Chicago",
             use_real_email: true,
@@ -57,7 +70,7 @@ describe("users.repo profile join", () => {
         const user = await usersRepo.getUserById(userId);
 
         expect(user.display_name).toBe("Lena Ortiz");
-        expect(user.default_charity).toBe("GiveDirectly");
+        expect(user.default_charity).toBe(fixtureOrgId);
         expect(user.public_opt_in).toBe(false);
         expect(user.timezone).toBe("America/Chicago");
         expect(user.use_real_email).toBe(true);
