@@ -1,7 +1,9 @@
 import {
     exchangeCodeForToken,
     fetchGitHubUser,
-    fetchPrimaryVerifiedEmail,
+    fetchGitHubEmails,
+    pickPrimaryVerifiedEmail,
+    pickNoreplyEmail,
     computeNoreplyEmail,
 } from "../../services/github.service";
 
@@ -78,30 +80,58 @@ describe("github.service", () => {
         });
     });
 
-    describe("fetchPrimaryVerifiedEmail", () => {
-        it("returns the primary verified email", async () => {
-            fetchSpy.mockResolvedValue(mockFetchResponse([
+    describe("fetchGitHubEmails", () => {
+        it("returns the parsed emails array", async () => {
+            const emails = [
                 { email: "secondary@example.com", primary: false, verified: true, visibility: null },
-                { email: "unverified@example.com", primary: true, verified: false, visibility: null },
                 { email: "primary@example.com", primary: true, verified: true, visibility: "public" },
-            ]) as any);
+            ];
+            fetchSpy.mockResolvedValue(mockFetchResponse(emails) as any);
 
-            const email = await fetchPrimaryVerifiedEmail("gho_abc123");
-            expect(email).toBe("primary@example.com");
-        });
+            expect(await fetchGitHubEmails("gho_abc123")).toEqual(emails);
 
-        it("throws when no verified primary email exists", async () => {
-            fetchSpy.mockResolvedValue(mockFetchResponse([
-                { email: "unverified@example.com", primary: true, verified: false, visibility: null },
-            ]) as any);
-
-            await expect(fetchPrimaryVerifiedEmail("gho_abc123")).rejects.toThrow(/no verified primary email/i);
+            const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+            expect((init.headers as Record<string, string>).Authorization).toBe("Bearer gho_abc123");
         });
 
         it("throws when the request fails", async () => {
             fetchSpy.mockResolvedValue(mockFetchResponse({}, false, 401) as any);
 
-            await expect(fetchPrimaryVerifiedEmail("bad-token")).rejects.toThrow();
+            await expect(fetchGitHubEmails("bad-token")).rejects.toThrow();
+        });
+    });
+
+    describe("pickPrimaryVerifiedEmail", () => {
+        it("returns the primary verified email", () => {
+            const email = pickPrimaryVerifiedEmail([
+                { email: "secondary@example.com", primary: false, verified: true, visibility: null },
+                { email: "unverified@example.com", primary: true, verified: false, visibility: null },
+                { email: "primary@example.com", primary: true, verified: true, visibility: "public" },
+            ]);
+            expect(email).toBe("primary@example.com");
+        });
+
+        it("throws when no verified primary email exists", () => {
+            expect(() => pickPrimaryVerifiedEmail([
+                { email: "unverified@example.com", primary: true, verified: false, visibility: null },
+            ])).toThrow(/no verified primary email/i);
+        });
+    });
+
+    describe("pickNoreplyEmail", () => {
+        it("finds a noreply-shaped entry in the emails array", () => {
+            const email = pickNoreplyEmail([
+                { email: "personal@example.com", primary: true, verified: true, visibility: "public" },
+                { email: "583231+octocat@users.noreply.github.com", primary: false, verified: true, visibility: null },
+            ]);
+            expect(email).toBe("583231+octocat@users.noreply.github.com");
+        });
+
+        it("returns undefined when no email matches the noreply pattern", () => {
+            const email = pickNoreplyEmail([
+                { email: "personal@example.com", primary: true, verified: true, visibility: "public" },
+            ]);
+            expect(email).toBeUndefined();
         });
     });
 

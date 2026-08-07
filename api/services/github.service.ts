@@ -11,7 +11,7 @@ export interface iGitHubUser {
     email: string | null;
 }
 
-interface iGitHubEmail {
+export interface iGitHubEmail {
     email: string;
     primary: boolean;
     verified: boolean;
@@ -58,7 +58,7 @@ export const fetchGitHubUser = async (accessToken: string): Promise<iGitHubUser>
     return (await res.json()) as iGitHubUser;
 };
 
-export const fetchPrimaryVerifiedEmail = async (accessToken: string): Promise<string> => {
+export const fetchGitHubEmails = async (accessToken: string): Promise<iGitHubEmail[]> => {
     const res = await fetch("https://api.github.com/user/emails", {
         headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -70,7 +70,10 @@ export const fetchPrimaryVerifiedEmail = async (accessToken: string): Promise<st
         throw new Error(`Failed to fetch GitHub emails (status ${res.status}).`);
     }
 
-    const emails = (await res.json()) as iGitHubEmail[];
+    return (await res.json()) as iGitHubEmail[];
+};
+
+export const pickPrimaryVerifiedEmail = (emails: iGitHubEmail[]): string => {
     const primary = emails.find((email) => email.primary && email.verified);
 
     if (!primary) {
@@ -79,6 +82,17 @@ export const fetchPrimaryVerifiedEmail = async (accessToken: string): Promise<st
 
     return primary.email;
 };
+
+/**
+ * GitHub's /user/emails can already include the "keep my email address
+ * private" noreply address as one of the listed emails (matched by suffix,
+ * not the stricter {id}+{username} shape, so both the newer and older
+ * noreply formats GitHub has issued are recognized). Prefer that over
+ * computeNoreplyEmail() below when it's present, rather than re-deriving
+ * data GitHub already gave us.
+ */
+export const pickNoreplyEmail = (emails: iGitHubEmail[]): string | undefined =>
+    emails.find((email) => email.email.endsWith("@users.noreply.github.com"))?.email;
 
 /**
  * GitHub's own auto-generated "keep my email address private" noreply
