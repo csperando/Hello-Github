@@ -1,12 +1,10 @@
 <script setup lang="ts">
     import { computed, onMounted, ref } from "vue"
     import { useRoute, useRouter } from "vue-router"
-    import AppNavbar from "@/components/layout/AppNavbar.vue"
+    
     import BaseButton from "@/components/ui/BaseButton.vue"
-    import BaseCard from "@/components/ui/BaseCard.vue"
     import BaseSelect from "@/components/ui/BaseSelect.vue"
     import CharityListItem from "@/components/ui/CharityListItem.vue"
-    import StepProgress from "@/components/ui/StepProgress.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import { githubLoginUrl, updateProfile } from "@/services/api"
     import { useAuthStore } from "@/stores/auth"

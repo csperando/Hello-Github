@@ -11,9 +11,20 @@ export class OrgsService {
         this.repo = OrgsRepository.repo();
     }
 
-    public async getAllOrgs() {
+    public async getAllOrgs(): Promise<iOrg[]> {
         try {
             const orgs = await this.repo.getAllOrgs() || [];
+            return orgs;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    public async getOrgById(orgId: number): Promise<iOrg[]> {
+        try {
+            const orgs = await this.repo.getOrgById(orgId) || [];
             return orgs;
 
         } catch(err: any) {
