@@ -12,6 +12,8 @@ export interface iAuthUser {
     public_opt_in?: boolean
     timezone?: string
     use_real_email?: boolean
+    github_email?: string
+    github_noreply_email?: string
     role?: 'admin' | 'user'
     is_active?: boolean
 }
