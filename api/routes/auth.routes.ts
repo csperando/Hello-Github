@@ -79,16 +79,28 @@ router.get("/github/callback", async (req: Request, res: Response) => {
             avatar_url: ghUser.avatar_url,
         };
 
-        const user = await userService.upsertFromGitHub(upsertInput);
+        let redirectUrl = `${config.FRONTEND_URL}/signup/profile`;
+        let userId: any;
 
-        res.cookie(SID_COOKIE_NAME, user.id, {
+        // check existence
+        const existingUsers = await userService.getUserByGitHubId(ghUser.id);
+        if(existingUsers.length) {
+            redirectUrl = `${config.FRONTEND_URL}/dashboard`;
+            userId = existingUsers[0]?.id;
+
+        } else {
+            const user = await userService.insertFromGitHub(upsertInput);
+            userId = user.id;
+        }
+
+        res.cookie(SID_COOKIE_NAME, userId, {
             ...baseCookieOptions,
             signed: true,
             maxAge: SID_COOKIE_MAX_AGE_MS,
         });
 
-        // brand-new signups land on the profile step; returning logins skip straight to the dashboard
-        res.redirect(user.inserted ? `${config.FRONTEND_URL}/signup?step=profile` : `${config.FRONTEND_URL}/dashboard`);
+        // continue with signup
+        res.redirect(redirectUrl);
 
     } catch(err) {
         logger.error(err);

@@ -47,9 +47,31 @@ export class UserService {
         }
     }
 
+    public async getUserByGitHubId(ghId: number): Promise<iUser[]> {
+        try {
+            const users = await this.repo.getUserByGitHubId(ghId) || [];
+            return users;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     public async upsertFromGitHub(input: iGitHubUpsertInput) {
         try {
             const user = await this.repo.upsertFromGitHub(input);
+            return user;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    public async insertFromGitHub(input: iGitHubUpsertInput) {
+        try {
+            const user = await this.repo.insertFromGitHub(input);
             return user;
 
         } catch(err: any) {

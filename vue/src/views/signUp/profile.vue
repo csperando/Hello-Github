@@ -15,22 +15,21 @@
         letter: string
     }
 
+    // TODO - create featured charities view that admins can update
     const CHARITIES: Charity[] = [
-        { name: "GiveDirectly", letter: "G" },
+        { name: "Mesa County SAR", letter: "M" },
+        { name: "World Wildlife Foundation", letter: "W" },
         { name: "Khan Academy", letter: "K" },
-        { name: "EFF", letter: "E" },
+        { name: "The Red Cross", letter: "R" },
         { name: "Code.org", letter: "C" },
     ];
 
-    const route = useRoute()
-    const router = useRouter()
     const authStore = useAuthStore()
 
-    const connecting = ref(false)
     const saving = ref(false)
     const saveError = ref("")
-    const displayName = ref("")
-    const charity = ref("GiveDirectly")
+    const displayName = ref(authStore.user?.github_username)
+    const charity = ref("Mesa County SAR")
     const publicOptIn = ref(true)
     const timezone = ref(detectTimezone())
     const useRealEmail = ref(false)
@@ -41,31 +40,12 @@
     );
 
     const ghAvatar = computed(() =>
-        authStore.user?.avatar_url ? `@${authStore.user.avatar_url}` : "/favicon-32.png",
+        authStore.user?.avatar_url ? `${authStore.user.avatar_url}` : "/favicon-32.png",
     );
 
     onMounted(async () => {
         await authStore.fetchMe()
-
-        const wantsProfileStep = route.query.step === "profile"
-
-        if (authStore.isAuthenticated) {
-            if (!wantsProfileStep) {
-                // already fully signed in and not mid-onboarding - don't show the connect screen again
-                router.replace("/dashboard")
-                return
-            }
-
-            displayName.value = authStore.user?.github_username || "";
-        }
-        // else: stale/shared "?step=profile" link with no session - fall back to step 1 (the default)
-
     });
-
-    function connect() {
-        connecting.value = true
-        window.location.href = githubLoginUrl()
-    }
 
     function togglePublic() {
         publicOptIn.value = !publicOptIn.value
@@ -75,45 +55,14 @@
         useRealEmail.value = !useRealEmail.value
     }
 
-    function skip() {
-        step.value = 3
-    }
-
-    async function finish() {
-        saving.value = true
-        saveError.value = ""
-        try {
-            const res = await updateProfile(authStore.user!.id, {
-                display_name: displayName.value,
-                default_charity: charity.value,
-                public_opt_in: publicOptIn.value,
-                timezone: timezone.value,
-                use_real_email: useRealEmail.value,
-            })
-            if (!res.ok) {
-                saveError.value = "Something went wrong saving your profile. Please try again."
-                return
-            }
-            step.value = 3
-        } catch {
-            saveError.value = "Something went wrong saving your profile. Please try again."
-        } finally {
-            saving.value = false
-        }
-    }
-
     const charities = computed(() =>
         CHARITIES.map((c) => ({
             ...c,
             selected: c.name === charity.value,
             borderColor: c.name === charity.value ? "var(--color-accent-border)" : "var(--color-border)",
         })),
-    )
+    );
 
-    const firstName = computed(() => {
-        const base = displayName.value || ghHandle.value.replace("@", "")
-        return (base.split(" ")[0] ?? "").split(".")[0] ?? ""
-    })
 </script>
 
 <template>
@@ -141,6 +90,11 @@
                     width="50px"
                     height="50px"
                 />
+                <div class="edit-avatar">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
+                        <path d="M.102 2.223A3.004 3.004 0 0 0 3.78 5.897l6.341 6.252A3.003 3.003 0 0 0 13 16a3 3 0 1 0-.851-5.878L5.897 3.781A3.004 3.004 0 0 0 2.223.1l2.141 2.142L4 4l-1.757.364zm13.37 9.019.528.026.287.445.445.287.026.529L15 13l-.242.471-.026.529-.445.287-.287.445-.529.026L13 15l-.471-.242-.529-.026-.287-.445-.445-.287-.026-.529L11 13l.242-.471.026-.529.445-.287.287-.445.529-.026L13 11z"/>
+                    </svg>
+                </div>
             </div>
         </div>
 
@@ -149,10 +103,24 @@
         
         <!-- todo - add filter inputs here for orgs' state, etc. -->
         <label class="field-label">default charity</label>
-        <input placeholder="search for a charity" class="text-input" />
+
+        <!-- TODO - review this -->
+        <CharityListItem
+                v-for="c in [charities[0]]"
+                :key="c.name"
+                size="sm"
+                :name="c.name"
+                :letter="c.letter"
+                :border-color="c.borderColor"
+                :selected="c.selected"
+                @click="charity = c.name"
+            />
+        <input placeholder="search for a charity" class="text-input my-2" />
+
+        <label class="field-label">featured charities</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 charity-grid">
             <CharityListItem
-                v-for="c in charities"
+                v-for="(c, i) in charities.slice(1, 5)"
                 :key="c.name"
                 size="sm"
                 :name="c.name"
@@ -188,8 +156,8 @@
         <div v-if="saveError" class="save-error">{{ saveError }}</div>
 
         <div class="step2-actions">
-            <BaseButton variant="secondary" @click="skip" :disabled="saving" class="skip-button">skip for now</BaseButton>
-            <BaseButton @click="finish" :disabled="saving" :loading="saving" class="continue-button">
+            <BaseButton variant="secondary" :disabled="saving" class="skip-button">skip for now</BaseButton>
+            <BaseButton :disabled="saving" :loading="saving" class="continue-button">
                 <span v-if="saving">saving…</span>
                 <span v-else>save & continue →</span>
             </BaseButton>
@@ -210,6 +178,30 @@
     .chip:hover {
         filter: brightness(1.3);
         cursor: pointer;
+
+        .edit-avatar {
+            opacity: 100%;
+        }
+    }
+
+    .chip > img {
+        border-radius: 50%;
+    }
+
+    .edit-avatar {
+        position: absolute;
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+        right: 5px;
+        bottom: 5px;
+        width: 24px;
+        height: 24px;
+        padding: 4px;
+        border-radius: 50%;
+        background-color: grey;
+        opacity: 0%;
     }
 
     .connect-icon {

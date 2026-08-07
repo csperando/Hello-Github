@@ -4,22 +4,20 @@
     import AppNavbar from "@/components/layout/AppNavbar.vue"
     import BaseCard from "@/components/ui/BaseCard.vue"
     import StepProgress from "@/components/ui/StepProgress.vue"
-    import { useAuthStore } from "@/stores/auth"
 
     const STEPS = ["connect", "profile", "done"]
 
     const route = useRoute()
     const router = useRouter()
-    const authStore = useAuthStore()
-
-    const initializing = ref(true)
+    const path = ref(route.fullPath);
     const step = ref(0)
 
     onMounted(() => {
-        initializing.value = false;
-        
-        const path = route.fullPath;
-        if(path === "/signup") router.push("/signup/connect");
+        if(path.value === "/signup") router.push("/signup/connect");
+        step.value = 0;
+
+        if(path.value.includes("profile")) step.value = 1;
+        if(path.value.includes("done")) step.value = 2;
     });
 </script>
 
