@@ -5,9 +5,9 @@
     import BaseCard from "@/components/ui/BaseCard.vue"
     import BaseSelect from "@/components/ui/BaseSelect.vue"
     import BaseTextInput from "@/components/ui/BaseTextInput.vue"
-    import CharityListItem from "@/components/ui/CharityListItem.vue"
     import CharityResultsList from "@/components/ui/CharityResultsList.vue"
     import CharitySearchInput from "@/components/ui/CharitySearchInput.vue"
+    import SelectedCharitySummary from "@/components/ui/SelectedCharitySummary.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import { getOrgById, updateProfile } from "@/services/api"
     import type { iOrg } from "@/services/api"
@@ -124,14 +124,7 @@
                     />
 
                     <label class="field-label">default charity</label>
-                    <CharityListItem
-                        v-if="selectedCharity"
-                        size="sm"
-                        :name="selectedCharity.name"
-                        :letter="selectedCharity.name.charAt(0).toUpperCase()"
-                        border-color="var(--color-accent-border)"
-                        :selected="true"
-                    />
+                    <SelectedCharitySummary :charity="selectedCharity" />
                     <CharitySearchInput @search="handleCharitySearch" @cleared="handleCharitySearchCleared" />
                     <CharityResultsList
                         :results="searchResults"
