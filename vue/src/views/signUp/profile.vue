@@ -1,13 +1,14 @@
 <script setup lang="ts">
     import { computed, onMounted, ref } from "vue"
-    import { useRoute, useRouter } from "vue-router"
+    import { useRouter } from "vue-router"
 
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseSelect from "@/components/ui/BaseSelect.vue"
     import BaseTextInput from "@/components/ui/BaseTextInput.vue"
-    import CharityListItem from "@/components/ui/CharityListItem.vue"
     import CharityResultsList from "@/components/ui/CharityResultsList.vue"
     import CharitySearchInput from "@/components/ui/CharitySearchInput.vue"
+    import GitConfigPreview from "@/components/ui/GitConfigPreview.vue"
+    import SelectedCharitySummary from "@/components/ui/SelectedCharitySummary.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import { githubLoginUrl, updateProfile } from "@/services/api"
     import type { iOrg } from "@/services/api"
@@ -15,34 +16,34 @@
     import { timezoneOptions, detectTimezone } from "@/helpers/timezone"
     import { useCharitySearch } from "@/composables/useCharitySearch"
 
-    interface Charity {
-        name: string
-        letter: string
-    }
+    // featured-charities section commented out for now (see profile.vue's
+    // template) - was a hardcoded, name-keyed list that predates real charity
+    // search and conflicted with it; revisit once there's a real API-backed
+    // featured-charities source.
+    // interface Charity {
+    //     name: string
+    //     letter: string
+    // }
+    //
+    // const CHARITIES: Charity[] = [
+    //     { name: "Mesa County SAR", letter: "M" },
+    //     { name: "World Wildlife Foundation", letter: "W" },
+    //     { name: "Khan Academy", letter: "K" },
+    //     { name: "The Red Cross", letter: "R" },
+    //     { name: "Code.org", letter: "C" },
+    // ];
 
-    // TODO - create featured charities view that admins can update
-    const CHARITIES: Charity[] = [
-        { name: "Mesa County SAR", letter: "M" },
-        { name: "World Wildlife Foundation", letter: "W" },
-        { name: "Khan Academy", letter: "K" },
-        { name: "The Red Cross", letter: "R" },
-        { name: "Code.org", letter: "C" },
-    ];
-
+    const router = useRouter()
     const authStore = useAuthStore()
 
     const saving = ref(false)
     const saveError = ref("")
     const displayName = ref(authStore.user?.github_username ?? "")
-    const charity = ref("Mesa County SAR")
     const publicOptIn = ref(true)
     const timezone = ref(detectTimezone())
     const useRealEmail = ref(false)
     const timezoneOpts = timezoneOptions()
 
-    // kept separate from `charity` (the hardcoded featured-charity picker) since
-    // a search result carries a real eo_bmf id, not a name - nothing wires these
-    // two into a single default_charity selection yet (out of scope here)
     const selectedSearchCharity = ref<iOrg | null>(null)
     const {
         searchResults,
@@ -77,14 +78,51 @@
         useRealEmail.value = !useRealEmail.value
     }
 
-    const charities = computed(() =>
-        CHARITIES.map((c) => ({
-            ...c,
-            selected: c.name === charity.value,
-            borderColor: c.name === charity.value ? "var(--color-accent-border)" : "var(--color-border)",
-        })),
-    );
+    const effectiveEmail = computed(() =>
+        useRealEmail.value ? (authStore.user?.github_email ?? "") : (authStore.user?.github_noreply_email ?? ""),
+    )
 
+    // const charities = computed(() =>
+    //     CHARITIES.map((c) => ({
+    //         ...c,
+    //         selected: c.name === charity.value,
+    //         borderColor: c.name === charity.value ? "var(--color-accent-border)" : "var(--color-border)",
+    //     })),
+    // );
+
+    function skip() {
+        router.push("/signup/done")
+    }
+
+    async function saveAndContinue() {
+        if (!authStore.user) return
+
+        saving.value = true
+        saveError.value = ""
+        try {
+            const res = await updateProfile(authStore.user.id, {
+                display_name: displayName.value,
+                default_charity: selectedSearchCharity.value?.id,
+                public_opt_in: publicOptIn.value,
+                timezone: timezone.value,
+                use_real_email: useRealEmail.value,
+            })
+            if (!res.ok) {
+                saveError.value = "Something went wrong saving your profile. Please try again."
+                return
+            }
+            authStore.user.display_name = displayName.value
+            authStore.user.default_charity = selectedSearchCharity.value?.id
+            authStore.user.public_opt_in = publicOptIn.value
+            authStore.user.timezone = timezone.value
+            authStore.user.use_real_email = useRealEmail.value
+            router.push("/signup/done")
+        } catch {
+            saveError.value = "Something went wrong saving your profile. Please try again."
+        } finally {
+            saving.value = false
+        }
+    }
 </script>
 
 <template>
@@ -124,19 +162,9 @@
         <BaseTextInput id="profile-display-name" v-model="displayName" placeholder="your public username" />
         
         <!-- todo - add filter inputs here for orgs' state, etc. -->
-        <label class="field-label">default charity</label>
+        <label class="field-label">select a charity</label>
 
-        <!-- TODO - review this -->
-        <CharityListItem
-                v-for="c in [charities[0]]"
-                :key="c.name"
-                size="sm"
-                :name="c.name"
-                :letter="c.letter"
-                :border-color="c.borderColor"
-                :selected="c.selected"
-                @click="charity = c.name"
-            />
+        <SelectedCharitySummary :charity="selectedSearchCharity" />
         <CharitySearchInput @search="handleCharitySearch" @cleared="handleCharitySearchCleared" />
         <CharityResultsList
             :results="searchResults"
@@ -146,6 +174,11 @@
             :selected-id="selectedSearchCharity?.id ?? null"
             @select="handleCharitySearchSelect"
         />
+
+        <!--
+        featured charities - commented out for now, see the matching note in
+        the script block. Revisit once there's a real API-backed source for
+        these instead of a hardcoded, name-keyed list.
 
         <label class="field-label">featured charities</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 charity-grid">
@@ -160,6 +193,7 @@
                 @click="charity = c.name"
             />
         </div>
+        -->
 
         <div class="toggle-row toggle-row-wide">
             <div>
@@ -183,11 +217,13 @@
             <ToggleSwitch data-testid="use-real-email-toggle" :checked="useRealEmail" @click="toggleUseRealEmail" />
         </div>
 
+        <GitConfigPreview :username="ghHandle" :email="effectiveEmail" />
+
         <div v-if="saveError" class="save-error">{{ saveError }}</div>
 
         <div class="step2-actions">
-            <BaseButton variant="secondary" :disabled="saving" class="skip-button">skip for now</BaseButton>
-            <BaseButton :disabled="saving" :loading="saving" class="continue-button">
+            <BaseButton @click="skip" variant="secondary" :disabled="saving" class="skip-button">skip for now</BaseButton>
+            <BaseButton @click="saveAndContinue" :disabled="saving" :loading="saving" class="continue-button">
                 <span v-if="saving">saving…</span>
                 <span v-else>save & continue →</span>
             </BaseButton>
