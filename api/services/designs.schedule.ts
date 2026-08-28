@@ -60,6 +60,38 @@ export function getIntensityForDate(pattern: number[], selection: iScheduleField
  * an official spec, and are expected to be tuned once real rendering is
  * observed in practice.
  */
+/** One day's rendered contribution data, as returned by fetchContributionCalendar. */
+export interface iContributionDay {
+    count: number;
+    level: number;
+}
+
+/**
+ * Derives GitHub's per-user, per-year commit-count-tier constant `q` from a
+ * set of already-rendered days (see .claude/tmp/research.md for the
+ * reverse-engineering behind this). The general, validated formula is
+ * `q = MAX(max(count at level 1)/1, max(count at level 2)/2, max(count at
+ * level 3)/3)` - whichever degree boundary is tightest that year; an
+ * earlier pass assumed the degree-2 term alone was sufficient, but that
+ * only held by coincidence for one account's data and breaks on others.
+ * Returns null when levels 1-3 are all absent from `days` - GitHub's real
+ * algorithm is known to behave qualitatively differently (not just "a
+ * smaller q") for such sparse years, so this is treated as "undefined,"
+ * not silently computed as 0.
+ */
+export function computeQ(days: iContributionDay[]): number | null {
+    const maxCountAtLevel = (level: number): number =>
+        days.filter((day) => day.level === level).reduce((max, day) => Math.max(max, day.count), 0);
+
+    const deg1Max = maxCountAtLevel(1);
+    const deg2Max = maxCountAtLevel(2);
+    const deg3Max = maxCountAtLevel(3);
+
+    if (deg1Max === 0 && deg2Max === 0 && deg3Max === 0) return null;
+
+    return Math.max(deg1Max / 1, deg2Max / 2, deg3Max / 3);
+}
+
 const COMMIT_COUNT_BY_INTENSITY: readonly [number, number, number, number, number] = [0, 2, 5, 8, 12];
 
 export function getCommitCountForIntensity(intensity: number): number {

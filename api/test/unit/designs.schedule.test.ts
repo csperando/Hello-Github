@@ -1,4 +1,4 @@
-import { getPatternIndexForDate, getIntensityForDate, getCommitCountForIntensity, iScheduleFields } from "../../services/designs.schedule";
+import { getPatternIndexForDate, getIntensityForDate, getCommitCountForIntensity, computeQ, iScheduleFields } from "../../services/designs.schedule";
 
 function selection(overrides: Partial<iScheduleFields>): iScheduleFields {
     return {
@@ -85,5 +85,65 @@ describe("getCommitCountForIntensity", () => {
         expect(() => getCommitCountForIntensity(-1)).toThrow(RangeError);
         expect(() => getCommitCountForIntensity(5)).toThrow(RangeError);
         expect(() => getCommitCountForIntensity(1.5)).toThrow(RangeError);
+    });
+});
+
+describe("computeQ", () => {
+    it("takes the degree-2 constraint when it's the tightest (matches the account owner's real 2022 data, q=15)", () => {
+        const days = [
+            { count: 15, level: 1 },
+            { count: 30, level: 2 },
+            { count: 43, level: 3 },
+        ];
+        expect(computeQ(days)).toBe(15);
+    });
+
+    it("takes the degree-1 constraint when it's the tightest, not just degree-2 (matches an out-of-sample account's real data)", () => {
+        const days = [
+            { count: 10, level: 1 },
+            { count: 18, level: 2 },
+            { count: 24, level: 3 },
+        ];
+        expect(computeQ(days)).toBe(10);
+    });
+
+    it("takes the degree-3 constraint when it's the tightest", () => {
+        const days = [
+            { count: 2, level: 1 },
+            { count: 6, level: 2 },
+            { count: 21, level: 3 },
+        ];
+        expect(computeQ(days)).toBe(7);
+    });
+
+    it("uses only the max count within each degree, ignoring smaller same-degree days", () => {
+        const days = [
+            { count: 3, level: 1 },
+            { count: 10, level: 1 },
+            { count: 20, level: 2 },
+        ];
+        expect(computeQ(days)).toBe(10);
+    });
+
+    it("works from a single anchor degree when the others are entirely absent", () => {
+        const days = [
+            { count: 0, level: 0 },
+            { count: 20, level: 2 },
+            { count: 0, level: 0 },
+        ];
+        expect(computeQ(days)).toBe(10);
+    });
+
+    it("returns null when levels 1, 2, and 3 are all absent (the sparse-year degenerate case)", () => {
+        const days = [
+            { count: 0, level: 0 },
+            { count: 1, level: 4 },
+            { count: 3, level: 4 },
+        ];
+        expect(computeQ(days)).toBeNull();
+    });
+
+    it("returns null for an empty day list", () => {
+        expect(computeQ([])).toBeNull();
     });
 });
