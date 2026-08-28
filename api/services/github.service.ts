@@ -1,3 +1,4 @@
+import { parse } from "node-html-parser";
 import { config } from "../config/config";
 
 export interface iGitHubUser {
@@ -103,4 +104,43 @@ export const pickNoreplyEmail = (emails: iGitHubEmail[]): string | undefined =>
  */
 export const computeNoreplyEmail = (githubId: number, githubUsername: string): string => {
     return `${githubId}+${githubUsername}@users.noreply.github.com`;
+};
+
+export interface iContributionDay {
+    date: string;
+    count: number;
+    level: number;
+}
+
+/**
+ * Reads GitHub's public, unauthenticated contribution-calendar HTML partial
+ * (the same endpoint a profile page's own JS lazy-loads) rather than the
+ * authenticated GraphQL API - no PAT/token/scope needed, and `data-level`
+ * is GitHub's own literal 0-4 degree label (no color-to-degree inference
+ * needed). See .claude/tmp/research.md for how this was chosen/verified.
+ */
+export const fetchContributionCalendar = async (githubUsername: string, from: string, to: string): Promise<iContributionDay[]> => {
+    const res = await fetch(`https://github.com/users/${githubUsername}/contributions?from=${from}&to=${to}`);
+
+    if (!res.ok) {
+        throw new Error(`Failed to fetch contribution calendar for ${githubUsername} (status ${res.status}).`);
+    }
+
+    const root = parse(await res.text());
+    const days: iContributionDay[] = [];
+
+    for (const cell of root.querySelectorAll("td.ContributionCalendar-day")) {
+        const date = cell.getAttribute("data-date");
+        const levelAttr = cell.getAttribute("data-level");
+        const id = cell.getAttribute("id");
+        if (!date || levelAttr === undefined || !id) continue;
+
+        const tooltipText = root.querySelector(`tool-tip[for="${id}"]`)?.text.trim() ?? "";
+        const match = tooltipText.match(/^(\d+|No)\s+contributions?/i);
+        const count = match ? (match[1]!.toLowerCase() === "no" ? 0 : Number(match[1])) : 0;
+
+        days.push({ date, count, level: Number(levelAttr) });
+    }
+
+    return days;
 };

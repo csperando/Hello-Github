@@ -5,6 +5,7 @@ import {
     pickPrimaryVerifiedEmail,
     pickNoreplyEmail,
     computeNoreplyEmail,
+    fetchContributionCalendar,
 } from "../../services/github.service";
 
 const mockFetchResponse = (body: any, ok = true, status = 200) => ({
@@ -12,6 +13,23 @@ const mockFetchResponse = (body: any, ok = true, status = 200) => ({
     status,
     json: async () => body,
 });
+
+const mockFetchHtmlResponse = (html: string, ok = true, status = 200) => ({
+    ok,
+    status,
+    text: async () => html,
+});
+
+// mirrors the real markup shape from github.com/users/<username>/contributions:
+// a <td class="ContributionCalendar-day"> per day plus a matching <tool-tip for="...">
+// element carrying the human-readable count.
+function contributionDayHtml(id: string, date: string, level: number, count: number): string {
+    const tooltipText = count === 0 ? `No contributions on ${date}.` : `${count} contribution${count === 1 ? "" : "s"} on ${date}.`;
+    return `
+        <td data-date="${date}" id="${id}" data-level="${level}" class="ContributionCalendar-day"></td>
+        <tool-tip for="${id}">${tooltipText}</tool-tip>
+    `;
+}
 
 describe("github.service", () => {
     let fetchSpy: jest.SpiedFunction<typeof fetch>;
@@ -146,6 +164,53 @@ describe("github.service", () => {
 
         it("differs for different usernames with the same id (shouldn't happen, but not silently collide)", () => {
             expect(computeNoreplyEmail(1, "a")).not.toBe(computeNoreplyEmail(1, "b"));
+        });
+    });
+
+    describe("fetchContributionCalendar", () => {
+        it("parses date, level, and count for each day", async () => {
+            const html = `<table>${contributionDayHtml("d0", "2026-01-01", 0, 0)}${contributionDayHtml("d1", "2026-01-02", 2, 4)}</table>`;
+            fetchSpy.mockResolvedValue(mockFetchHtmlResponse(html) as any);
+
+            const days = await fetchContributionCalendar("octocat", "2026-01-01", "2026-01-02");
+
+            expect(days).toEqual([
+                { date: "2026-01-01", count: 0, level: 0 },
+                { date: "2026-01-02", count: 4, level: 2 },
+            ]);
+        });
+
+        it("parses singular '1 contribution' phrasing correctly", async () => {
+            const html = `<table>${contributionDayHtml("d0", "2026-01-03", 1, 1)}</table>`;
+            fetchSpy.mockResolvedValue(mockFetchHtmlResponse(html) as any);
+
+            const days = await fetchContributionCalendar("octocat", "2026-01-03", "2026-01-03");
+
+            expect(days).toEqual([{ date: "2026-01-03", count: 1, level: 1 }]);
+        });
+
+        it("requests the public unauthenticated contributions endpoint for the given username and range", async () => {
+            fetchSpy.mockResolvedValue(mockFetchHtmlResponse("<table></table>") as any);
+
+            await fetchContributionCalendar("octocat", "2026-01-01", "2026-12-31");
+
+            expect(fetchSpy).toHaveBeenCalledWith(
+                "https://github.com/users/octocat/contributions?from=2026-01-01&to=2026-12-31",
+            );
+        });
+
+        it("throws when the HTTP response itself is not ok", async () => {
+            fetchSpy.mockResolvedValue(mockFetchHtmlResponse("", false, 500) as any);
+
+            await expect(fetchContributionCalendar("octocat", "2026-01-01", "2026-01-02")).rejects.toThrow(/status 500/);
+        });
+
+        it("returns an empty array when there are no day cells", async () => {
+            fetchSpy.mockResolvedValue(mockFetchHtmlResponse("<table></table>") as any);
+
+            const days = await fetchContributionCalendar("octocat", "2026-01-01", "2026-01-02");
+
+            expect(days).toEqual([]);
         });
     });
 });
