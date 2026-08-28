@@ -8,7 +8,16 @@ mockRepo("repository/users.repo", usersRepoMock);
 const profilesRepoMock = createMockRepoProxy<iUserProfileRepo>();
 mockRepo("repository/userProfiles.repo", profilesRepoMock);
 
+const mockRefreshForUser = jest.fn();
+jest.mock("../../services/contributionRefresh.service", () => ({
+    __esModule: true,
+    ContributionRefreshService: jest.fn().mockImplementation(() => ({
+        refreshForUser: mockRefreshForUser,
+    })),
+}));
+
 import { UserService } from "../../services/users.service";
+import { iGitHubUpsertInput } from "../../models/users";
 
 describe("UserService.updateProfile", () => {
     let service: UserService;
@@ -105,5 +114,58 @@ describe("UserService.updateProfile", () => {
             expect(usersRepoMock.updateEmailPreference).toHaveBeenCalledWith("u1", "42+lena@users.noreply.github.com");
             expect(result.email).toBe("42+lena@users.noreply.github.com");
         });
+    });
+});
+
+describe("UserService.upsertFromGitHub", () => {
+    let service: UserService;
+
+    const input: iGitHubUpsertInput = {
+        github_id: 42,
+        github_username: "lena",
+        github_email: "lena@example.com",
+        github_noreply_email: "42+lena@users.noreply.github.com",
+        github_node_id: "MDQ6VXNlcjQy",
+        github_profile_url: "https://github.com/lena",
+        avatar_url: "https://avatars.githubusercontent.com/u/42?v=4",
+    };
+
+    beforeEach(() => {
+        usersRepoMock.__reset();
+        mockRefreshForUser.mockReset();
+        service = new UserService();
+    });
+
+    it("returns the upserted user without waiting on the contribution refresh", async () => {
+        usersRepoMock.upsertFromGitHub.mockResolvedValue({ id: "u1", github_username: "lena" });
+        // never resolves within the test - proves upsertFromGitHub doesn't await it
+        mockRefreshForUser.mockReturnValue(new Promise(() => {}));
+
+        const result = await service.upsertFromGitHub(input);
+
+        expect(result).toEqual({ id: "u1", github_username: "lena" });
+    });
+
+    it("triggers a best-effort contribution refresh for the upserted user", async () => {
+        usersRepoMock.upsertFromGitHub.mockResolvedValue({ id: "u1", github_username: "lena" });
+        mockRefreshForUser.mockResolvedValue({});
+
+        await service.upsertFromGitHub(input);
+
+        expect(mockRefreshForUser).toHaveBeenCalledWith("u1", "lena");
+    });
+
+    it("doesn't let a failed refresh reject upsertFromGitHub or throw unhandled", async () => {
+        usersRepoMock.upsertFromGitHub.mockResolvedValue({ id: "u1", github_username: "lena" });
+        mockRefreshForUser.mockRejectedValue(new Error("GitHub unreachable"));
+
+        await expect(service.upsertFromGitHub(input)).resolves.toEqual({ id: "u1", github_username: "lena" });
+    });
+
+    it("propagates a failure from the users repo upsert itself", async () => {
+        usersRepoMock.upsertFromGitHub.mockRejectedValue(new Error("db down"));
+
+        await expect(service.upsertFromGitHub(input)).rejects.toThrow("db down");
+        expect(mockRefreshForUser).not.toHaveBeenCalled();
     });
 });

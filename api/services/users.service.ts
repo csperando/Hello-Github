@@ -3,6 +3,7 @@ import UserRepository from "../repository/users.repo";
 import UserProfileRepository from "../repository/userProfiles.repo";
 import { iUser, iGitHubUpsertInput, iProfileUpdateInput } from "../models/users";
 import { computeNoreplyEmail } from "./github.service";
+import { ContributionRefreshService } from "./contributionRefresh.service";
 import { iConfig } from "../config/config";
 import { logger } from "../config/logger";
 
@@ -62,6 +63,15 @@ export class UserService {
     public async upsertFromGitHub(input: iGitHubUpsertInput) {
         try {
             const user = await this.repo.upsertFromGitHub(input);
+
+            // Best-effort, non-blocking: a brand-new or low-activity account
+            // often has nothing usable to compute yet (cold-start fallback
+            // covers that), and login shouldn't wait on or fail because of
+            // this. Not awaited on purpose.
+            new ContributionRefreshService()
+                .refreshForUser(user.id, input.github_username)
+                .catch((err: any) => logger.error(err));
+
             return user;
 
         } catch(err: any) {
