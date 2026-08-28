@@ -99,7 +99,7 @@ router.get("/github/callback", async (req: Request, res: Response) => {
             userId = existingUsers[0]?.id;
 
         } else {
-            const user = await userService.insertFromGitHub(upsertInput);
+            const user = await userService.upsertFromGitHub(upsertInput);
             userId = user.id;
         }
 
