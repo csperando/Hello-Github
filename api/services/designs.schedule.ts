@@ -92,6 +92,31 @@ export function computeQ(days: iContributionDay[]): number | null {
     return Math.max(deg1Max / 1, deg2Max / 2, deg3Max / 3);
 }
 
+/**
+ * Provisional cold-start q, used only when a user has no observed data at
+ * all yet (no current or previous year's q in users_contributions). Picked
+ * from the middle of the real per-account q range found in
+ * .claude/tmp/research.md (roughly 2-19) - to be corrected by the
+ * empirical validation pass against a scratch test account.
+ */
+export const DEFAULT_Q = 15;
+
+/**
+ * Given a q (see computeQ), derives one commit count per intensity 1-4 that
+ * lands safely inside its intended band under `degree = MIN(4, CEIL(c/q))`,
+ * biased toward the higher end of each band rather than its boundary -
+ * landing a shade too dark reads better than landing a shade too light and
+ * breaking the intended pattern. c_0 (intensity 0) is always 0 commits,
+ * handled separately in getCommitCountForIntensity below.
+ */
+export function deriveCommitCounts(q: number): [number, number, number, number] {
+    const c1 = Math.max(1, Math.ceil(q * 0.75));
+    const c2 = Math.max(c1 + 1, Math.ceil(q * 1.75));
+    const c3 = Math.max(c2 + 1, Math.ceil(q * 2.75));
+    const c4 = Math.max(c3 + 1, Math.ceil(q * 3.5));
+    return [c1, c2, c3, c4];
+}
+
 const COMMIT_COUNT_BY_INTENSITY: readonly [number, number, number, number, number] = [0, 2, 5, 8, 12];
 
 export function getCommitCountForIntensity(intensity: number): number {

@@ -1,4 +1,4 @@
-import { getPatternIndexForDate, getIntensityForDate, getCommitCountForIntensity, computeQ, iScheduleFields } from "../../services/designs.schedule";
+import { getPatternIndexForDate, getIntensityForDate, getCommitCountForIntensity, computeQ, deriveCommitCounts, DEFAULT_Q, iScheduleFields } from "../../services/designs.schedule";
 
 function selection(overrides: Partial<iScheduleFields>): iScheduleFields {
     return {
@@ -145,5 +145,47 @@ describe("computeQ", () => {
 
     it("returns null for an empty day list", () => {
         expect(computeQ([])).toBeNull();
+    });
+});
+
+describe("deriveCommitCounts", () => {
+    // degree = MIN(4, CEIL(c / q)) - the derived counts must land back in
+    // their intended band under this same formula (self-consistency),
+    // otherwise a "safety margin" choice would actually defeat its purpose.
+    function degreeFor(c: number, q: number): number {
+        return Math.min(4, Math.ceil(c / q));
+    }
+
+    it.each([1, 2, 7.5, 10, 15, 19, 20])("lands each derived count back in its intended degree for q=%s", (q) => {
+        const [c1, c2, c3, c4] = deriveCommitCounts(q);
+        expect(degreeFor(c1, q)).toBe(1);
+        expect(degreeFor(c2, q)).toBe(2);
+        expect(degreeFor(c3, q)).toBe(3);
+        expect(degreeFor(c4, q)).toBe(4);
+    });
+
+    it("produces strictly increasing counts", () => {
+        const [c1, c2, c3, c4] = deriveCommitCounts(15);
+        expect(c2).toBeGreaterThan(c1);
+        expect(c3).toBeGreaterThan(c2);
+        expect(c4).toBeGreaterThan(c3);
+    });
+
+    it("biases each count toward the higher end of its band rather than the boundary (matches real q=15 data)", () => {
+        const [c1, c2, c3, c4] = deriveCommitCounts(15);
+        expect(c1).toBe(12);
+        expect(c2).toBe(27);
+        expect(c3).toBe(42);
+        expect(c4).toBe(53);
+    });
+
+    it("is deterministic for a given q", () => {
+        expect(deriveCommitCounts(15)).toEqual(deriveCommitCounts(15));
+    });
+});
+
+describe("DEFAULT_Q", () => {
+    it("is a positive number usable as a cold-start fallback", () => {
+        expect(DEFAULT_Q).toBeGreaterThan(0);
     });
 });
