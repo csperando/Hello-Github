@@ -17,6 +17,7 @@ export interface iRunLogRepo {
     existsForUserAndDate: (userId: string, targetDate: string) => Promise<boolean>;
     pruneOlderThan: (days: number) => Promise<number>;
     getLatestPerDesignForUser: (userId: string) => Promise<any[]>;
+    getCommittedDatesForUser: (userId: string, from: string, to: string) => Promise<string[]>;
 }
 
 // main repo init function to be called in the service factories
@@ -95,11 +96,33 @@ const repo = (): iRunLogRepo => {
         }
     }
 
+    // dates this app is already known to have painted for a user, within a
+    // range - used to exclude those days when recomputing their q, so our
+    // own painted commits never feed back into the calculation (see
+    // .claude/tmp/goal.md's feedback-loop mitigation). 'failed' rows are
+    // deliberately excluded: a failed run likely means no commit actually
+    // landed that day, so it's still valid organic signal.
+    const getCommittedDatesForUser = async (userId: string, from: string, to: string) => {
+        try {
+            const sqlString = `
+                SELECT target_date FROM run_log
+                WHERE user_id = $1 AND status = 'committed' AND target_date BETWEEN $2 AND $3;
+            `;
+            const result = await pool.query(sqlString, [userId, from, to]);
+            return result.rows.map((row: { target_date: string }) => row.target_date);
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     return {
         create,
         existsForUserAndDate,
         pruneOlderThan,
         getLatestPerDesignForUser,
+        getCommittedDatesForUser,
     }
 };
 

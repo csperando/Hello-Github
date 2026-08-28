@@ -1,0 +1,31 @@
+name: Refresh Contributions
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+env:
+  API_URL: ${{ vars.API_URL || 'https://api.commitsforgood.com' }}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh every active user's q/commit_counts
+        env:
+          SCHEDULER_API_KEY: ${{ secrets.SCHEDULER_API_KEY }}
+        run: |
+          set -euo pipefail
+          curl -sf -X POST -H "X-API-Key: $SCHEDULER_API_KEY" "$API_URL/contributions/refresh" -o result.json
+          cat result.json
+
+          refreshed=$(jq -r '.data.refreshed' result.json)
+          failed=$(jq -r '.data.failed' result.json)
+
+          {
+            echo "## Contribution refresh summary"
+            echo "| refreshed | failed |"
+            echo "|---|---|"
+            echo "| $refreshed | $failed |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -9,10 +9,16 @@ export interface iUpsertContributionsInput {
     max_level_2_contribution: number | null;
 }
 
+export interface iActiveContributionUser {
+    user_id: string;
+    github_username: string;
+}
+
 // define the type of the return object from the repo() method
 export interface iUsersContributionsRepo {
     upsert: (input: iUpsertContributionsInput) => Promise<any>;
     findByUserId: (userId: string) => Promise<any | null>;
+    findActiveUsers: () => Promise<iActiveContributionUser[]>;
 }
 
 // main repo init function to be called in the service factories
@@ -76,9 +82,30 @@ const repo = (): iUsersContributionsRepo => {
         }
     }
 
+    // distinct users worth refreshing a q for - only those with at least one
+    // active design selection actually need one, mirroring
+    // scheduler.repo.ts's own is_active/design_selections.is_active gating.
+    const findActiveUsers = async () => {
+        try {
+            const sqlString = `
+                SELECT DISTINCT u.id AS user_id, u.github_username
+                FROM users u
+                JOIN design_selections ds ON ds.user_id = u.id AND ds.is_active
+                WHERE u.is_active;
+            `;
+            const result = await pool.query(sqlString);
+            return result.rows;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     return {
         upsert,
         findByUserId,
+        findActiveUsers,
     }
 };
 

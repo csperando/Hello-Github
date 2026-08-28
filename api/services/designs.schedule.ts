@@ -50,20 +50,15 @@ export function getIntensityForDate(pattern: number[], selection: iScheduleField
     return pattern[idx] ?? null;
 }
 
-/**
- * Fixed commit-count tier per intensity level (0-4). GitHub's own graph
- * shading is presumed to use roughly fixed absolute thresholds rather than
- * being relative to each viewer's personal commit history (unconfirmed -
- * worth verifying empirically against real accounts before scale). These
- * numbers are a conservative best guess intended to land clearly within
- * each shade's band for a typical low-activity account, not derived from
- * an official spec, and are expected to be tuned once real rendering is
- * observed in practice.
- */
 /** One day's rendered contribution data, as returned by fetchContributionCalendar. */
 export interface iContributionDay {
     count: number;
     level: number;
+}
+
+/** The largest contribution count among days rendered at a given level, or 0 if none. */
+export function maxContributionAtLevel(days: iContributionDay[], level: number): number {
+    return days.filter((day) => day.level === level).reduce((max, day) => Math.max(max, day.count), 0);
 }
 
 /**
@@ -80,12 +75,9 @@ export interface iContributionDay {
  * not silently computed as 0.
  */
 export function computeQ(days: iContributionDay[]): number | null {
-    const maxCountAtLevel = (level: number): number =>
-        days.filter((day) => day.level === level).reduce((max, day) => Math.max(max, day.count), 0);
-
-    const deg1Max = maxCountAtLevel(1);
-    const deg2Max = maxCountAtLevel(2);
-    const deg3Max = maxCountAtLevel(3);
+    const deg1Max = maxContributionAtLevel(days, 1);
+    const deg2Max = maxContributionAtLevel(days, 2);
+    const deg3Max = maxContributionAtLevel(days, 3);
 
     if (deg1Max === 0 && deg2Max === 0 && deg3Max === 0) return null;
 

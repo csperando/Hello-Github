@@ -2,6 +2,8 @@ import pool from "../../config/db";
 import { runMigrations } from "../../data/migrate";
 import UsersRepository from "../../repository/users.repo";
 import UsersContributionsRepository from "../../repository/usersContributions.repo";
+import DesignsRepository from "../../repository/designs.repo";
+import DesignSelectionsRepository from "../../repository/designSelections.repo";
 import { iGitHubUpsertInput } from "../../models/users";
 
 describe("UsersContributionsRepository", () => {
@@ -146,6 +148,40 @@ describe("UsersContributionsRepository", () => {
 
             expect(Number(secondRefresh.previous_year_q)).toBe(7.5);
             expect(secondRefresh.previous_year_commit_counts).toEqual([6, 14, 21, 27]);
+        });
+    });
+
+    describe("findActiveUsers", () => {
+        const designsRepo = DesignsRepository.repo();
+        const designSelectionsRepo = DesignSelectionsRepository.repo();
+
+        it("includes a user with an active design selection", async () => {
+            const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
+            await designSelectionsRepo.create(userId, design.id, { start_date: "2026-01-04", is_active: true });
+
+            const active = await contributionsRepo.findActiveUsers();
+
+            expect(active).toContainEqual({ user_id: userId, github_username: "octocat-userscontrib-repo-test" });
+
+            await designSelectionsRepo.delete(userId, design.id);
+            await pool.query("DELETE FROM designs WHERE id = $1;", [design.id]);
+        });
+
+        it("excludes a user with no active design selection", async () => {
+            const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
+            await designSelectionsRepo.create(userId, design.id, { start_date: "2026-01-04", is_active: false });
+
+            const active = await contributionsRepo.findActiveUsers();
+
+            expect(active).not.toContainEqual(expect.objectContaining({ user_id: userId }));
+
+            await designSelectionsRepo.delete(userId, design.id);
+            await pool.query("DELETE FROM designs WHERE id = $1;", [design.id]);
+        });
+
+        it("excludes a user with no design selections at all", async () => {
+            const active = await contributionsRepo.findActiveUsers();
+            expect(active).not.toContainEqual(expect.objectContaining({ user_id: userId }));
         });
     });
 });

@@ -179,4 +179,38 @@ describe("RunLogRepository", () => {
             expect(await runLogRepo.getLatestPerDesignForUser(userId)).toEqual([]);
         });
     });
+
+    describe("getCommittedDatesForUser", () => {
+        it("returns only committed dates within the given range, excluding failed and out-of-range rows", async () => {
+            await runLogRepo.create({
+                user_id: userId,
+                design_id: designId,
+                target_date: "2026-01-04",
+                commit_count: 5,
+                status: "committed",
+            });
+            await runLogRepo.create({
+                user_id: userId,
+                design_id: designId,
+                target_date: "2026-01-05",
+                commit_count: 0,
+                status: "failed",
+            });
+            await runLogRepo.create({
+                user_id: userId,
+                design_id: designId,
+                target_date: "2027-06-01",
+                commit_count: 3,
+                status: "committed",
+            });
+
+            const dates = await runLogRepo.getCommittedDatesForUser(userId, "2026-01-01", "2026-12-31");
+
+            expect(dates).toEqual(["2026-01-04"]);
+        });
+
+        it("returns an empty array when the user has no committed runs in range", async () => {
+            expect(await runLogRepo.getCommittedDatesForUser(userId, "2026-01-01", "2026-12-31")).toEqual([]);
+        });
+    });
 });
