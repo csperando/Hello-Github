@@ -1,4 +1,4 @@
-import { getPatternIndexForDate, getIntensityForDate, getCommitCountForIntensity, computeQ, deriveCommitCounts, DEFAULT_Q, assessDesignFeasibility, iScheduleFields } from "../../services/designs.schedule";
+import { getPatternIndexForDate, getIntensityForDate, computeQ, deriveCommitCounts, DEFAULT_Q, assessDesignFeasibility, iScheduleFields } from "../../services/designs.schedule";
 
 function selection(overrides: Partial<iScheduleFields>): iScheduleFields {
     return {
@@ -61,30 +61,6 @@ describe("getIntensityForDate", () => {
     it("returns null when there is no contribution that day", () => {
         const s = selection({});
         expect(getIntensityForDate(onePattern, s, "2026-01-11")).toBeNull();
-    });
-});
-
-describe("getCommitCountForIntensity", () => {
-    it("maps 0 to 0 commits", () => {
-        expect(getCommitCountForIntensity(0)).toBe(0);
-    });
-
-    it("maps intensity 1-4 to a strictly increasing commit count", () => {
-        const counts: number[] = [1, 2, 3, 4].map(getCommitCountForIntensity);
-        expect(counts[0]).toBeGreaterThan(0);
-        for (let i = 1; i < counts.length; i++) {
-            expect(counts[i]!).toBeGreaterThan(counts[i - 1]!);
-        }
-    });
-
-    it("is deterministic for a given intensity", () => {
-        expect(getCommitCountForIntensity(3)).toBe(getCommitCountForIntensity(3));
-    });
-
-    it("throws for an out-of-range or non-integer intensity", () => {
-        expect(() => getCommitCountForIntensity(-1)).toThrow(RangeError);
-        expect(() => getCommitCountForIntensity(5)).toThrow(RangeError);
-        expect(() => getCommitCountForIntensity(1.5)).toThrow(RangeError);
     });
 });
 

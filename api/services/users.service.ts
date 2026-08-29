@@ -69,7 +69,7 @@ export class UserService {
             // covers that), and login shouldn't wait on or fail because of
             // this. Not awaited on purpose.
             new ContributionRefreshService()
-                .refreshForUser(user.id, input.github_username)
+                .refreshForUser(user.id, String(input.github_username))
                 .catch((err: any) => logger.error(err));
 
             return user;

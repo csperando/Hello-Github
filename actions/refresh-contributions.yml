@@ -20,8 +20,8 @@ jobs:
           curl -sf -X POST -H "X-API-Key: $SCHEDULER_API_KEY" "$API_URL/contributions/refresh" -o result.json
           cat result.json
 
-          refreshed=$(jq -r '.data.refreshed' result.json)
-          failed=$(jq -r '.data.failed' result.json)
+          refreshed=$(jq -r '.data[0].refreshed' result.json)
+          failed=$(jq -r '.data[0].failed' result.json)
 
           {
             echo "## Contribution refresh summary"

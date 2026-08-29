@@ -49,7 +49,7 @@ describe("POST /contributions/refresh", () => {
 
         expect(res.status).toBe(200);
         expect(body.success).toBe(true);
-        expect(body.data).toEqual({ refreshed: 0, failed: 0 });
+        expect(body.data).toEqual([{ refreshed: 0, failed: 0 }]);
         expect(contributionsRepoMock.findActiveUsers).toHaveBeenCalled();
     });
 });

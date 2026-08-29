@@ -16,7 +16,7 @@ const router = Router();
 router.post("/refresh", requireApiKey, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const result = await new ContributionRefreshService().refreshAll();
-        const response: iResponse = { status: 200, success: true, data: result };
+        const response: iResponse = { status: 200, success: true, data: [result] };
         res.status(200).json(response);
 
     } catch(err) {

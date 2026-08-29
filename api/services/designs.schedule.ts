@@ -99,7 +99,7 @@ export const DEFAULT_Q = 15;
  * biased toward the higher end of each band rather than its boundary -
  * landing a shade too dark reads better than landing a shade too light and
  * breaking the intended pattern. c_0 (intensity 0) is always 0 commits,
- * handled separately in getCommitCountForIntensity below.
+ * handled separately by callers (e.g. SchedulerService.getDueCommits).
  */
 export function deriveCommitCounts(q: number): [number, number, number, number] {
     const c1 = Math.max(1, Math.ceil(q * 0.75));
@@ -107,16 +107,6 @@ export function deriveCommitCounts(q: number): [number, number, number, number] 
     const c3 = Math.max(c2 + 1, Math.ceil(q * 2.75));
     const c4 = Math.max(c3 + 1, Math.ceil(q * 3.5));
     return [c1, c2, c3, c4];
-}
-
-const COMMIT_COUNT_BY_INTENSITY: readonly [number, number, number, number, number] = [0, 2, 5, 8, 12];
-
-export function getCommitCountForIntensity(intensity: number): number {
-    if (!Number.isInteger(intensity) || intensity < 0 || intensity > 4) {
-        throw new RangeError(`intensity must be an integer 0-4, got ${intensity}.`);
-    }
-    // safe: the range check above guarantees intensity is a valid tuple index
-    return COMMIT_COUNT_BY_INTENSITY[intensity]!;
 }
 
 /**
