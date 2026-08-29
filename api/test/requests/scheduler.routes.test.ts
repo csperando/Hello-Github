@@ -33,6 +33,8 @@ function mockCandidate(overrides: Record<string, unknown> = {}) {
         repeat_indefinitely: false,
         recurrence_end_date: null,
         target_date: "2026-01-07",
+        commit_counts: [12, 27, 42, 53], // real q=15 derived counts
+        previous_year_commit_counts: null,
         ...overrides,
     };
 }
@@ -68,7 +70,7 @@ describe("Scheduler routes", () => {
             expect(entry.user_id).toBe("u1");
             expect(entry.github_username).toBe("octocat");
             expect(entry.commit_author_email).toBe("583231+octocat@users.noreply.github.com");
-            expect(entry.commit_count).toBe(8); // intensity 3
+            expect(entry.commit_count).toBe(42); // intensity 3 -> commit_counts[2]
             expect(entry.commit_timestamp).toBe("2026-01-07T01:00:00.000Z");
         });
 

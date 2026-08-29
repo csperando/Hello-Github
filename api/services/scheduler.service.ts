@@ -1,9 +1,14 @@
 import SchedulerRepository from "../repository/scheduler.repo";
 import RunLogRepository from "../repository/runLog.repo";
-import { getIntensityForDate, getCommitCountForIntensity } from "./designs.schedule";
+import { getIntensityForDate, deriveCommitCounts, DEFAULT_Q } from "./designs.schedule";
 import { computeCommitTimestamp } from "./scheduler.timing";
 import { computeNoreplyEmail } from "./github.service";
 import { logger } from "../config/logger";
+
+// closed-form fallback for a candidate with no users_contributions data at
+// all yet (brand-new account, first refresh hasn't landed) - computed once
+// at module load since DEFAULT_Q never changes at runtime.
+const FALLBACK_COMMIT_COUNTS = deriveCommitCounts(DEFAULT_Q);
 
 export interface iScheduledCommit {
     userId: string;
@@ -59,10 +64,13 @@ export class SchedulerService {
                     },
                     candidate.target_date,
                 );
-                if (intensity === null) continue;
+                if (intensity === null || intensity === 0) continue;
 
-                const commitCount = getCommitCountForIntensity(intensity);
-                if (commitCount === 0) continue;
+                // this year's precomputed counts -> last year's (rollover
+                // fallback) -> the closed-form default (cold start, no
+                // users_contributions data at all yet) - see .claude/tmp/goal.md.
+                const commitCounts = candidate.commit_counts ?? candidate.previous_year_commit_counts ?? FALLBACK_COMMIT_COUNTS;
+                const commitCount = commitCounts[intensity - 1];
 
                 // candidate.email (the synced "effective" address, see
                 // UserService.updateProfile) is preferred when present;

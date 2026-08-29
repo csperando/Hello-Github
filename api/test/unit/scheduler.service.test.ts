@@ -8,6 +8,7 @@ const runLogRepoMock = createMockRepoProxy<iRunLogRepo>();
 mockRepo("repository/runLog.repo", runLogRepoMock);
 
 import { SchedulerService } from "../../services/scheduler.service";
+import { deriveCommitCounts, DEFAULT_Q } from "../../services/designs.schedule";
 
 function baseCandidate(overrides: Record<string, unknown> = {}) {
     return {
@@ -23,6 +24,8 @@ function baseCandidate(overrides: Record<string, unknown> = {}) {
         repeat_indefinitely: false,
         recurrence_end_date: null,
         target_date: "2026-01-07", // Wednesday of week 0, intensity 3
+        commit_counts: [12, 27, 42, 53], // real q=15 derived counts
+        previous_year_commit_counts: null,
         ...overrides,
     };
 }
@@ -41,7 +44,7 @@ describe("SchedulerService.getDueCommits", () => {
         expect(commits[0]!.userId).toBe("u1");
         expect(commits[0]!.designId).toBe("d1");
         expect(commits[0]!.targetDate).toBe("2026-01-07");
-        expect(commits[0]!.commitCount).toBe(8); // intensity 3 -> tier[3]
+        expect(commits[0]!.commitCount).toBe(42); // intensity 3 -> commit_counts[2]
         expect(commits[0]!.authorEmail).toBe("583231+octocat@users.noreply.github.com");
         expect(commits[0]!.commitTimestamp).toBe("2026-01-07T01:00:00.000Z"); // UTC, 1am default
     });
@@ -94,6 +97,26 @@ describe("SchedulerService.getDueCommits", () => {
         const commits = await new SchedulerService().getDueCommits();
 
         expect(commits).toHaveLength(0);
+    });
+
+    it("falls back to previous_year_commit_counts when this year's commit_counts is missing", async () => {
+        schedulerRepoMock.findDueCandidates.mockResolvedValue([
+            baseCandidate({ commit_counts: null, previous_year_commit_counts: [6, 14, 21, 27] }),
+        ]);
+
+        const commits = await new SchedulerService().getDueCommits();
+
+        expect(commits[0]!.commitCount).toBe(21); // intensity 3 -> previous_year_commit_counts[2]
+    });
+
+    it("falls back to the closed-form default when neither this year's nor last year's commit_counts exist (cold start)", async () => {
+        schedulerRepoMock.findDueCandidates.mockResolvedValue([
+            baseCandidate({ commit_counts: null, previous_year_commit_counts: null }),
+        ]);
+
+        const commits = await new SchedulerService().getDueCommits();
+
+        expect(commits[0]!.commitCount).toBe(deriveCommitCounts(DEFAULT_Q)[2]);
     });
 
     it("computes the commit timestamp using each candidate's own timezone", async () => {

@@ -6,6 +6,7 @@ import DesignsRepository from "../../repository/designs.repo";
 import DesignSelectionsRepository from "../../repository/designSelections.repo";
 import RunLogRepository from "../../repository/runLog.repo";
 import SchedulerRepository from "../../repository/scheduler.repo";
+import UsersContributionsRepository from "../../repository/usersContributions.repo";
 import { iGitHubUpsertInput } from "../../models/users";
 
 /**
@@ -35,6 +36,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
     const selectionsRepo = DesignSelectionsRepository.repo();
     const runLogRepo = RunLogRepository.repo();
     const schedulerRepo = SchedulerRepository.repo();
+    const contributionsRepo = UsersContributionsRepository.repo();
 
     // fixed, out-of-range-for-real-GitHub ids so these tests never collide with real data
     const dueGitHubId = -13;
@@ -52,6 +54,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         const userIds = users.rows.map((r: { id: string }) => r.id);
         if (userIds.length) {
             await pool.query("DELETE FROM run_log WHERE user_id = ANY($1);", [userIds]);
+            await pool.query("DELETE FROM users_contributions WHERE user_id = ANY($1);", [userIds]);
             await pool.query("DELETE FROM design_selections WHERE user_id = ANY($1);", [userIds]);
             await pool.query("DELETE FROM designs WHERE user_id = ANY($1);", [userIds]);
         }
@@ -158,5 +161,39 @@ describe("SchedulerRepository.findDueCandidates", () => {
 
         const mine = candidates.find((c: any) => c.user_id === user.id);
         expect(mine.use_real_email).toBe(true);
+    });
+
+    it("includes commit_counts/previous_year_commit_counts from users_contributions when a row exists", async () => {
+        const user = await makeUser(dueGitHubId, "octocat-scheduler-due");
+        await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
+        const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await contributionsRepo.upsert({
+            user_id: user.id,
+            year: 2026,
+            q: 15,
+            commit_counts: [12, 27, 42, 53],
+            max_level_2_contribution: 30,
+        });
+
+        const candidates = await schedulerRepo.findDueCandidates(0, 4);
+
+        const mine = candidates.find((c: any) => c.user_id === user.id);
+        expect(mine.commit_counts).toEqual([12, 27, 42, 53]);
+        expect(mine.previous_year_commit_counts).toBeNull();
+    });
+
+    it("returns null commit_counts when the user has no users_contributions row yet (cold start)", async () => {
+        const user = await makeUser(dueGitHubId, "octocat-scheduler-due");
+        await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
+        const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+
+        const candidates = await schedulerRepo.findDueCandidates(0, 4);
+
+        const mine = candidates.find((c: any) => c.user_id === user.id);
+        expect(mine).toBeDefined();
+        expect(mine.commit_counts).toBeNull();
+        expect(mine.previous_year_commit_counts).toBeNull();
     });
 });

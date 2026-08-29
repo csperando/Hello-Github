@@ -36,9 +36,12 @@ const repo = (): iSchedulerRepo => {
                     , ds.repeat_indefinitely
                     , ds.recurrence_end_date
                     , d.pattern
+                    , uc.commit_counts
+                    , uc.previous_year_commit_counts
                     , (NOW() AT TIME ZONE COALESCE(up.timezone, 'UTC'))::date AS target_date
                 FROM users u
                 LEFT JOIN user_profiles up ON up.user_id = u.id
+                LEFT JOIN users_contributions uc ON uc.user_id = u.id
                 JOIN design_selections ds ON ds.user_id = u.id AND ds.is_active
                 JOIN designs d ON d.id = ds.design_id
                 WHERE u.is_active
