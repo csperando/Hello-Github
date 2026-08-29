@@ -1,3 +1,69 @@
+/**
+ * Commit-intensity model overview (see .claude/tmp/research.md for the full
+ * reverse-engineering methodology, out-of-sample data from 3 unrelated
+ * GitHub accounts, and reusable verification snippets - this is a summary,
+ * not a replacement for that document).
+ *
+ * GitHub's contribution-graph shading is relative to each viewer's own
+ * commit history, not a fixed absolute count. The verified model:
+ *
+ *     degree = MIN(4, CEILING(contributions / q))
+ *
+ * an equal-width linear tier system with one constant `q` per user per
+ * year. `q` is NOT predictable from raw daily counts alone (extensively
+ * tested - percentile methods, outlier trimming, transforms - none
+ * reproduce it); the only exact formula found is:
+ *
+ *     q = MAX(max(count @ level 1)/1, max(count @ level 2)/2, max(count @ level 3)/3)
+ *
+ * whichever degree boundary is tightest that year - not always the
+ * degree-2 term alone, which only coincidentally sufficed for one account's
+ * data. See computeQ.
+ *
+ * Since this formula needs a day already labeled with its rendered degree,
+ * `q` can only be *observed*, not predicted in advance - so it's tracked
+ * per-user in the `users_contributions` table (one row per user, `q` +
+ * precomputed `commit_counts` for the current year, plus a previous-year
+ * fallback pair for cold start at a calendar-year rollover) rather than
+ * computed at design/schedule time. `ContributionRefreshService` (see
+ * contributionRefresh.service.ts) refreshes this daily from GitHub's
+ * public, unauthenticated contribution-calendar HTML (fetchContributionCalendar
+ * in github.service.ts) - deliberately not the authenticated GraphQL API,
+ * to avoid needing any token/scope to read a user's public contribution
+ * data. See deriveCommitCounts for turning an observed `q` into actual
+ * commit counts, and SchedulerService.getDueCommits for the fallback chain
+ * (this year -> last year -> the closed-form DEFAULT_Q) that consumes it.
+ *
+ * Feedback-loop mitigation: since this app's own painted commits would
+ * otherwise pollute the very data used to recompute `q`, the daily refresh
+ * excludes any day already recorded in `run_log` for that user (a day this
+ * app is known to have painted) before computing `q` - see
+ * ContributionRefreshService.refreshForUser. For a design painted entirely
+ * by this app (no organic activity), this means every day eventually gets
+ * excluded and `q` has no fresh signal to refresh from - expected, not a
+ * bug, and covered by the fallback chain above.
+ *
+ * assessDesignFeasibility flags designs unlikely to render reliably
+ * (missing an anchor intensity level, or too few active days across the
+ * year, per research.md's sparse-year finding) - detection only, no
+ * product decision yet about what to do with a flagged design.
+ *
+ * STATUS: the model above is verified against organic human activity
+ * (1,461+ real days across 3 accounts, 0 mismatches). Whether it holds
+ * unchanged against a synthetic, painted-only distribution (few distinct
+ * repeated values, as this app actually produces) is NOT yet empirically
+ * validated - that requires pushing controlled commit patterns to a
+ * scratch GitHub account with no pre-existing activity and observing the
+ * real rendered result, which needs a human to provision (a scratch
+ * account + a push-capable PAT). This is tracked as the remaining, not-yet-
+ * completed steps in `.claude/tmp/plan.md`. Until that validation lands,
+ * treat `deriveCommitCounts`'s safety-margin values, `DEFAULT_Q`, and
+ * `assessDesignFeasibility`'s `MIN_ACTIVE_DAYS_PER_YEAR` threshold as
+ * provisional. Re-check this whole model if painted patterns are ever
+ * reported as rendering incorrectly, or if GitHub changes its
+ * contribution-graph rendering.
+ */
+
 /** The scheduling fields of an iDesignSelection needed to place a pattern on the calendar. */
 export interface iScheduleFields {
     start_date: string;
