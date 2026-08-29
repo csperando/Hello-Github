@@ -118,3 +118,61 @@ export function getCommitCountForIntensity(intensity: number): number {
     // safe: the range check above guarantees intensity is a valid tuple index
     return COMMIT_COUNT_BY_INTENSITY[intensity]!;
 }
+
+/**
+ * Provisional hypothesis, not a derived constant - the exact threshold
+ * where GitHub's real algorithm might start behaving unpredictably for a
+ * sparse year is unconfirmed (see .claude/tmp/research.md's sparse-year
+ * finding). To be corrected by the empirical validation pass in
+ * .claude/tmp/plan.md.
+ */
+const MIN_ACTIVE_DAYS_PER_YEAR = 10;
+
+export interface iFeasibilityAssessment {
+    feasible: boolean;
+    reason?: string;
+}
+
+/**
+ * Flags designs unlikely to render reliably under the MIN(4, CEIL(c/q))
+ * model - detection only, no product decision about what to do with a
+ * flagged design (see .claude/tmp/goal.md). Realizes the design's full
+ * intensity sequence across `targetYear` via getPatternIndexForDate's
+ * tiling logic, not just the raw (often much shorter) pattern array, since
+ * repeat_indefinitely/recurrence_end_date can multiply a short pattern into
+ * many active days.
+ */
+export function assessDesignFeasibility(pattern: number[], selection: iScheduleFields, targetYear: number): iFeasibilityAssessment {
+    const usedLevels = new Set<number>();
+    let activeDays = 0;
+
+    for (
+        let date = new Date(`${targetYear}-01-01T00:00:00Z`);
+        date.getUTCFullYear() === targetYear;
+        date.setUTCDate(date.getUTCDate() + 1)
+    ) {
+        const dateStr = date.toISOString().slice(0, 10);
+        const intensity = getIntensityForDate(pattern, selection, dateStr);
+        if (intensity === null || intensity === 0) continue;
+
+        usedLevels.add(intensity);
+        activeDays++;
+    }
+
+    const missingAnchorLevel = [1, 2, 3].find((level) => !usedLevels.has(level));
+    if (missingAnchorLevel !== undefined) {
+        return {
+            feasible: false,
+            reason: `Design never uses intensity level ${missingAnchorLevel} in ${targetYear}, which breaks the anchor computeQ needs to derive a reliable q.`,
+        };
+    }
+
+    if (activeDays < MIN_ACTIVE_DAYS_PER_YEAR) {
+        return {
+            feasible: false,
+            reason: `Design has only ${activeDays} active day(s) in ${targetYear} (fewer than ${MIN_ACTIVE_DAYS_PER_YEAR}) - GitHub's real algorithm may collapse very sparse years so every active day renders at the max shade regardless of chosen count (see .claude/tmp/research.md's sparse-year finding).`,
+        };
+    }
+
+    return { feasible: true };
+}

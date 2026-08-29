@@ -1,4 +1,4 @@
-import { getPatternIndexForDate, getIntensityForDate, getCommitCountForIntensity, computeQ, deriveCommitCounts, DEFAULT_Q, iScheduleFields } from "../../services/designs.schedule";
+import { getPatternIndexForDate, getIntensityForDate, getCommitCountForIntensity, computeQ, deriveCommitCounts, DEFAULT_Q, assessDesignFeasibility, iScheduleFields } from "../../services/designs.schedule";
 
 function selection(overrides: Partial<iScheduleFields>): iScheduleFields {
     return {
@@ -187,5 +187,69 @@ describe("deriveCommitCounts", () => {
 describe("DEFAULT_Q", () => {
     it("is a positive number usable as a cold-start fallback", () => {
         expect(DEFAULT_Q).toBeGreaterThan(0);
+    });
+});
+
+describe("assessDesignFeasibility", () => {
+    it("is feasible for a repeating design using all 3 anchor levels with plenty of active days", () => {
+        const s = selection({ repeat_indefinitely: true });
+        const result = assessDesignFeasibility(onePattern, s, 2026); // [0,1,2,3,4,0,0], tiled all year
+
+        expect(result.feasible).toBe(true);
+        expect(result.reason).toBeUndefined();
+    });
+
+    it("flags a design that never uses intensity level 2 anywhere in the realized year", () => {
+        const s = selection({ repeat_indefinitely: true });
+        const pattern = [0, 1, 3, 4, 0, 1, 3]; // no 2 at all
+
+        const result = assessDesignFeasibility(pattern, s, 2026);
+
+        expect(result.feasible).toBe(false);
+        expect(result.reason).toMatch(/level 2/);
+    });
+
+    it("flags a design that never uses intensity level 1 anywhere in the realized year", () => {
+        const s = selection({ repeat_indefinitely: true });
+        const pattern = [0, 2, 3, 4, 0, 2, 3]; // no 1 at all
+
+        const result = assessDesignFeasibility(pattern, s, 2026);
+
+        expect(result.feasible).toBe(false);
+        expect(result.reason).toMatch(/level 1/);
+    });
+
+    it("flags a design that never uses intensity level 3 anywhere in the realized year", () => {
+        const s = selection({ repeat_indefinitely: true });
+        const pattern = [0, 1, 2, 4, 0, 1, 2]; // no 3 at all
+
+        const result = assessDesignFeasibility(pattern, s, 2026);
+
+        expect(result.feasible).toBe(false);
+        expect(result.reason).toMatch(/level 3/);
+    });
+
+    it("flags a design with too few active days across the realized year, even though it uses all 3 anchor levels", () => {
+        const s = selection({ repeat_indefinitely: false }); // one-off, lapses after 7 days
+        const result = assessDesignFeasibility(onePattern, s, 2026); // only 4 active days all year (1,2,3,4)
+
+        expect(result.feasible).toBe(false);
+        expect(result.reason).toMatch(/active day/);
+    });
+
+    it("the same short pattern becomes feasible once repeated across the year (realized year, not raw pattern array, drives the active-day count)", () => {
+        const oneOff = assessDesignFeasibility(onePattern, selection({ repeat_indefinitely: false }), 2026);
+        const repeating = assessDesignFeasibility(onePattern, selection({ repeat_indefinitely: true }), 2026);
+
+        expect(oneOff.feasible).toBe(false);
+        expect(repeating.feasible).toBe(true);
+    });
+
+    it("counts only days within the given target year", () => {
+        // selection starts in 2025, so 2026 is entirely covered by tiling
+        const s = selection({ start_date: "2025-01-05", repeat_indefinitely: true });
+        const result = assessDesignFeasibility(onePattern, s, 2026);
+
+        expect(result.feasible).toBe(true);
     });
 });
