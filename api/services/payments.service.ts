@@ -1,3 +1,4 @@
+import type Stripe from "stripe";
 import stripe from "../config/stripe";
 import UserBillingRepository from "../repository/userBilling.repo";
 import PaymentsRepository from "../repository/payments.repo";
@@ -229,7 +230,11 @@ export class PaymentsService {
                     amount: amounts.amount_total_cents,
                     currency: "usd",
                     automatic_payment_methods: { enabled: true },
-                    metadata,
+                    // marks this as our one-time checkout PI so the
+                    // payment_intent.succeeded handler can tell it apart from
+                    // a subscription invoice's PI (which it ignores in favour
+                    // of invoice.paid)
+                    metadata: { ...metadata, kind: "checkout_one_time" },
                 },
                 { idempotencyKey: `checkout-onetime-${keyParts}` },
             );
@@ -242,5 +247,189 @@ export class PaymentsService {
             logger.error(err);
             throw err;
         }
+    }
+
+    // ---- webhook dispatch -------------------------------------------------
+
+    /**
+     * Route a verified Stripe event to its handler. Anything that grants or
+     * revokes coverage happens here, never from a client callback. Throwing
+     * makes the webhook route answer non-2xx so Stripe redelivers.
+     */
+    public async handleWebhookEvent(event: Stripe.Event): Promise<{ handled: boolean; note?: string }> {
+        switch (event.type) {
+            case "payment_intent.succeeded":
+                return this.onPaymentIntentSucceeded(event);
+            case "invoice.paid":
+                return this.onInvoicePaid(event);
+            case "customer.subscription.updated":
+            case "customer.subscription.deleted":
+                return this.onSubscriptionChanged(event);
+            case "charge.refunded":
+            case "charge.dispute.created":
+                return this.onChargeReversed(event);
+            default:
+                return { handled: false, note: `ignored ${event.type}` };
+        }
+    }
+
+    private async resolveUserId(
+        metadataUserId: string | undefined,
+        customer: string | Stripe.Customer | Stripe.DeletedCustomer | null | undefined,
+    ): Promise<string | null> {
+        const customerId = typeof customer === "string" ? customer : customer?.id;
+        if (customerId) {
+            const billing = await this.billingRepo.getByStripeCustomerId(customerId);
+            if (billing?.user_id) return billing.user_id;
+        }
+        return metadataUserId || null;
+    }
+
+    private parseCharityId(raw: string | undefined | null): number | null {
+        const n = Number(raw);
+        return Number.isInteger(n) && n > 0 ? n : null;
+    }
+
+    // The authoritative split we stamped into metadata at checkout; falls
+    // back to "all platform" only if that metadata is somehow absent.
+    private splitFromMetadata(metadata: Stripe.Metadata | null | undefined, fallbackTotal: number) {
+        const total = Number(metadata?.amount_total_cents);
+        const platform = Number(metadata?.amount_platform_cents);
+        const charity = Number(metadata?.amount_charity_cents);
+        if (
+            Number.isInteger(total) && Number.isInteger(platform) && Number.isInteger(charity) &&
+            platform >= 0 && charity >= 0 && platform + charity === total
+        ) {
+            return { amount_total_cents: total, amount_platform_cents: platform, amount_charity_cents: charity };
+        }
+        return { amount_total_cents: fallbackTotal, amount_platform_cents: fallbackTotal, amount_charity_cents: 0 };
+    }
+
+    // Activate the design the user paid for. A missing/again-unselected
+    // design is logged, not thrown - the payment itself still succeeded and
+    // the user can activate from the dashboard.
+    private async maybeActivateDesign(userId: string, designId: string | undefined | null): Promise<void> {
+        if (!designId) return;
+        const selection = await this.selectionsRepo.getByUserAndDesign(userId, designId);
+        if (!selection) {
+            logger.error(`webhook: user ${userId} has no selection for design ${designId} to activate`);
+            return;
+        }
+        await this.selectionsRepo.setActiveExclusive(userId, designId);
+    }
+
+    private async onPaymentIntentSucceeded(event: Stripe.Event): Promise<{ handled: boolean; note?: string }> {
+        const pi = event.data.object as Stripe.PaymentIntent;
+        // a subscription's first/renewal payment also fires this - that path
+        // is driven by invoice.paid instead (for the exact period end), so
+        // only our explicitly-marked one-time checkout PIs are handled here
+        if (pi.metadata?.kind !== "checkout_one_time") {
+            return { handled: false, note: "not a one-time checkout payment - handled via invoice.paid" };
+        }
+        if (await this.paymentsRepo.existsByStripeEventId(event.id)) return { handled: true, note: "duplicate" };
+
+        const userId = await this.resolveUserId(pi.metadata?.user_id, pi.customer);
+        if (!userId) throw new Error(`payment_intent.succeeded ${pi.id}: cannot resolve user`);
+
+        const billing = await this.billingRepo.bumpPaidUntilOneYear(userId);
+        const split = this.splitFromMetadata(pi.metadata, pi.amount_received ?? pi.amount);
+
+        await this.paymentsRepo.create({
+            user_id: userId,
+            stripe_event_id: event.id,
+            stripe_object_id: pi.id,
+            kind: "one_time",
+            status: "succeeded",
+            ...split,
+            charity_ein_id: this.parseCharityId(pi.metadata?.charity_ein_id),
+            period_start: new Date().toISOString(),
+            period_end: billing.paid_until,
+        });
+
+        await this.maybeActivateDesign(userId, pi.metadata?.design_id);
+        return { handled: true };
+    }
+
+    private async onInvoicePaid(event: Stripe.Event): Promise<{ handled: boolean; note?: string }> {
+        const invoice = event.data.object as Stripe.Invoice;
+        const subDetails = invoice.parent?.subscription_details;
+        const subRef = subDetails?.subscription;
+        const subId = typeof subRef === "string" ? subRef : subRef?.id;
+        if (!subId) return { handled: false, note: "non-subscription invoice" };
+        if (await this.paymentsRepo.existsByStripeEventId(event.id)) return { handled: true, note: "duplicate" };
+
+        const userId = await this.resolveUserId(undefined, invoice.customer);
+        if (!userId) throw new Error(`invoice.paid ${invoice.id}: cannot resolve user`);
+
+        const subscription = await stripe.subscriptions.retrieve(subId);
+        const periodEndUnix = subscription.items.data[0]?.current_period_end ?? 0;
+        const paidUntilIso = new Date(periodEndUnix * 1000).toISOString();
+
+        await this.billingRepo.setPaidUntil(userId, paidUntilIso);
+        await this.billingRepo.updateSubscription(userId, {
+            stripe_subscription_id: subId,
+            subscription_status: subscription.status,
+            auto_renew: !subscription.cancel_at_period_end,
+        });
+
+        const metadata = subscription.metadata ?? subDetails?.metadata;
+        const split = this.splitFromMetadata(metadata, invoice.amount_paid);
+
+        await this.paymentsRepo.create({
+            user_id: userId,
+            stripe_event_id: event.id,
+            stripe_object_id: invoice.id,
+            kind: "subscription",
+            status: "paid",
+            ...split,
+            charity_ein_id: this.parseCharityId(metadata?.charity_ein_id),
+            period_start: new Date((invoice.period_start ?? 0) * 1000).toISOString(),
+            period_end: paidUntilIso,
+        });
+
+        await this.maybeActivateDesign(userId, metadata?.design_id);
+        return { handled: true };
+    }
+
+    private async onSubscriptionChanged(event: Stripe.Event): Promise<{ handled: boolean; note?: string }> {
+        const sub = event.data.object as Stripe.Subscription;
+        const billing = await this.billingRepo.getByStripeCustomerId(
+            typeof sub.customer === "string" ? sub.customer : sub.customer.id,
+        );
+        if (!billing?.user_id) return { handled: false, note: "no billing row for customer" };
+
+        const stillRenewing = (sub.status === "active" || sub.status === "trialing") && !sub.cancel_at_period_end;
+        await this.billingRepo.updateSubscription(billing.user_id, {
+            subscription_status: sub.status,
+            auto_renew: stillRenewing,
+        });
+        // paid_until is left as-is: a canceled/unpaid subscription simply
+        // stops renewing and the user lapses when the current period ends
+        // (the daily reconcile then deactivates their selection).
+        return { handled: true, note: `subscription ${sub.status}` };
+    }
+
+    private async onChargeReversed(event: Stripe.Event): Promise<{ handled: boolean; note?: string }> {
+        let customer: string | Stripe.Customer | Stripe.DeletedCustomer | null | undefined;
+        let objectId: string;
+
+        if (event.type === "charge.refunded") {
+            const charge = event.data.object as Stripe.Charge;
+            customer = charge.customer;
+            objectId = charge.id;
+        } else {
+            const dispute = event.data.object as Stripe.Dispute;
+            objectId = dispute.id;
+            const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge.id;
+            const charge = await stripe.charges.retrieve(chargeId);
+            customer = charge.customer;
+        }
+
+        const userId = await this.resolveUserId(undefined, customer);
+        if (!userId) return { handled: false, note: `${event.type} ${objectId}: cannot resolve user` };
+
+        await this.billingRepo.setPaidUntil(userId, new Date().toISOString());
+        const deactivated = await this.selectionsRepo.deactivateActiveForUser(userId);
+        return { handled: true, note: `${event.type}: expired, deactivated ${deactivated.length}` };
     }
 }

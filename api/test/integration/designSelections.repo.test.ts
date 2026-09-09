@@ -209,4 +209,41 @@ describe("DesignSelectionsRepository", () => {
             expect(await selectionsRepo.countForDesign(designId)).toBe(0);
         });
     });
+
+    describe("setActiveExclusive / deactivateActiveForUser", () => {
+        it("setActiveExclusive activates the target and deactivates any other active selection the user has", async () => {
+            const otherDesign = await designsRepo.create(userId, { pattern: [1, 1, 1, 1, 1, 1, 1] });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
+            await selectionsRepo.create(userId, otherDesign.id, { start_date: "2026-01-04", is_active: false });
+
+            const activated = await selectionsRepo.setActiveExclusive(userId, otherDesign.id);
+
+            expect(activated.is_active).toBe(true);
+            expect((await selectionsRepo.getByUserAndDesign(userId, designId)).is_active).toBe(false);
+            expect((await selectionsRepo.getByUserAndDesign(userId, otherDesign.id)).is_active).toBe(true);
+
+            await selectionsRepo.delete(userId, otherDesign.id);
+            await pool.query("DELETE FROM designs WHERE id = $1;", [otherDesign.id]);
+        });
+
+        it("setActiveExclusive is a no-op-safe way to (re)assert an already-active selection", async () => {
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
+            const row = await selectionsRepo.setActiveExclusive(userId, designId);
+            expect(row.is_active).toBe(true);
+        });
+
+        it("deactivateActiveForUser clears the user's active selection and returns the affected design ids", async () => {
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
+
+            const affected = await selectionsRepo.deactivateActiveForUser(userId);
+
+            expect(affected).toEqual([{ design_id: designId }]);
+            expect((await selectionsRepo.getByUserAndDesign(userId, designId)).is_active).toBe(false);
+        });
+
+        it("deactivateActiveForUser is a no-op when the user has nothing active", async () => {
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: false });
+            expect(await selectionsRepo.deactivateActiveForUser(userId)).toEqual([]);
+        });
+    });
 });

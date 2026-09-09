@@ -11,6 +11,8 @@ export interface iDesignSelectionsRepo {
     delete: (userId: string, designId: string, client?: any) => Promise<any>;
     countForDesign: (designId: string, client?: any) => Promise<number>;
     countActiveExcludingUser: (designId: string, excludingUserId: string) => Promise<number>;
+    setActiveExclusive: (userId: string, designId: string) => Promise<any>;
+    deactivateActiveForUser: (userId: string) => Promise<any[]>;
 }
 
 // main repo init function to be called in the service factories
@@ -168,6 +170,54 @@ const repo = (): iDesignSelectionsRepo => {
         }
     }
 
+    // Activate one selection and deactivate any other the user has active,
+    // atomically - used when a payment webhook activates the design a user
+    // just paid for and they still had a stale active selection from before
+    // payments existed (which would otherwise trip the one-active-per-user
+    // partial unique index).
+    const setActiveExclusive = async (userId: string, designId: string) => {
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+            await client.query(
+                `UPDATE design_selections SET is_active = FALSE, updated_at = NOW()
+                 WHERE user_id = $1 AND is_active AND design_id <> $2;`,
+                [userId, designId],
+            );
+            const result = await client.query(
+                `UPDATE design_selections SET is_active = TRUE, updated_at = NOW()
+                 WHERE user_id = $1 AND design_id = $2 RETURNING *;`,
+                [userId, designId],
+            );
+            await client.query("COMMIT");
+            return result.rows[0];
+
+        } catch(err: any) {
+            await client.query("ROLLBACK");
+            logger.error(err);
+            throw(err);
+        } finally {
+            client.release();
+        }
+    }
+
+    // Deactivate whatever the user currently has active - used on lapse
+    // (paid period expired, refund, dispute). Returns the affected design ids.
+    const deactivateActiveForUser = async (userId: string) => {
+        try {
+            const result = await pool.query(
+                `UPDATE design_selections SET is_active = FALSE, updated_at = NOW()
+                 WHERE user_id = $1 AND is_active RETURNING design_id;`,
+                [userId],
+            );
+            return result.rows;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     return {
         create,
         getByUserAndDesign,
@@ -176,6 +226,8 @@ const repo = (): iDesignSelectionsRepo => {
         delete: deleteSelection,
         countForDesign,
         countActiveExcludingUser,
+        setActiveExclusive,
+        deactivateActiveForUser,
     }
 };
 
