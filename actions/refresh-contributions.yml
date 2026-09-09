@@ -29,3 +29,20 @@ jobs:
             echo "|---|---|"
             echo "| $refreshed | $failed |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deactivate design selections whose paid period has lapsed
+        env:
+          SCHEDULER_API_KEY: ${{ secrets.SCHEDULER_API_KEY }}
+        run: |
+          set -euo pipefail
+          curl -sf -X POST -H "X-API-Key: $SCHEDULER_API_KEY" "$API_URL/payments/reconcile" -o reconcile.json
+          cat reconcile.json
+
+          deactivated=$(jq -r '.data[0].deactivated' reconcile.json)
+
+          {
+            echo "## Billing reconcile summary"
+            echo "| selections deactivated (lapsed) |"
+            echo "|---|"
+            echo "| $deactivated |"
+          } >> "$GITHUB_STEP_SUMMARY"
