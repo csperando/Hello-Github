@@ -47,6 +47,8 @@
         activeToggleError.value = ""
         const row = designsStore.selections.find((s) => s.design_id === designId)
         if (!row) return
+        // activation needs a paid plan; deactivation is always allowed
+        if (!row.is_active && !isCovered.value) return
 
         const next = !row.is_active
         const previous = row.is_active
@@ -62,6 +64,14 @@
     const displayName = computed(
         () => authStore.user?.display_name || authStore.user?.name || authStore.user?.github_username || "",
     )
+
+    const isCovered = computed(() => authStore.isCovered)
+    const paidUntilLabel = computed(() => {
+        const until = authStore.user?.paid_until
+        return until
+            ? new Date(until).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+            : ""
+    })
 
     // default_charity is now an eo_bmf id, not a name - the auth payload doesn't
     // carry a display name for it yet (that needs a backend join, tracked
@@ -190,11 +200,20 @@
                                 <div v-else class="run-status-spacer"></div>
                                 <div class="active-row">
                                     <span class="active-label">active</span>
-                                    <ToggleSwitch :data-testid="'active-toggle-' + d.id" :checked="d.isActive" @click="toggleActive(d.id)" />
+                                    <ToggleSwitch
+                                        :data-testid="'active-toggle-' + d.id"
+                                        :checked="d.isActive"
+                                        :disabled="!isCovered && !d.isActive"
+                                        @click="toggleActive(d.id)"
+                                    />
                                 </div>
+                                <RouterLink
+                                    v-if="!isCovered && !d.isActive"
+                                    to="/checkout"
+                                    class="activate-hint"
+                                >start a plan to activate this design →</RouterLink>
                                 <div class="design-actions">
                                     <RouterLink :to="'/editor/' + d.id" class="flex-1"><BaseButton variant="secondary" class="edit-btn">edit</BaseButton></RouterLink>
-                                    <BaseButton variant="secondary" class="receipt-btn">receipt</BaseButton>
                                 </div>
                             </div>
                         </div>
@@ -203,11 +222,15 @@
 
                 <!-- SIDEBAR -->
                 <div>
-                    <div class="section-label">github sync</div>
-                    <div class="sync-card">
-                        <div class="sync-icon">✓</div>
-                        <div>
-                            <div class="sync-label">connected</div>
+                    <div class="section-label">plan</div>
+                    <div class="plan-card" :class="{ 'plan-card--inactive': !isCovered }">
+                        <div class="plan-icon">{{ isCovered ? "✓" : "–" }}</div>
+                        <div class="plan-body">
+                            <div class="plan-label">
+                                {{ isCovered ? "painting active until " + paidUntilLabel : "no active plan" }}
+                            </div>
+                            <RouterLink v-if="isCovered" to="/settings#billing" class="plan-link">manage plan</RouterLink>
+                            <RouterLink v-else to="/checkout" class="plan-link">start a plan →</RouterLink>
                         </div>
                     </div>
 
@@ -225,9 +248,6 @@
                         </div>
                         <ToggleSwitch data-testid="public-opt-in-toggle" :checked="!!authStore.user?.public_opt_in" @click="togglePublicOptIn" />
                     </div>
-
-                    <div class="section-label">recent receipts</div>
-                    <div class="empty-state">no receipts yet - they'll show up here once you make a donation.</div>
                 </div>
             </div>
         </main>
@@ -422,16 +442,8 @@
         text-align: center;
     }
 
-    .receipt-btn {
-        flex: 1;
-        font-size: 12px;
-        color: var(--color-text-muted-4);
-        border: 1px solid var(--color-border-mid);
-        border-radius: 6px;
-        padding: 8px;
-    }
 
-    .sync-card {
+    .plan-card {
         display: flex;
         align-items: center;
         gap: 12px;
@@ -442,7 +454,7 @@
         margin-bottom: 28px;
     }
 
-    .sync-icon {
+    .plan-icon {
         flex: none;
         width: 34px;
         height: 34px;
@@ -455,10 +467,29 @@
         font-weight: 700;
     }
 
-    .sync-label {
+    .plan-card--inactive .plan-icon {
+        background: var(--color-bg-chip);
+        color: var(--color-text-muted-4);
+    }
+
+    .plan-label {
         font-family: var(--font-mono);
         font-size: 13px;
         font-weight: 600;
+        margin-bottom: 2px;
+    }
+
+    .plan-link {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+    }
+
+    .activate-hint {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--color-accent-bright);
+        margin: -2px 0 10px;
     }
 
     .pref-card {

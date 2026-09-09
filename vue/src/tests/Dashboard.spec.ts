@@ -48,6 +48,9 @@ function buildUser(overrides: Partial<iAuthUser> = {}): iAuthUser {
   }
 }
 
+const FUTURE = new Date(Date.now() + 30 * 86_400_000).toISOString()
+const coveredUser = (overrides: Partial<iAuthUser> = {}) => buildUser({ paid_until: FUTURE, ...overrides })
+
 function buildSelection(overrides: Record<string, unknown> = {}) {
   return {
     id: 's1',
@@ -161,13 +164,48 @@ describe('Dashboard.vue', () => {
     expect(authStore.user?.public_opt_in).toBe(true)
   })
 
-  it('shows an empty state for designs and receipts when there is no real data', async () => {
+  it('shows an empty state for designs when there is no real data', async () => {
     const { wrapper } = await mountDashboard(buildUser())
 
     expect(wrapper.text()).toContain('no designs yet')
-    expect(wrapper.text()).toContain('no receipts yet')
+    expect(wrapper.text()).not.toContain('no receipts yet')
     expect(wrapper.text()).not.toContain('total donated')
     expect(wrapper.text()).not.toContain('charities supported')
+  })
+
+  it('shows an active plan card with the paid-through date when covered', async () => {
+    const { wrapper } = await mountDashboard(coveredUser())
+    expect(wrapper.text()).toContain('painting active until')
+    expect(wrapper.find('a[href="/settings#billing"]').exists()).toBe(true)
+  })
+
+  it('shows a "no active plan" card with a start-a-plan link when not covered', async () => {
+    const { wrapper } = await mountDashboard(buildUser({ paid_until: null }))
+    expect(wrapper.text()).toContain('no active plan')
+    expect(wrapper.find('a[href="/checkout"]').exists()).toBe(true)
+  })
+
+  it('disables the active toggle and shows an activation hint when the user has no plan', async () => {
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ is_active: false })] }))
+    const { wrapper } = await mountDashboard(buildUser())
+
+    expect(wrapper.get('[data-testid="active-toggle-d1"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('start a plan to activate this design')
+
+    await wrapper.get('[data-testid="active-toggle-d1"]').trigger('click')
+    await flushPromises()
+    expect(updateSelectionMock).not.toHaveBeenCalled()
+  })
+
+  it('still lets an uncovered user deactivate an already-active design', async () => {
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ is_active: true })] }))
+    updateSelectionMock.mockResolvedValue(jsonResponse({ data: [{ is_active: false }] }))
+    const { wrapper } = await mountDashboard(buildUser())
+
+    expect(wrapper.get('[data-testid="active-toggle-d1"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="active-toggle-d1"]').trigger('click')
+    await flushPromises()
+    expect(updateSelectionMock).toHaveBeenCalledWith('d1', { is_active: false })
   })
 
   it('lists authored and adopted selections together, from the joined GET /design response', async () => {
@@ -196,7 +234,7 @@ describe('Dashboard.vue', () => {
       }),
     )
 
-    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+    const { wrapper } = await mountDashboard(coveredUser({ id: 'u1' }))
 
     expect(wrapper.text()).toContain('1')
     expect(wrapper.text()).toContain('designs created')
@@ -209,7 +247,7 @@ describe('Dashboard.vue', () => {
       }),
     )
 
-    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+    const { wrapper } = await mountDashboard(coveredUser({ id: 'u1' }))
 
     expect(wrapper.text()).toContain('no longer available')
     expect(wrapper.text()).not.toContain('Private Now')
@@ -232,7 +270,7 @@ describe('Dashboard.vue', () => {
     listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ is_active: false })] }))
     updateSelectionMock.mockResolvedValue(jsonResponse({ data: [{ is_active: true }] }))
 
-    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+    const { wrapper } = await mountDashboard(coveredUser({ id: 'u1' }))
 
     const toggle = wrapper.get('[data-testid="active-toggle-d1"]')
     expect(toggle.attributes('aria-checked')).toBe('false')
@@ -250,7 +288,7 @@ describe('Dashboard.vue', () => {
       jsonResponse({ success: false, error: 'You already have another design active.' }, false),
     )
 
-    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
+    const { wrapper } = await mountDashboard(coveredUser({ id: 'u1' }))
 
     await wrapper.get('[data-testid="active-toggle-d1"]').trigger('click')
     await flushPromises()

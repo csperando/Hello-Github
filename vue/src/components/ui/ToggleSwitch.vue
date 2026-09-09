@@ -1,6 +1,7 @@
 <script setup lang="ts">
     defineProps<{
         checked: boolean
+        disabled?: boolean
     }>()
 </script>
 
@@ -9,7 +10,8 @@
         type="button"
         role="switch"
         :aria-checked="checked"
-        :class="['toggle-track', checked ? 'is-checked' : '']"
+        :disabled="disabled"
+        :class="['toggle-track', checked ? 'is-checked' : '', disabled ? 'is-disabled' : '']"
     >
         <span :class="['toggle-knob', checked ? 'is-checked' : '']"></span>
     </button>
@@ -30,6 +32,11 @@
 
     .toggle-track.is-checked {
         background: var(--color-accent);
+    }
+
+    .toggle-track.is-disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
     }
 
     .toggle-knob {
