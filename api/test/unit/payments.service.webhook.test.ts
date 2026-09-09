@@ -16,6 +16,7 @@ mockRepo("repository/users.repo", usersRepoMock);
 const mockStripe = {
     subscriptions: { retrieve: jest.fn() },
     charges: { retrieve: jest.fn() },
+    customers: { update: jest.fn() },
 };
 jest.mock("../../config/stripe", () => ({ __esModule: true, default: mockStripe }));
 
@@ -47,6 +48,7 @@ describe("PaymentsService.handleWebhookEvent", () => {
         usersRepoMock.__reset();
         mockStripe.subscriptions.retrieve.mockReset();
         mockStripe.charges.retrieve.mockReset();
+        mockStripe.customers.update.mockReset();
 
         billingRepoMock.getByStripeCustomerId.mockResolvedValue({ user_id: "u1" });
         billingRepoMock.bumpPaidUntilOneYear.mockResolvedValue({ paid_until: "2027-01-01T00:00:00.000Z" });
@@ -94,6 +96,23 @@ describe("PaymentsService.handleWebhookEvent", () => {
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
             expect(res).toEqual({ handled: true, note: "duplicate" });
             expect(paymentsRepoMock.create).not.toHaveBeenCalled();
+        });
+
+        it("saves the card as the customer's default when the PI carries a payment method", async () => {
+            await svc().handleWebhookEvent(
+                evt("payment_intent.succeeded", { ...pi, payment_method: "pm_1" }),
+            );
+            expect(mockStripe.customers.update).toHaveBeenCalledWith("cus_1", {
+                invoice_settings: { default_payment_method: "pm_1" },
+            });
+        });
+
+        it("does not fail the webhook if setting the default payment method errors", async () => {
+            mockStripe.customers.update.mockRejectedValue(new Error("stripe blip"));
+            const res = await svc().handleWebhookEvent(
+                evt("payment_intent.succeeded", { ...pi, payment_method: "pm_1" }),
+            );
+            expect(res.handled).toBe(true);
         });
 
         it("does not fail the webhook when the design to activate is no longer selected", async () => {

@@ -230,6 +230,9 @@ export class PaymentsService {
                     amount: amounts.amount_total_cents,
                     currency: "usd",
                     automatic_payment_methods: { enabled: true },
+                    // keep the card on file so a later "turn on auto-renew"
+                    // from settings has something to charge at renewal
+                    setup_future_usage: "off_session",
                     // marks this as our one-time checkout PI so the
                     // payment_intent.succeeded handler can tell it apart from
                     // a subscription invoice's PI (which it ignores in favour
@@ -347,6 +350,21 @@ export class PaymentsService {
         });
 
         await this.maybeActivateDesign(userId, pi.metadata?.design_id);
+
+        // remember the card as the customer's default so a future
+        // auto-renew subscription can charge it without re-prompting
+        const paymentMethod = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id;
+        const customerId = typeof pi.customer === "string" ? pi.customer : pi.customer?.id;
+        if (paymentMethod && customerId) {
+            try {
+                await stripe.customers.update(customerId, {
+                    invoice_settings: { default_payment_method: paymentMethod },
+                });
+            } catch (err: any) {
+                logger.error(err); // non-fatal: the payment already succeeded
+            }
+        }
+
         return { handled: true };
     }
 
@@ -431,5 +449,113 @@ export class PaymentsService {
         await this.billingRepo.setPaidUntil(userId, new Date().toISOString());
         const deactivated = await this.selectionsRepo.deactivateActiveForUser(userId);
         return { handled: true, note: `${event.type}: expired, deactivated ${deactivated.length}` };
+    }
+
+    // ---- subscription lifecycle & lapse sweep ---------------------------
+
+    /** Turn off auto-renew: the current paid period runs out, then stops. */
+    public async cancelSubscription(userId: string): Promise<{ ok?: boolean; error?: string }> {
+        try {
+            const billing = await this.billingRepo.getByUserId(userId);
+            if (!billing?.stripe_subscription_id) {
+                return { error: "You don't have an auto-renewing subscription." };
+            }
+
+            await stripe.subscriptions.update(billing.stripe_subscription_id, { cancel_at_period_end: true });
+            await this.billingRepo.updateSubscription(userId, { auto_renew: false });
+            return { ok: true };
+
+        } catch (err: any) {
+            logger.error(err);
+            throw err;
+        }
+    }
+
+    /**
+     * Turn auto-renew on for a user who paid one-time and is still covered:
+     * create an annual subscription that only starts charging when the
+     * current paid period ends (trial_end), reusing the amount/charity split
+     * from their most recent payment and the card saved at that checkout.
+     */
+    public async enableAutoRenew(userId: string): Promise<{ ok?: boolean; error?: string }> {
+        try {
+            const billing = await this.billingRepo.getByUserId(userId);
+            const paidUntilMs = billing?.paid_until ? new Date(billing.paid_until).getTime() : 0;
+            if (paidUntilMs <= Date.now()) {
+                return { error: "You don't have an active paid period to renew." };
+            }
+            if (
+                billing.stripe_subscription_id &&
+                (billing.subscription_status === "active" || billing.subscription_status === "trialing")
+            ) {
+                return { error: "Auto-renew is already on." };
+            }
+
+            const latest = await this.paymentsRepo.getLatestForUser(userId);
+            if (!latest) return { error: "No previous payment to base a renewal on." };
+
+            const customerId = await this.getOrCreateStripeCustomer(userId);
+
+            const subscription = await stripe.subscriptions.create({
+                customer: customerId,
+                items: [
+                    {
+                        price_data: {
+                            currency: "usd",
+                            product: await getYearProductId(),
+                            unit_amount: latest.amount_total_cents,
+                            recurring: { interval: "year" },
+                        },
+                    },
+                ],
+                trial_end: Math.floor(paidUntilMs / 1000),
+                payment_settings: { save_default_payment_method: "on_subscription" },
+                metadata: {
+                    user_id: userId,
+                    design_id: "",
+                    charity_ein_id: latest.charity_ein_id != null ? String(latest.charity_ein_id) : "",
+                    amount_total_cents: String(latest.amount_total_cents),
+                    amount_platform_cents: String(latest.amount_platform_cents),
+                    amount_charity_cents: String(latest.amount_charity_cents),
+                },
+            });
+
+            await this.billingRepo.updateSubscription(userId, {
+                stripe_subscription_id: subscription.id,
+                subscription_status: subscription.status,
+                auto_renew: true,
+            });
+            return { ok: true };
+
+        } catch (err: any) {
+            logger.error(err);
+            throw err;
+        }
+    }
+
+    /**
+     * Deactivate the active selection of every user whose paid period has
+     * lapsed - the catch-all for expired one-time payments (no webhook
+     * fires) and any selection left active from before payments existed.
+     */
+    public async reconcileLapsedUsers(): Promise<{ deactivated: number }> {
+        try {
+            const lapsed: Array<{ user_id: string }> = await this.billingRepo.listLapsedActiveUsers();
+            const seen = new Set<string>();
+            let deactivated = 0;
+
+            for (const { user_id } of lapsed) {
+                if (seen.has(user_id)) continue;
+                seen.add(user_id);
+                const rows = await this.selectionsRepo.deactivateActiveForUser(user_id);
+                deactivated += rows.length;
+            }
+
+            return { deactivated };
+
+        } catch (err: any) {
+            logger.error(err);
+            throw err;
+        }
     }
 }
