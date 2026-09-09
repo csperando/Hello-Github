@@ -2,11 +2,13 @@ import pool from "../../config/db";
 import { runMigrations } from "../../data/migrate";
 import UsersRepository from "../../repository/users.repo";
 import UserProfilesRepository from "../../repository/userProfiles.repo";
+import UserBillingRepository from "../../repository/userBilling.repo";
 import { iGitHubUpsertInput } from "../../models/users";
 
 describe("users.repo profile join", () => {
     const usersRepo = UsersRepository.repo();
     const profilesRepo = UserProfilesRepository.repo();
+    const billingRepo = UserBillingRepository.repo();
     // fixed, out-of-range-for-real-GitHub id so this test never collides with real data
     const testGitHubId = -4;
 
@@ -45,8 +47,25 @@ describe("users.repo profile join", () => {
     });
 
     afterEach(async () => {
-        // cascades to any user_profiles row
+        // cascades to any user_profiles / user_billing row
         await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
+    });
+
+    it("getUserById defaults paid_until/subscription_status to null and auto_renew to false when no billing row exists", async () => {
+        const user = await usersRepo.getUserById(userId);
+        expect(user.paid_until).toBeNull();
+        expect(user.subscription_status).toBeNull();
+        expect(user.auto_renew).toBe(false);
+    });
+
+    it("getUserById returns the joined billing fields once a user_billing row exists", async () => {
+        await billingRepo.setPaidUntil(userId, "2027-06-01T00:00:00.000Z");
+        await billingRepo.updateSubscription(userId, { subscription_status: "active", auto_renew: true });
+
+        const user = await usersRepo.getUserById(userId);
+        expect(new Date(user.paid_until).toISOString()).toBe("2027-06-01T00:00:00.000Z");
+        expect(user.subscription_status).toBe("active");
+        expect(user.auto_renew).toBe(true);
     });
 
     it("getUserById defaults display_name/default_charity to null, public_opt_in to true, timezone to UTC, and use_real_email to false when no profile row exists", async () => {

@@ -69,8 +69,12 @@ const repo = (): iUserRepo => {
                     , COALESCE(p.public_opt_in, TRUE) AS public_opt_in
                     , COALESCE(p.timezone, 'UTC') AS timezone
                     , COALESCE(p.use_real_email, FALSE) AS use_real_email
+                    , b.paid_until
+                    , COALESCE(b.auto_renew, FALSE) AS auto_renew
+                    , b.subscription_status
                 FROM users u
                 LEFT JOIN user_profiles p ON p.user_id = u.id
+                LEFT JOIN user_billing b ON b.user_id = u.id
                 WHERE u.id = $1;
             `
 

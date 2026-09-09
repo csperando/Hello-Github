@@ -52,6 +52,11 @@ export interface iPublicUser {
     timezone?: String | undefined;
     use_real_email?: Boolean | undefined;
 
+    // billing (from user_billing; absent/null means "never paid")
+    paid_until?: String | null | undefined;
+    auto_renew?: Boolean | undefined;
+    subscription_status?: String | null | undefined;
+
     role?: Role | undefined;
     is_active?: Boolean | undefined;
 }
@@ -64,7 +69,9 @@ export interface iPublicUser {
  * join against user_profiles, since those aren't part of the bare iUser shape.
  */
 export function toPublicUser(
-    user: iUser & Partial<Pick<iUserProfile, "display_name" | "default_charity" | "public_opt_in" | "timezone" | "use_real_email">>,
+    user: iUser &
+        Partial<Pick<iUserProfile, "display_name" | "default_charity" | "public_opt_in" | "timezone" | "use_real_email">> &
+        Partial<Pick<iPublicUser, "paid_until" | "auto_renew" | "subscription_status">>,
 ): iPublicUser {
     return {
         id: user.id,
@@ -78,6 +85,9 @@ export function toPublicUser(
         public_opt_in: user.public_opt_in,
         timezone: user.timezone,
         use_real_email: user.use_real_email,
+        paid_until: user.paid_until,
+        auto_renew: user.auto_renew,
+        subscription_status: user.subscription_status,
         role: user.role,
         is_active: user.is_active,
     };
