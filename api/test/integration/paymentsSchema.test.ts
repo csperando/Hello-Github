@@ -7,8 +7,8 @@ describe("0010_create_payments migration", () => {
     const usersRepo = UsersRepository.repo();
     // fixed, out-of-range-for-real-GitHub id / reserved-range EIN so these
     // fixtures never collide with real data
-    const testGitHubId = -15;
-    const fixtureEin = "000000003";
+    const testGitHubId = -103;
+    const fixtureEin = "000000101";
 
     let userId: string;
     let fixtureOrgId: number;
@@ -33,9 +33,9 @@ describe("0010_create_payments migration", () => {
             github_username: "octocat-payments-schema-test",
             github_email: "octocat-payments-schema-test@example.com",
             github_noreply_email: `${testGitHubId}+octocat-payments-schema-test@users.noreply.github.com`,
-            github_node_id: "MDE6VXNlcjE1",
+            github_node_id: "MDE6VXNlcjEwMw==",
             github_profile_url: "https://github.com/octocat-payments-schema-test",
-            avatar_url: "https://avatars.githubusercontent.com/u/15?v=4",
+            avatar_url: "https://avatars.githubusercontent.com/u/103?v=4",
         } as iGitHubUpsertInput);
         userId = user.id;
     });
@@ -134,7 +134,7 @@ describe("0010_create_payments migration", () => {
     });
 
     it("nulls charity_ein_id (rather than blocking) when the referenced charity is deleted", async () => {
-        const ein = "000000004";
+        const ein = "000000102";
         const org = await pool.query("INSERT INTO eo_bmf (ein, name) VALUES ($1, $2) RETURNING id;", [ein, "Doomed Charity"]);
         const orgId = org.rows[0].id;
 

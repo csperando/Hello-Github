@@ -6,8 +6,8 @@ import { iGitHubUpsertInput } from "../../models/users";
 describe("0009_create_user_billing migration", () => {
     const usersRepo = UsersRepository.repo();
     // fixed, out-of-range-for-real-GitHub ids so this test never collides with real data
-    const testGitHubId = -13;
-    const otherGitHubId = -14;
+    const testGitHubId = -101;
+    const otherGitHubId = -102;
 
     let userId: string;
     let otherUserId: string;
@@ -22,9 +22,9 @@ describe("0009_create_user_billing migration", () => {
             github_username: "octocat-userbilling-schema-test",
             github_email: "octocat-userbilling-schema-test@example.com",
             github_noreply_email: `${testGitHubId}+octocat-userbilling-schema-test@users.noreply.github.com`,
-            github_node_id: "MDE6VXNlcjEz",
+            github_node_id: "MDE6VXNlcjEwMQ==",
             github_profile_url: "https://github.com/octocat-userbilling-schema-test",
-            avatar_url: "https://avatars.githubusercontent.com/u/13?v=4",
+            avatar_url: "https://avatars.githubusercontent.com/u/101?v=4",
         } as iGitHubUpsertInput);
         userId = user.id;
 
@@ -33,9 +33,9 @@ describe("0009_create_user_billing migration", () => {
             github_username: "octocat-userbilling-schema-test-2",
             github_email: "octocat-userbilling-schema-test-2@example.com",
             github_noreply_email: `${otherGitHubId}+octocat-userbilling-schema-test-2@users.noreply.github.com`,
-            github_node_id: "MDE6VXNlcjE0",
+            github_node_id: "MDE6VXNlcjEwMg==",
             github_profile_url: "https://github.com/octocat-userbilling-schema-test-2",
-            avatar_url: "https://avatars.githubusercontent.com/u/14?v=4",
+            avatar_url: "https://avatars.githubusercontent.com/u/102?v=4",
         } as iGitHubUpsertInput);
         otherUserId = other.id;
     });
