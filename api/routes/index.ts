@@ -8,6 +8,7 @@ import auth from "./auth.routes";
 import design from "./designs.routes";
 import scheduler from "./scheduler.routes";
 import contributions from "./contributions.routes";
+import payments from "./payments.routes";
 
 const router = (server: Express) => {
     server.use(bodyParser.json());
@@ -18,6 +19,7 @@ const router = (server: Express) => {
     server.use("/design", design);
     server.use("/scheduler", scheduler);
     server.use("/contributions", contributions);
+    server.use("/payments", payments);
 }
 
 export default router;

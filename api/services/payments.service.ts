@@ -124,6 +124,16 @@ export class PaymentsService {
         this.usersRepo = UserRepository.repo();
     }
 
+    /** The user's payment history, newest first. */
+    public async listPayments(userId: string): Promise<any[]> {
+        try {
+            return await this.paymentsRepo.listForUser(userId);
+        } catch (err: any) {
+            logger.error(err);
+            throw err;
+        }
+    }
+
     /** True when the user has a paid period that has not yet elapsed. */
     public async isCovered(userId: string): Promise<boolean> {
         const billing = await this.billingRepo.getByUserId(userId);
