@@ -5,6 +5,7 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 
 import EditorView from '../views/Editor.vue'
 import CustomRangeSlider from '../components/ui/CustomRangeSlider.vue'
+import { useAuthStore } from '@/stores/auth'
 
 vi.mock('@/services/api', () => ({
   githubLoginUrl: () => 'https://api.test/auth/github/login',
@@ -40,7 +41,11 @@ async function mountEditor(initialPath = '/editor') {
 
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/editor/:designId?', component: EditorView }],
+    routes: [
+      { path: '/editor/:designId?', component: EditorView },
+      { path: '/checkout', name: 'Checkout', component: { template: '<div>checkout</div>' } },
+      { path: '/dashboard', name: 'Dashboard', component: { template: '<div>dashboard</div>' } },
+    ],
   })
   router.push(initialPath)
   await router.isReady()
@@ -250,5 +255,47 @@ describe('Editor.vue', () => {
 
     expect(wrapper.text()).not.toContain('other users have this design active')
     expect(wrapper.get('[data-testid="visibility-toggle"]').attributes('aria-checked')).toBe('false')
+  })
+
+  describe('continue to checkout', () => {
+    async function paintAndContinue(wrapper: Awaited<ReturnType<typeof mountEditor>>['wrapper']) {
+      await findButton(wrapper, 'clear grid').trigger('click')
+      const cells = wrapper.findAll('[data-testid="grid-cell"]')
+      await cells[15]!.trigger('mousedown')
+      await findButton(wrapper, 'continue to checkout').trigger('click')
+      await flushPromises()
+    }
+
+    it('routes an uncovered user to /checkout carrying the saved design id', async () => {
+      createDesignMock.mockResolvedValue(
+        jsonResponse({ data: [{ design: { id: 'new-id' }, selection: { id: 'sel-id' } }] }),
+      )
+      const { wrapper, router } = await mountEditor('/editor')
+
+      await paintAndContinue(wrapper)
+
+      expect(router.currentRoute.value.path).toBe('/checkout')
+      expect(router.currentRoute.value.query.designId).toBe('new-id')
+      expect(updateSelectionMock).not.toHaveBeenCalled()
+    })
+
+    it('activates the selection directly and routes to /dashboard when the user is already covered', async () => {
+      createDesignMock.mockResolvedValue(
+        jsonResponse({ data: [{ design: { id: 'new-id' }, selection: { id: 'sel-id' } }] }),
+      )
+      updateSelectionMock.mockResolvedValue(jsonResponse({ data: [{ id: 'sel-id', is_active: true }] }))
+
+      const { wrapper, router } = await mountEditor('/editor')
+      useAuthStore().user = {
+        id: 'u1',
+        github_username: 'octo',
+        paid_until: new Date(Date.now() + 86_400_000).toISOString(),
+      }
+
+      await paintAndContinue(wrapper)
+
+      expect(updateSelectionMock).toHaveBeenCalledWith('new-id', { is_active: true })
+      expect(router.currentRoute.value.path).toBe('/dashboard')
+    })
   })
 })

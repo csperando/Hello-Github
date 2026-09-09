@@ -516,9 +516,28 @@
         }
     }
 
+    // "continue to checkout" saves the design first, then:
+    //  - already covered -> activate this selection right away, go to dashboard
+    //  - not covered      -> go to checkout, carrying the design id so the
+    //                        webhook can activate it once payment settles
     async function onContinueToCheckout() {
         const saved = await saveDesign()
-        if (saved) router.push("/checkout")
+        if (!saved) return
+
+        const designId = loadedDesign.value?.id
+        if (!designId) return
+
+        if (authStore.isCovered) {
+            const result = await designsStore.setActive(designId, true)
+            if (!result.ok) {
+                saveError.value = result.error
+                return
+            }
+            router.push("/dashboard")
+            return
+        }
+
+        router.push({ name: "Checkout", query: { designId } })
     }
 </script>
 
@@ -554,7 +573,7 @@
                     :disabled="isSaving"
                     class="save-btn"
                 >{{ loadedDesign ? "save changes" : "save as draft" }}</BaseButton>
-                <BaseButton @click="onContinueToCheckout" :loading="isSaving">continue to checkout →</BaseButton>
+                <BaseButton @click="onContinueToCheckout" :loading="isSaving" :disabled="isSaving">continue to checkout →</BaseButton>
             </div>
         </div>
 
