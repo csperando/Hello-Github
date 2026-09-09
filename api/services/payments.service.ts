@@ -222,16 +222,23 @@ export class PaymentsService {
                         ],
                         payment_behavior: "default_incomplete",
                         payment_settings: { save_default_payment_method: "on_subscription" },
-                        expand: ["latest_invoice.payment_intent"],
+                        // dahlia API: the first invoice's client secret lives on
+                        // confirmation_secret, not the removed payment_intent field
+                        expand: ["latest_invoice.confirmation_secret"],
                         metadata,
                     },
                     { idempotencyKey: `checkout-sub-${keyParts}` },
                 );
 
-                const paymentIntent = (subscription.latest_invoice as any)?.payment_intent;
-                const result: iCreateCheckoutResult = { amounts };
-                if (paymentIntent?.client_secret) result.clientSecret = paymentIntent.client_secret;
-                return result;
+                const invoice = subscription.latest_invoice as Stripe.Invoice | null;
+                const clientSecret = invoice?.confirmation_secret?.client_secret;
+                if (!clientSecret) {
+                    logger.error(
+                        `createCheckout: subscription ${subscription.id} has no latest_invoice.confirmation_secret client secret`,
+                    );
+                    return { error: "Could not start checkout. Please try again." };
+                }
+                return { amounts, clientSecret };
             }
 
             const paymentIntent = await stripe.paymentIntents.create(
@@ -252,9 +259,11 @@ export class PaymentsService {
                 { idempotencyKey: `checkout-onetime-${keyParts}` },
             );
 
-            const result: iCreateCheckoutResult = { amounts };
-            if (paymentIntent.client_secret) result.clientSecret = paymentIntent.client_secret;
-            return result;
+            if (!paymentIntent.client_secret) {
+                logger.error(`createCheckout: payment intent ${paymentIntent.id} has no client secret`);
+                return { error: "Could not start checkout. Please try again." };
+            }
+            return { amounts, clientSecret: paymentIntent.client_secret };
 
         } catch (err: any) {
             logger.error(err);

@@ -55,7 +55,7 @@ describe("PaymentsService.createCheckout", () => {
         mockStripe.products.search.mockResolvedValue({ data: [{ id: "prod_1" }] });
         mockStripe.subscriptions.create.mockResolvedValue({
             id: "sub_1",
-            latest_invoice: { payment_intent: { id: "pi_sub", client_secret: "pi_sub_secret" } },
+            latest_invoice: { confirmation_secret: { client_secret: "pi_sub_secret", type: "payment_intent" } },
         });
     });
 
@@ -130,6 +130,16 @@ describe("PaymentsService.createCheckout", () => {
         expect(params.items[0].price_data.recurring.interval).toBe("year");
         expect(params.items[0].price_data.unit_amount).toBe(1000);
         expect(params.items[0].price_data.product).toBe("prod_1");
+        expect(params.expand).toContain("latest_invoice.confirmation_secret");
+    });
+
+    it("returns an error (not a silent success) when the subscription's first invoice has no client secret", async () => {
+        mockStripe.subscriptions.create.mockResolvedValue({ id: "sub_broke", latest_invoice: { confirmation_secret: null } });
+
+        const res = await new PaymentsService().createCheckout(baseInput({ autoRenew: true }));
+
+        expect(res.clientSecret).toBeUndefined();
+        expect(res.error).toMatch(/could not start checkout/i);
     });
 
     it("creates the reusable Stripe Product on the very first subscription, then memoises it", async () => {
