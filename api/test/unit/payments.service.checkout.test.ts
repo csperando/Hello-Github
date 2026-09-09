@@ -1,0 +1,153 @@
+import type { iUserBillingRepo } from "../../repository/userBilling.repo";
+import type { iPaymentsRepo } from "../../repository/payments.repo";
+import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
+import type { iUserRepo } from "../../repository/users.repo";
+import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
+
+const billingRepoMock = createMockRepoProxy<iUserBillingRepo>();
+mockRepo("repository/userBilling.repo", billingRepoMock);
+const paymentsRepoMock = createMockRepoProxy<iPaymentsRepo>();
+mockRepo("repository/payments.repo", paymentsRepoMock);
+const selectionsRepoMock = createMockRepoProxy<iDesignSelectionsRepo>();
+mockRepo("repository/designSelections.repo", selectionsRepoMock);
+const usersRepoMock = createMockRepoProxy<iUserRepo>();
+mockRepo("repository/users.repo", usersRepoMock);
+
+const mockStripe = {
+    customers: { create: jest.fn() },
+    paymentIntents: { create: jest.fn() },
+    subscriptions: { create: jest.fn() },
+    products: { search: jest.fn(), create: jest.fn() },
+};
+jest.mock("../../config/stripe", () => ({ __esModule: true, default: mockStripe }));
+
+import { PaymentsService, __resetYearProductCacheForTests } from "../../services/payments.service";
+
+const baseInput = (overrides: Record<string, unknown> = {}) => ({
+    userId: "u1",
+    designIdToActivate: "d1",
+    charityEinId: 42,
+    totalCents: 1000,
+    platformCents: 300,
+    autoRenew: false,
+    ...overrides,
+});
+
+describe("PaymentsService.createCheckout", () => {
+    beforeEach(() => {
+        billingRepoMock.__reset();
+        paymentsRepoMock.__reset();
+        selectionsRepoMock.__reset();
+        usersRepoMock.__reset();
+        mockStripe.customers.create.mockReset();
+        mockStripe.paymentIntents.create.mockReset();
+        mockStripe.subscriptions.create.mockReset();
+        mockStripe.products.search.mockReset();
+        mockStripe.products.create.mockReset();
+        __resetYearProductCacheForTests();
+
+        billingRepoMock.getByUserId.mockResolvedValue(null);
+        billingRepoMock.upsertCustomerId.mockResolvedValue({ user_id: "u1", stripe_customer_id: "cus_1" });
+        usersRepoMock.getUserById.mockResolvedValue({ id: "u1", email: "u1@example.com", github_username: "octo" });
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: "u1", design_id: "d1" });
+        mockStripe.customers.create.mockResolvedValue({ id: "cus_1" });
+        mockStripe.paymentIntents.create.mockResolvedValue({ id: "pi_1", client_secret: "pi_1_secret" });
+        mockStripe.products.search.mockResolvedValue({ data: [{ id: "prod_1" }] });
+        mockStripe.subscriptions.create.mockResolvedValue({
+            id: "sub_1",
+            latest_invoice: { payment_intent: { id: "pi_sub", client_secret: "pi_sub_secret" } },
+        });
+    });
+
+    it("rejects an amount that fails server-side validation without calling Stripe", async () => {
+        const res = await new PaymentsService().createCheckout(baseInput({ platformCents: 1 }));
+        expect(res.error).toMatch(/platform amount must be at least/i);
+        expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
+    });
+
+    it("returns alreadyCovered (and does not charge) when the user's paid_until is in the future", async () => {
+        billingRepoMock.getByUserId.mockResolvedValue({ paid_until: new Date(Date.now() + 8.64e7).toISOString() });
+
+        const res = await new PaymentsService().createCheckout(baseInput());
+        expect(res.alreadyCovered).toBe(true);
+        expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a designIdToActivate the user has no selection for", async () => {
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue(undefined);
+
+        const res = await new PaymentsService().createCheckout(baseInput());
+        expect(res.error).toMatch(/isn't one of your selections/i);
+        expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
+    });
+
+    it("creates a one-time PaymentIntent with the authoritative split in metadata and returns its client secret", async () => {
+        const res = await new PaymentsService().createCheckout(baseInput());
+
+        expect(res.clientSecret).toBe("pi_1_secret");
+        expect(res.amounts).toEqual({
+            amount_total_cents: 1000,
+            amount_platform_cents: 300,
+            amount_charity_cents: 700,
+        });
+
+        const params = mockStripe.paymentIntents.create.mock.calls[0][0];
+        expect(params.amount).toBe(1000);
+        expect(params.currency).toBe("usd");
+        expect(params.metadata).toMatchObject({
+            user_id: "u1",
+            design_id: "d1",
+            charity_ein_id: "42",
+            amount_charity_cents: "700",
+        });
+        const options = mockStripe.paymentIntents.create.mock.calls[0][1];
+        expect(options.idempotencyKey).toContain("checkout-onetime-u1-1000-300");
+    });
+
+    it("provisions a Stripe customer once and persists the id", async () => {
+        await new PaymentsService().createCheckout(baseInput());
+        expect(mockStripe.customers.create).toHaveBeenCalledTimes(1);
+        expect(billingRepoMock.upsertCustomerId).toHaveBeenCalledWith("u1", "cus_1");
+    });
+
+    it("reuses an existing Stripe customer id without creating another", async () => {
+        billingRepoMock.getByUserId.mockResolvedValue({ stripe_customer_id: "cus_existing", paid_until: null });
+
+        await new PaymentsService().createCheckout(baseInput());
+        expect(mockStripe.customers.create).not.toHaveBeenCalled();
+        const params = mockStripe.paymentIntents.create.mock.calls[0][0];
+        expect(params.customer).toBe("cus_existing");
+    });
+
+    it("creates an annual Subscription (not a one-time PI) when autoRenew is set, returning the first invoice's client secret", async () => {
+        const res = await new PaymentsService().createCheckout(baseInput({ autoRenew: true }));
+
+        expect(mockStripe.subscriptions.create).toHaveBeenCalledTimes(1);
+        expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
+        expect(res.clientSecret).toBe("pi_sub_secret");
+
+        const params = mockStripe.subscriptions.create.mock.calls[0][0];
+        expect(params.items[0].price_data.recurring.interval).toBe("year");
+        expect(params.items[0].price_data.unit_amount).toBe(1000);
+        expect(params.items[0].price_data.product).toBe("prod_1");
+    });
+
+    it("creates the reusable Stripe Product on the very first subscription, then memoises it", async () => {
+        mockStripe.products.search.mockResolvedValue({ data: [] });
+        mockStripe.products.create.mockResolvedValue({ id: "prod_new" });
+
+        await new PaymentsService().createCheckout(baseInput({ autoRenew: true }));
+        expect(mockStripe.products.create).toHaveBeenCalledTimes(1);
+
+        // second subscription in the same process reuses the memoised id
+        await new PaymentsService().createCheckout(baseInput({ autoRenew: true }));
+        expect(mockStripe.products.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("works for a standalone purchase with no design to activate", async () => {
+        const res = await new PaymentsService().createCheckout(baseInput({ designIdToActivate: null }));
+        expect(res.clientSecret).toBe("pi_1_secret");
+        expect(selectionsRepoMock.getByUserAndDesign).not.toHaveBeenCalled();
+        expect(mockStripe.paymentIntents.create.mock.calls[0][0].metadata.design_id).toBe("");
+    });
+});
