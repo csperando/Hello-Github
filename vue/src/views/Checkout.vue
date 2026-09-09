@@ -1,228 +1,328 @@
 <script setup lang="ts">
-    import { computed, ref } from "vue"
+    import { computed, onMounted, ref, watch } from "vue"
+    import { useRoute } from "vue-router"
     import AppNavbar from "@/components/layout/AppNavbar.vue"
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseCard from "@/components/ui/BaseCard.vue"
-    import CharityListItem from "@/components/ui/CharityListItem.vue"
     import StepProgress from "@/components/ui/StepProgress.vue"
     import ContributionGridPreview from "@/components/ui/ContributionGridPreview.vue"
+    import CharitySearchInput from "@/components/ui/CharitySearchInput.vue"
+    import CharityResultsList from "@/components/ui/CharityResultsList.vue"
+    import SelectedCharitySummary from "@/components/ui/SelectedCharitySummary.vue"
+    import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import { LEVEL_COLORS } from "@/helpers/grid"
+    import { getOrgById } from "@/services/api"
+    import type { iOrg } from "@/services/api"
+    import { getDesign, type iDesign } from "@/services/designs"
+    import { useCharitySearch } from "@/composables/useCharitySearch"
+    import { useAuthStore } from "@/stores/auth"
 
-    interface Charity {
-        name: string
-        focus: string
-        letter: string
-    }
+    const PLATFORM_MIN_CENTS = 99
+    const PRESETS_CENTS = [500, 1000, 2500, 5000]
+    const MAX_TOTAL_CENTS = 50000
 
-    const CHARITIES: Charity[] = [
-        { name: "GiveDirectly", focus: "Cash transfers to families in poverty", letter: "G" },
-        { name: "Khan Academy", focus: "Free education for anyone, anywhere", letter: "K" },
-        { name: "EFF", focus: "Defending digital rights & privacy", letter: "E" },
-        { name: "The Trevor Project", focus: "Crisis support for LGBTQ+ youth", letter: "T" },
-        { name: "Rainforest Trust", focus: "Protecting critical habitats", letter: "R" },
-        { name: "Code.org", focus: "Computer science education for kids", letter: "C" },
-        { name: "World Central Kitchen", focus: "Meals in disaster & crisis zones", letter: "W" },
-        { name: "Direct Relief", focus: "Medical aid to under-resourced communities", letter: "D" },
-    ]
+    const route = useRoute()
+    const authStore = useAuthStore()
 
-    const HEART_MINI = [
-        [0, 1, 1, 0, 0, 0, 0, 1, 1, 0],
-        [1, 1, 1, 1, 0, 1, 1, 1, 1, 1],
-        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        [0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-        [0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
-        [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-        [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
-    ]
-
-    function buildPreviewGrid(): number[] {
-        const weeks = 24
-        const days = 7
-        const grid = new Array(weeks * days).fill(0)
-        for (let i = 0; i < grid.length; i++) {
-            if (Math.random() < 0.2) grid[i] = 1 + Math.floor(Math.random() * 2)
-        }
-        const startWeek = 7
-        HEART_MINI.forEach((row, r) => {
-            row.forEach((filled, c) => {
-                if (filled) {
-                    const week = startWeek + c
-                    const idx = week * days + r
-                    if (idx < grid.length) grid[idx] = 3 + ((r + c) % 2)
-                }
-            })
-        })
-        return grid
-    }
-
-    const PRESETS = [10, 25, 50, 100]
+    // the design this checkout will activate on success; absent for a
+    // standalone "buy a year" purchase from the dashboard
+    const designId = computed(() => (typeof route.query.designId === "string" ? route.query.designId : null))
+    const design = ref<iDesign | null>(null)
 
     const step = ref(1)
-    const search = ref("")
-    const selectedCharity = ref("GiveDirectly")
-    const amount = ref(10)
     const paying = ref(false)
-    const previewGrid = ref<number[]>(buildPreviewGrid())
-    const designName = ref("my first design")
+    const payError = ref("")
 
+    // ----- charity -----------------------------------------------------------
+    const selectedCharity = ref<iOrg | null>(null)
+    const {
+        searchResults,
+        searchLoading,
+        searchError,
+        searchQuery,
+        handleSearch: handleCharitySearch,
+        handleCleared: handleCharitySearchCleared,
+    } = useCharitySearch()
+
+    function selectCharity(org: iOrg) {
+        selectedCharity.value = org
+    }
+    function clearCharity() {
+        selectedCharity.value = null
+    }
+
+    const hasCharity = computed(() => selectedCharity.value !== null)
+
+    // ----- amount + split ---------------------------------------------------
+    const totalCents = ref(1000)
+    // the platform's cut; with a charity the user slides this between the
+    // floor and the total, without one the whole total is the platform's
+    const platformCents = ref(PLATFORM_MIN_CENTS)
+
+    watch([totalCents, hasCharity], () => {
+        const max = hasCharity.value ? totalCents.value : totalCents.value
+        platformCents.value = Math.min(Math.max(platformCents.value, PLATFORM_MIN_CENTS), max)
+    })
+
+    const effectivePlatformCents = computed(() =>
+        hasCharity.value ? Math.min(platformCents.value, totalCents.value) : totalCents.value,
+    )
+    const effectiveCharityCents = computed(() => Math.max(0, totalCents.value - effectivePlatformCents.value))
+
+    function setTotal(cents: number) {
+        totalCents.value = Math.min(Math.max(cents, PLATFORM_MIN_CENTS), MAX_TOTAL_CENTS)
+    }
+    function onTotalInput(e: Event) {
+        const dollars = Number((e.target as HTMLInputElement).value)
+        if (Number.isFinite(dollars)) setTotal(Math.round(dollars * 100))
+    }
+
+    // ----- auto-renew -----------------------------------------------------
+    const autoRenew = ref(true)
+
+    // ----- formatting / derived -----------------------------------------------
+    function formatCents(cents: number): string {
+        return `$${(cents / 100).toFixed(2)}`
+    }
+    function formatDate(iso: string): string {
+        return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    }
+
+    const alreadyCovered = computed(() => authStore.isCovered)
+    const coveredUntilLabel = computed(() =>
+        authStore.user?.paid_until ? formatDate(authStore.user.paid_until) : "",
+    )
+
+    const previewCells = computed(() =>
+        (design.value?.pattern ?? []).map((level) => ({ bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })),
+    )
+    const previewWeeks = computed(() => (design.value ? design.value.pattern.length / 7 : 24))
+
+    // ----- payment (placeholder - replaced by the Stripe Payment Element) ----
     function pay() {
+        payError.value = ""
         paying.value = true
         setTimeout(() => {
             paying.value = false
             step.value = 3
-        }, 1100)
+        }, 800)
     }
 
-    const filtered = computed(() => CHARITIES.filter((c) => c.name.toLowerCase().includes(search.value.toLowerCase())))
+    onMounted(async () => {
+        const charityId = authStore.user?.default_charity
+        if (charityId) {
+            try {
+                const res = await getOrgById(charityId)
+                if (res.ok) {
+                    const body = await res.json()
+                    // getOrgById returns the org object when found, [] when not
+                    const org = Array.isArray(body.data) ? undefined : body.data
+                    if (org) selectedCharity.value = org
+                }
+            } catch {
+                // non-fatal - the picker just starts empty
+            }
+        }
 
-    const charities = computed(() =>
-        filtered.value.map((c) => ({
-            ...c,
-            selected: c.name === selectedCharity.value,
-            borderColor: c.name === selectedCharity.value ? "var(--color-accent-border)" : "var(--color-border)",
-        })),
-    )
-
-    const noResults = computed(() => filtered.value.length === 0)
-
-    const presets = computed(() =>
-        PRESETS.map((value) => ({
-            value,
-            bg: value === amount.value ? "var(--color-accent)" : "var(--color-bg-inset)",
-            color: value === amount.value ? "var(--color-accent-on)" : "var(--color-text-muted-1)",
-            border: value === amount.value ? "transparent" : "var(--color-border-mid)",
-        })),
-    )
-
-    const donationAmount = computed(() => Math.max(0, amount.value - 3))
-    const previewCells = computed(() => previewGrid.value.map((level) => ({ bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })))
-    const paintedCount = computed(() => previewGrid.value.filter((l) => l > 0).length)
+        if (designId.value) {
+            try {
+                const res = await getDesign(designId.value)
+                if (res.ok) {
+                    const body = await res.json()
+                    design.value = body.data?.[0] ?? null
+                }
+            } catch {
+                // non-fatal - the summary just omits the design preview
+            }
+        }
+    })
 </script>
 
 <template>
     <div class="page">
-
         <AppNavbar sticky />
 
         <main class="main">
+            <!-- A user who's already covered can't buy a second year -->
+            <BaseCard v-if="alreadyCovered" padding="clamp(24px,3vw,36px)" class="covered-card">
+                <h1 class="step-title">You're already covered</h1>
+                <p class="step-subtitle">
+                    Your commits are automated through <strong>{{ coveredUntilLabel }}</strong>. There's nothing to pay
+                    right now — manage your plan or auto-renew from
+                    <RouterLink to="/settings" class="inline-link">settings</RouterLink>.
+                </p>
+                <div class="actions-end">
+                    <RouterLink to="/dashboard"><BaseButton class="continue-btn">back to dashboard →</BaseButton></RouterLink>
+                </div>
+            </BaseCard>
 
-            <StepProgress :steps="['charity', 'payment', 'done']" :current="step" line-width="32px" />
+            <template v-else>
+                <StepProgress :steps="['charity', 'payment', 'done']" :current="step" line-width="32px" />
 
-            <div class="grid grid-cols-1 lg:grid-cols-[1fr_320px] items-start gap-8">
+                <div class="grid grid-cols-1 lg:grid-cols-[1fr_320px] items-start gap-8">
+                    <BaseCard padding="clamp(24px,3vw,36px)" class="step-card">
+                        <!-- STEP 1: CHARITY -->
+                        <div v-if="step === 1">
+                            <h1 class="step-title">Choose a charity</h1>
+                            <p class="step-subtitle">
+                                Optional. Whatever you don't send to a charity supports Commits for Good directly.
+                            </p>
 
-                <!-- STEP CONTENT -->
-                <BaseCard padding="clamp(24px,3vw,36px)" class="step-card">
+                            <SelectedCharitySummary v-if="selectedCharity" :charity="selectedCharity" />
+                            <p v-else class="no-charity-note">
+                                No charity selected — your whole contribution will support the platform.
+                            </p>
 
-                    <!-- STEP 1: CHARITY -->
-                    <div v-if="step === 1">
-                        <h1 class="step-title">Choose a charity</h1>
-                        <p class="step-subtitle">100% of your contribution beyond the flat fee goes here.</p>
+                            <button v-if="selectedCharity" type="button" class="text-btn" @click="clearCharity">
+                                remove charity
+                            </button>
 
-                        <input v-model="search" placeholder="search 501(c)(3) organizations…" class="search-input" />
+                            <div class="search-wrap">
+                                <CharitySearchInput @search="handleCharitySearch" @cleared="handleCharitySearchCleared" />
+                                <CharityResultsList
+                                    :results="searchResults"
+                                    :loading="searchLoading"
+                                    :error="searchError"
+                                    :query="searchQuery"
+                                    :selected-id="selectedCharity?.id ?? null"
+                                    @select="selectCharity"
+                                />
+                            </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 charity-grid">
-                            <CharityListItem
-                                v-for="charity in charities"
-                                :key="charity.name"
-                                size="md"
-                                :name="charity.name"
-                                :letter="charity.letter"
-                                :focus="charity.focus"
-                                :border-color="charity.borderColor"
-                                :selected="charity.selected"
-                                @click="selectedCharity = charity.name"
+                            <div class="actions-end">
+                                <BaseButton @click="step = 2" class="continue-btn">continue →</BaseButton>
+                            </div>
+                        </div>
+
+                        <!-- STEP 2: AMOUNT + PAYMENT -->
+                        <div v-else-if="step === 2">
+                            <h1 class="step-title">Set your contribution</h1>
+                            <p class="amount-subtitle">
+                                One payment covers a year of automated commits<span v-if="selectedCharity">
+                                and a donation to <span class="charity-name-accent">{{ selectedCharity.name }}</span></span>.
+                            </p>
+
+                            <div class="preset-row">
+                                <button
+                                    v-for="preset in PRESETS_CENTS"
+                                    :key="preset"
+                                    type="button"
+                                    class="preset-btn"
+                                    :class="{ 'preset-btn--active': preset === totalCents }"
+                                    @click="setTotal(preset)"
+                                >{{ formatCents(preset) }}</button>
+                            </div>
+
+                            <label class="field-label" for="checkout-total">total</label>
+                            <input
+                                id="checkout-total"
+                                type="number"
+                                min="0.99"
+                                step="0.01"
+                                :value="(totalCents / 100).toFixed(2)"
+                                class="amount-input"
+                                @input="onTotalInput"
                             />
-                        </div>
-                        <div v-if="noResults" class="no-results">no matches — you can enter an EIN or org name at payment time instead.</div>
 
-                        <div class="actions-end">
-                            <BaseButton @click="step = 2" class="continue-btn">continue →</BaseButton>
-                        </div>
-                    </div>
+                            <div v-if="selectedCharity" class="split-block">
+                                <label class="field-label" for="checkout-split">
+                                    platform share — {{ formatCents(effectivePlatformCents) }}
+                                </label>
+                                <input
+                                    id="checkout-split"
+                                    type="range"
+                                    :min="PLATFORM_MIN_CENTS"
+                                    :max="totalCents"
+                                    step="1"
+                                    v-model.number="platformCents"
+                                    class="split-range"
+                                />
+                                <p class="split-hint">
+                                    drag left to send more to {{ selectedCharity.name }} (minimum platform share is
+                                    {{ formatCents(PLATFORM_MIN_CENTS) }})
+                                </p>
+                            </div>
 
-                    <!-- STEP 2: AMOUNT + PAYMENT -->
-                    <div v-else-if="step === 2">
-                        <h1 class="step-title">Set your contribution</h1>
-                        <p class="amount-subtitle">Giving to <span class="charity-name-accent">{{ selectedCharity }}</span>.</p>
+                            <div class="fee-box">
+                                <div class="fee-row">
+                                    <span class="fee-label">supports Commits for Good</span>
+                                    <span>{{ formatCents(effectivePlatformCents) }}</span>
+                                </div>
+                                <div v-if="selectedCharity" class="fee-row fee-row-last">
+                                    <span class="fee-label">donation to {{ selectedCharity.name }}</span>
+                                    <span class="fee-value-accent">{{ formatCents(effectiveCharityCents) }}</span>
+                                </div>
+                            </div>
 
-                        <div class="preset-row">
-                            <button
-                                v-for="preset in presets"
-                                :key="preset.value"
-                                @click="amount = preset.value"
-                                class="preset-btn"
-                                :style="{ background: preset.bg, color: preset.color, border: `1px solid ${preset.border}` }"
-                            >${{ preset.value }}</button>
-                        </div>
+                            <label class="renew-row">
+                                <div>
+                                    <div class="renew-title">auto-renew every year</div>
+                                    <div class="renew-sub">
+                                        we'll charge this again each year so your design keeps painting. cancel anytime in
+                                        settings.
+                                    </div>
+                                </div>
+                                <ToggleSwitch data-testid="auto-renew-toggle" :checked="autoRenew" @click="autoRenew = !autoRenew" />
+                            </label>
 
-                        <div class="amount-display">${{ amount }}</div>
-                        <input type="range" min="3" max="150" step="1" v-model.number="amount" class="amount-range" />
+                            <div v-if="payError" class="pay-error">{{ payError }}</div>
 
-                        <div class="fee-box">
-                            <div class="fee-row"><span class="fee-label">flat fee (covers costs)</span><span>$3</span></div>
-                            <div class="fee-row fee-row-last"><span class="fee-label">goes to {{ selectedCharity }}</span><span class="fee-value-accent">${{ donationAmount }}</span></div>
-                        </div>
-
-                        <label class="field-label">card number</label>
-                        <input value="4242 4242 4242 4242" readonly class="readonly-input card-number-input" />
-                        <div class="exp-cvc-row">
-                            <input value="08 / 28" readonly class="readonly-input" />
-                            <input value="•••" readonly class="readonly-input" />
-                        </div>
-
-                        <div class="actions-between">
-                            <BaseButton variant="secondary" @click="step = 1" class="secondary-btn">back</BaseButton>
-                            <BaseButton
-                                @click="pay"
-                                :disabled="paying"
-                                :loading="paying"
-                                class="continue-btn pay-btn"
-                            >
-                                <span v-if="paying">processing…</span>
-                                <span v-else>commit & donate ${{ amount }} →</span>
-                            </BaseButton>
-                        </div>
-                    </div>
-
-                    <!-- STEP 3: RECEIPT -->
-                    <div v-else class="receipt-step">
-                        <div class="check-circle">
-                            <span class="check-mark">✓</span>
-                        </div>
-                        <h1 class="receipt-title">Commit pushed. Donation sent.</h1>
-                        <p class="receipt-message">Your design is on its way to your GitHub profile — it can take a few minutes to appear.</p>
-
-                        <div class="receipt-box">
-                            <div class="receipt-row"><span class="fee-label">design</span><span class="receipt-value">{{ designName }}</span></div>
-                            <div class="receipt-row"><span class="fee-label">charity</span><span class="receipt-value">{{ selectedCharity }}</span></div>
-                            <div class="receipt-row receipt-row-last"><span class="fee-label">total charged</span><span class="receipt-value-accent">${{ amount }}</span></div>
+                            <div class="actions-between">
+                                <BaseButton variant="secondary" @click="step = 1" class="secondary-btn">back</BaseButton>
+                                <BaseButton
+                                    @click="pay"
+                                    :disabled="paying"
+                                    :loading="paying"
+                                    class="continue-btn pay-btn"
+                                >
+                                    <span v-if="paying">processing…</span>
+                                    <span v-else>pay {{ formatCents(totalCents) }} →</span>
+                                </BaseButton>
+                            </div>
                         </div>
 
-                        <div class="receipt-actions">
-                            <BaseButton variant="secondary" class="secondary-btn flex-1">download receipt</BaseButton>
-                            <BaseButton class="receipt-primary-btn flex-1">view on github →</BaseButton>
-                        </div>
-                    </div>
-
-                </BaseCard>
-
-                <!-- ORDER SUMMARY -->
-                <aside class="lg:sticky lg:top-24">
-                    <BaseCard padding="22px">
-                        <div class="summary-label">your design</div>
-                        <div class="preview-box">
-                            <ContributionGridPreview :cells="previewCells" />
-                        </div>
-                        <div class="summary-design-name">{{ designName }}</div>
-                        <div class="design-meta">{{ paintedCount }} squares · 2026</div>
-
-                        <div class="summary-divider">
-                            <div class="summary-row"><span>charity</span><span class="summary-value">{{ selectedCharity }}</span></div>
-                            <div class="summary-row summary-row-last"><span>total</span><span class="summary-value-strong">${{ amount }}</span></div>
+                        <!-- STEP 3: RECEIPT -->
+                        <div v-else class="receipt-step">
+                            <div class="check-circle"><span class="check-mark">✓</span></div>
+                            <h1 class="receipt-title">Payment received.</h1>
+                            <p class="receipt-message">
+                                Your commits will start painting shortly — this can take a few minutes.
+                            </p>
+                            <div class="receipt-actions">
+                                <RouterLink to="/dashboard" class="flex-1">
+                                    <BaseButton class="receipt-primary-btn">go to dashboard →</BaseButton>
+                                </RouterLink>
+                            </div>
                         </div>
                     </BaseCard>
-                </aside>
-            </div>
+
+                    <!-- ORDER SUMMARY -->
+                    <aside class="lg:sticky lg:top-24">
+                        <BaseCard padding="22px">
+                            <div class="summary-label">your order</div>
+                            <div v-if="design" class="preview-box">
+                                <ContributionGridPreview :cells="previewCells" :weeks="previewWeeks" height="90px" />
+                            </div>
+                            <div class="summary-design-name">{{ design ? design.name : "1 year of automated commits" }}</div>
+                            <div class="design-meta">
+                                <span v-if="design">{{ previewCells.filter((c) => c.bg !== LEVEL_COLORS[0]).length }} squares · </span>
+                                1 year{{ autoRenew ? " · auto-renews" : "" }}
+                            </div>
+
+                            <div class="summary-divider">
+                                <div class="summary-row">
+                                    <span>charity</span>
+                                    <span class="summary-value">{{ selectedCharity ? selectedCharity.name : "none" }}</span>
+                                </div>
+                                <div class="summary-row summary-row-last">
+                                    <span>total</span>
+                                    <span class="summary-value-strong">{{ formatCents(totalCents) }}</span>
+                                </div>
+                            </div>
+                        </BaseCard>
+                    </aside>
+                </div>
+            </template>
         </main>
     </div>
 </template>
@@ -241,8 +341,14 @@
         padding: clamp(28px, 4vw, 48px) clamp(20px, 4vw, 32px) 80px;
     }
 
-    .step-card {
+    .step-card,
+    .covered-card {
         min-width: 0;
+    }
+
+    .covered-card {
+        max-width: 560px;
+        margin: 0 auto;
     }
 
     .step-title {
@@ -252,34 +358,42 @@
         margin: 0 0 6px;
     }
 
-    .step-subtitle {
+    .step-subtitle,
+    .amount-subtitle {
         font-size: 14px;
         color: var(--color-text-muted-3);
         margin: 0 0 22px;
+        line-height: 1.6;
     }
 
-    .search-input {
-        width: 100%;
-        box-sizing: border-box;
-        font-family: var(--font-sans);
-        font-size: 14px;
-        background: var(--color-bg-inset);
-        color: var(--color-text);
-        border: 1px solid var(--color-border-input);
-        border-radius: 8px;
-        padding: 12px 14px;
-        margin-bottom: 20px;
+    .inline-link {
+        color: var(--color-accent-bright);
     }
 
-    .charity-grid {
-        margin-bottom: 24px;
-    }
-
-    .no-results {
+    .no-charity-note {
         font-family: var(--font-mono);
         font-size: 13px;
-        color: var(--color-text-muted-5);
-        margin-bottom: 24px;
+        color: var(--color-text-muted-4);
+        margin: 0 0 8px;
+    }
+
+    .text-btn {
+        background: none;
+        border: none;
+        padding: 0;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        color: var(--color-text-muted-3);
+        cursor: pointer;
+        text-decoration: underline;
+    }
+
+    .search-wrap {
+        margin: 18px 0 24px;
+    }
+
+    .charity-name-accent {
+        color: var(--color-accent-bright);
     }
 
     .actions-end {
@@ -290,6 +404,7 @@
     .actions-between {
         display: flex;
         justify-content: space-between;
+        margin-top: 8px;
     }
 
     .continue-btn {
@@ -302,16 +417,6 @@
         display: flex;
         align-items: center;
         gap: 9px;
-    }
-
-    .amount-subtitle {
-        font-size: 14px;
-        color: var(--color-text-muted-3);
-        margin: 0 0 24px;
-    }
-
-    .charity-name-accent {
-        color: var(--color-accent-bright);
     }
 
     .preset-row {
@@ -328,18 +433,58 @@
         border-radius: 8px;
         padding: 10px 16px;
         cursor: pointer;
+        background: var(--color-bg-inset);
+        color: var(--color-text-muted-1);
+        border: 1px solid var(--color-border-mid);
     }
 
-    .amount-display {
+    .preset-btn--active {
+        background: var(--color-accent);
+        color: var(--color-accent-on);
+        border-color: transparent;
+    }
+
+    .field-label {
+        display: block;
         font-family: var(--font-mono);
-        font-size: 38px;
-        font-weight: 700;
-        margin-bottom: 12px;
+        font-size: 12.5px;
+        color: var(--color-text-muted-3);
+        margin-bottom: 7px;
     }
 
-    .amount-range {
+    .amount-input {
         width: 100%;
+        box-sizing: border-box;
+        font-family: var(--font-mono);
+        font-size: 22px;
+        font-weight: 700;
+        background: var(--color-bg-inset);
+        color: var(--color-text);
+        border: 1px solid var(--color-border-input);
+        border-radius: 8px;
+        padding: 12px 14px;
         margin-bottom: 22px;
+    }
+
+    .amount-input:focus {
+        outline: none;
+        border-color: var(--color-accent);
+    }
+
+    .split-block {
+        margin-bottom: 22px;
+    }
+
+    .split-range {
+        width: 100%;
+        margin-bottom: 8px;
+    }
+
+    .split-hint {
+        font-size: 11.5px;
+        line-height: 1.5;
+        color: var(--color-text-muted-5);
+        margin: 0;
     }
 
     .fee-box {
@@ -347,7 +492,7 @@
         border: 1px solid var(--color-border);
         border-radius: 10px;
         padding: 16px;
-        margin-bottom: 26px;
+        margin-bottom: 20px;
     }
 
     .fee-row {
@@ -371,35 +516,36 @@
         font-weight: 600;
     }
 
-    .field-label {
-        display: block;
-        font-family: var(--font-mono);
-        font-size: 12.5px;
-        color: var(--color-text-muted-3);
-        margin-bottom: 7px;
-    }
-
-    .readonly-input {
-        width: 100%;
-        box-sizing: border-box;
-        font-family: var(--font-mono);
-        font-size: 13.5px;
-        background: var(--color-bg-inset);
-        color: var(--color-text);
-        border: 1px solid var(--color-border-input);
-        border-radius: 8px;
-        padding: 12px 14px;
-    }
-
-    .card-number-input {
-        margin-bottom: 14px;
-    }
-
-    .exp-cvc-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+    .renew-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         gap: 12px;
-        margin-bottom: 26px;
+        padding: 14px;
+        border-radius: 10px;
+        background: var(--color-bg-inset);
+        border: 1px solid var(--color-border);
+        margin-bottom: 20px;
+        cursor: pointer;
+    }
+
+    .renew-title {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 2px;
+    }
+
+    .renew-sub {
+        font-size: 11.5px;
+        line-height: 1.5;
+        color: var(--color-text-muted-5);
+    }
+
+    .pay-error {
+        font-size: 13px;
+        color: var(--color-danger);
+        margin-bottom: 14px;
     }
 
     .secondary-btn {
@@ -452,42 +598,13 @@
         margin: 0 auto 28px;
     }
 
-    .receipt-box {
-        text-align: left;
-        background: var(--color-bg-inset);
-        border: 1px solid var(--color-border);
-        border-radius: 10px;
-        padding: 18px 20px;
-        margin-bottom: 24px;
-    }
-
-    .receipt-row {
-        display: flex;
-        justify-content: space-between;
-        font-family: var(--font-mono);
-        font-size: 13px;
-        margin-bottom: 10px;
-    }
-
-    .receipt-row-last {
-        margin-bottom: 0;
-    }
-
-    .receipt-value {
-        font-weight: 600;
-    }
-
-    .receipt-value-accent {
-        font-weight: 600;
-        color: var(--color-accent-bright);
-    }
-
     .receipt-actions {
         display: flex;
         gap: 12px;
     }
 
     .receipt-primary-btn {
+        width: 100%;
         font-size: 14px;
         border-radius: 8px;
         padding: 13px 18px;
