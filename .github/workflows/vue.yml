@@ -11,11 +11,13 @@ on:
 jobs:
   Build-and-Push:
     runs-on: ubuntu-latest
+    # the built-in GITHUB_TOKEN needs write access to push the built dist/
+    # subtree to the gh-pages branch
+    permissions:
+      contents: write
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
-        with:
-          token: ${{ secrets.token }}
 
       - name: Update config
         run: |
