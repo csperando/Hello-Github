@@ -16,6 +16,10 @@ export interface iAuthUser {
     github_noreply_email?: string
     role?: 'admin' | 'user'
     is_active?: boolean
+    // billing (from user_billing; absent/null means "never paid")
+    paid_until?: string | null
+    auto_renew?: boolean
+    subscription_status?: string | null
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -23,6 +27,11 @@ export const useAuthStore = defineStore('auth', () => {
     const isLoading = ref(true)
     const isAuthenticated = computed(() => user.value !== null)
     const isAdmin = computed(() => user.value?.role === 'admin' && user.value?.is_active !== false)
+    // true only while the user has a paid period that hasn't elapsed yet
+    const isCovered = computed(() => {
+        const until = user.value?.paid_until
+        return !!until && new Date(until).getTime() > Date.now()
+    })
 
     let inFlight: Promise<void> | null = null
 
@@ -51,6 +60,12 @@ export const useAuthStore = defineStore('auth', () => {
         return inFlight
     }
 
+    /** Force a fresh /auth/me, bypassing the boot-time in-flight cache - used to poll for paid_until after a payment. */
+    async function refreshMe(): Promise<void> {
+        inFlight = null
+        await fetchMe()
+    }
+
     async function logout(): Promise<void> {
         try {
             await apiFetch('/auth/logout', { method: 'POST' })
@@ -59,5 +74,5 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
-    return { user, isLoading, isAuthenticated, isAdmin, fetchMe, logout }
+    return { user, isLoading, isAuthenticated, isAdmin, isCovered, fetchMe, refreshMe, logout }
 })
