@@ -35,6 +35,7 @@ import type { iDesignsRepo } from "../../repository/designs.repo";
 import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
 import type { iRunLogRepo } from "../../repository/runLog.repo";
 import type { iUserRepo } from "../../repository/users.repo";
+import type { iUserBillingRepo } from "../../repository/userBilling.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 const designsRepoMock = createMockRepoProxy<iDesignsRepo>();
 mockRepo("repository/designs.repo", designsRepoMock);
@@ -44,6 +45,8 @@ const runLogRepoMock = createMockRepoProxy<iRunLogRepo>();
 mockRepo("repository/runLog.repo", runLogRepoMock);
 const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
+const billingRepoMock = createMockRepoProxy<iUserBillingRepo>();
+mockRepo("repository/userBilling.repo", billingRepoMock);
 
 // DesignService.createDesign/deleteSelection wrap their (fully-mocked) repo
 // calls in a real pg transaction (BEGIN/COMMIT/ROLLBACK via pool.connect()) -
@@ -100,6 +103,10 @@ describe("Design routes", () => {
         selectionsRepoMock.__reset();
         runLogRepoMock.__reset();
         usersRepoMock.__reset();
+        billingRepoMock.__reset();
+        // default: every test user is covered, so activation isn't blocked
+        // unless a test explicitly says otherwise
+        billingRepoMock.getByUserId.mockResolvedValue({ paid_until: new Date(Date.now() + 30 * 8.64e7).toISOString() });
         usersRepoMock.getUserById.mockImplementation(async (userId: string) => {
             if (userId === admin.id) return admin;
             if (userId === owner.id) return owner;
@@ -514,6 +521,34 @@ describe("Design routes", () => {
                 .send({ is_active: true });
 
             expect(res.status).toBe(400);
+        });
+
+        it("returns 402 when an uncovered user tries to activate a selection", async () => {
+            designsRepoMock.getById.mockResolvedValue(mockDesignRow());
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow());
+            billingRepoMock.getByUserId.mockResolvedValue(null);
+
+            const res = await request(server)
+                .patch("/design/d1/select")
+                .set("Cookie", ownerCookie)
+                .send({ is_active: true });
+
+            expect(res.status).toBe(402);
+            expect(selectionsRepoMock.update).not.toHaveBeenCalled();
+        });
+
+        it("still lets an uncovered user change non-activation fields", async () => {
+            designsRepoMock.getById.mockResolvedValue(mockDesignRow());
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow());
+            selectionsRepoMock.update.mockResolvedValue(mockSelectionRow({ start_date: "2026-02-01" }));
+            billingRepoMock.getByUserId.mockResolvedValue(null);
+
+            const res = await request(server)
+                .patch("/design/d1/select")
+                .set("Cookie", ownerCookie)
+                .send({ start_date: "2026-02-01" });
+
+            expect(res.status).toBe(200);
         });
 
         it("rejects an unauthenticated request with 401", async () => {

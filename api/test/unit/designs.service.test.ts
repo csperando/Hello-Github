@@ -1,6 +1,7 @@
 import type { iDesignsRepo } from "../../repository/designs.repo";
 import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
 import type { iRunLogRepo } from "../../repository/runLog.repo";
+import type { iUserBillingRepo } from "../../repository/userBilling.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 
 const designsRepoMock = createMockRepoProxy<iDesignsRepo>();
@@ -9,8 +10,12 @@ const selectionsRepoMock = createMockRepoProxy<iDesignSelectionsRepo>();
 mockRepo("repository/designSelections.repo", selectionsRepoMock);
 const runLogRepoMock = createMockRepoProxy<iRunLogRepo>();
 mockRepo("repository/runLog.repo", runLogRepoMock);
+const billingRepoMock = createMockRepoProxy<iUserBillingRepo>();
+mockRepo("repository/userBilling.repo", billingRepoMock);
 
-import { DesignService } from "../../services/designs.service";
+import { DesignService, PaymentRequiredError } from "../../services/designs.service";
+
+const covered = () => ({ paid_until: new Date(Date.now() + 30 * 8.64e7).toISOString() });
 
 describe("DesignService (delegation methods)", () => {
     let service: DesignService;
@@ -19,6 +24,8 @@ describe("DesignService (delegation methods)", () => {
         designsRepoMock.__reset();
         selectionsRepoMock.__reset();
         runLogRepoMock.__reset();
+        billingRepoMock.__reset();
+        billingRepoMock.getByUserId.mockResolvedValue(covered());
         service = new DesignService();
     });
 
@@ -98,6 +105,43 @@ describe("DesignService (delegation methods)", () => {
 
         expect(selectionsRepoMock.update).toHaveBeenCalledWith("u1", "d1", { is_active: true });
         expect(result).toEqual({ id: "s1", is_active: true });
+    });
+
+    describe("activation payment gate", () => {
+        it("blocks selectDesign with is_active:true when the user has no current paid period", async () => {
+            billingRepoMock.getByUserId.mockResolvedValue(null);
+
+            await expect(
+                service.selectDesign("u1", "d1", { start_date: "2026-01-04", is_active: true } as any),
+            ).rejects.toBeInstanceOf(PaymentRequiredError);
+            expect(selectionsRepoMock.create).not.toHaveBeenCalled();
+        });
+
+        it("blocks updateSelection with is_active:true when paid_until is in the past", async () => {
+            billingRepoMock.getByUserId.mockResolvedValue({ paid_until: "2000-01-01T00:00:00.000Z" });
+
+            await expect(service.updateSelection("u1", "d1", { is_active: true })).rejects.toBeInstanceOf(
+                PaymentRequiredError,
+            );
+            expect(selectionsRepoMock.update).not.toHaveBeenCalled();
+        });
+
+        it("allows a covered user to activate", async () => {
+            selectionsRepoMock.update.mockResolvedValue({ id: "s1", is_active: true });
+            await service.updateSelection("u1", "d1", { is_active: true });
+            expect(selectionsRepoMock.update).toHaveBeenCalled();
+        });
+
+        it("does not check payment when the update leaves is_active alone or sets it false", async () => {
+            billingRepoMock.getByUserId.mockResolvedValue(null);
+            selectionsRepoMock.update.mockResolvedValue({ id: "s1" });
+
+            await service.updateSelection("u1", "d1", { start_date: "2026-02-01" });
+            await service.updateSelection("u1", "d1", { is_active: false });
+
+            expect(billingRepoMock.getByUserId).not.toHaveBeenCalled();
+            expect(selectionsRepoMock.update).toHaveBeenCalledTimes(2);
+        });
     });
 
     it("getLastRunStatuses delegates to the run_log repo", async () => {

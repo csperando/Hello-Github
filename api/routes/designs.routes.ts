@@ -28,6 +28,12 @@ function isActiveAdmin(user: any): boolean {
 // unique_violation - see design_selections' constraints (0004_create_design_selections.sql)
 const PG_UNIQUE_VIOLATION = "23505";
 
+// DesignService throws PaymentRequiredError (code "PAYMENT_REQUIRED") when a
+// user tries to activate a selection without a current paid period.
+function isPaymentRequired(err: any): boolean {
+    return err?.code === "PAYMENT_REQUIRED";
+}
+
 function friendlySelectionConflictMessage(err: any): string | undefined {
     if (err?.code !== PG_UNIQUE_VIOLATION) return undefined;
     if (err.constraint === "idx_design_selections_one_active_per_user") {
@@ -58,6 +64,11 @@ router.post("/", requireAuth, async (req: Request, res: Response, next: NextFunc
         res.status(200).json(response);
 
     } catch(err: any) {
+        if (isPaymentRequired(err)) {
+            const response: iResponse = { status: 402, success: false, error: err.message };
+            res.status(402).json(response);
+            return;
+        }
         const conflict = friendlySelectionConflictMessage(err);
         if (conflict) {
             const response: iResponse = { status: 400, success: false, error: conflict };
@@ -248,6 +259,11 @@ router.post("/:designId/select", requireAuth, async (req: Request, res: Response
         res.status(200).json(response);
 
     } catch(err: any) {
+        if (isPaymentRequired(err)) {
+            const response: iResponse = { status: 402, success: false, error: err.message };
+            res.status(402).json(response);
+            return;
+        }
         const conflict = friendlySelectionConflictMessage(err);
         if (conflict) {
             const response: iResponse = { status: 400, success: false, error: conflict };
@@ -298,6 +314,11 @@ router.patch("/:designId/select", requireAuth, async (req: Request, res: Respons
         res.status(200).json(response);
 
     } catch(err: any) {
+        if (isPaymentRequired(err)) {
+            const response: iResponse = { status: 402, success: false, error: err.message };
+            res.status(402).json(response);
+            return;
+        }
         const conflict = friendlySelectionConflictMessage(err);
         if (conflict) {
             const response: iResponse = { status: 400, success: false, error: conflict };

@@ -2,6 +2,7 @@ import pool from "../config/db";
 import DesignsRepository from "../repository/designs.repo";
 import DesignSelectionsRepository from "../repository/designSelections.repo";
 import RunLogRepository from "../repository/runLog.repo";
+import UserBillingRepository from "../repository/userBilling.repo";
 import {
     iDesignCreateInput,
     iDesignUpdateInput,
@@ -10,15 +11,40 @@ import {
 } from "../models/designs";
 import { logger } from "../config/logger";
 
+/**
+ * Thrown when a user tries to activate a design selection without a current
+ * paid period. The design routes map err.code === "PAYMENT_REQUIRED" to a
+ * 402 with this message.
+ */
+export class PaymentRequiredError extends Error {
+    public code = "PAYMENT_REQUIRED";
+    constructor(message = "A current payment is required to activate a design.") {
+        super(message);
+        this.name = "PaymentRequiredError";
+    }
+}
+
 export class DesignService {
     public repo: any;
     public selectionsRepo: any;
     public runLogRepo: any;
+    public billingRepo: any;
 
     constructor() {
         this.repo = DesignsRepository.repo();
         this.selectionsRepo = DesignSelectionsRepository.repo();
         this.runLogRepo = RunLogRepository.repo();
+        this.billingRepo = UserBillingRepository.repo();
+    }
+
+    // Activation (is_active -> true) is only allowed while the user has an
+    // unelapsed paid period. Painting itself is separately gated in the
+    // scheduler; this just keeps the toggle honest in the UI.
+    private async assertCoveredForActivation(userId: string, wantsActive: unknown): Promise<void> {
+        if (wantsActive !== true) return;
+        const billing = await this.billingRepo.getByUserId(userId);
+        const covered = !!billing?.paid_until && new Date(billing.paid_until).getTime() > Date.now();
+        if (!covered) throw new PaymentRequiredError();
     }
 
     /**
@@ -137,6 +163,7 @@ export class DesignService {
 
     public async selectDesign(userId: string, designId: string, input: iDesignSelectionCreateInput) {
         try {
+            await this.assertCoveredForActivation(userId, input.is_active);
             const selection = await this.selectionsRepo.create(userId, designId, input);
             return selection;
 
@@ -148,6 +175,7 @@ export class DesignService {
 
     public async updateSelection(userId: string, designId: string, input: iDesignSelectionUpdateInput) {
         try {
+            await this.assertCoveredForActivation(userId, input.is_active);
             const selection = await this.selectionsRepo.update(userId, designId, input);
             return selection;
 
