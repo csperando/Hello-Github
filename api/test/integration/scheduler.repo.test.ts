@@ -55,11 +55,20 @@ describe("SchedulerRepository.findDueCandidates", () => {
         if (userIds.length) {
             await pool.query("DELETE FROM run_log WHERE user_id = ANY($1);", [userIds]);
             await pool.query("DELETE FROM users_contributions WHERE user_id = ANY($1);", [userIds]);
+            await pool.query("DELETE FROM user_billing WHERE user_id = ANY($1);", [userIds]);
             await pool.query("DELETE FROM design_selections WHERE user_id = ANY($1);", [userIds]);
             await pool.query("DELETE FROM designs WHERE user_id = ANY($1);", [userIds]);
         }
         await pool.query("DELETE FROM users WHERE github_id = ANY($1);", [allIds]);
     });
+
+    async function makeCovered(userId: string, paidUntil = "NOW() + INTERVAL '1 year'") {
+        await pool.query(
+            `INSERT INTO user_billing (user_id, paid_until) VALUES ($1, ${paidUntil})
+             ON CONFLICT (user_id) DO UPDATE SET paid_until = EXCLUDED.paid_until;`,
+            [userId],
+        );
+    }
 
     async function makeUser(githubId: number, username: string) {
         return usersRepo.upsertFromGitHub({
@@ -79,6 +88,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         await profilesRepo.upsert(user.id, { timezone: tz as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
         await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await makeCovered(user.id);
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
 
@@ -156,6 +166,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
         await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await makeCovered(user.id);
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
 
@@ -168,6 +179,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
         await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await makeCovered(user.id);
         await contributionsRepo.upsert({
             user_id: user.id,
             year: 2026,
@@ -188,6 +200,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
         await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await makeCovered(user.id);
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
 
@@ -195,5 +208,39 @@ describe("SchedulerRepository.findDueCandidates", () => {
         expect(mine).toBeDefined();
         expect(mine.commit_counts).toBeNull();
         expect(mine.previous_year_commit_counts).toBeNull();
+    });
+
+    it("excludes a due user with no user_billing row (never paid)", async () => {
+        const user = await makeUser(dueGitHubId, "octocat-scheduler-due");
+        await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
+        const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        // no makeCovered
+
+        const candidates = await schedulerRepo.findDueCandidates(0, 4);
+        expect(candidates.find((c: any) => c.user_id === user.id)).toBeUndefined();
+    });
+
+    it("excludes a due user whose paid period has already lapsed", async () => {
+        const user = await makeUser(dueGitHubId, "octocat-scheduler-due");
+        await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
+        const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await makeCovered(user.id, "NOW() - INTERVAL '2 days'");
+
+        const candidates = await schedulerRepo.findDueCandidates(0, 4);
+        expect(candidates.find((c: any) => c.user_id === user.id)).toBeUndefined();
+    });
+
+    it("still includes a user whose paid_until instant has just passed but is the same local day (whole-day grace)", async () => {
+        const user = await makeUser(dueGitHubId, "octocat-scheduler-due");
+        // window is the 2am local hour, so "an hour ago" is still today for them
+        await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
+        const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await makeCovered(user.id, "NOW() - INTERVAL '1 hour'");
+
+        const candidates = await schedulerRepo.findDueCandidates(0, 4);
+        expect(candidates.find((c: any) => c.user_id === user.id)).toBeDefined();
     });
 });

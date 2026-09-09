@@ -82,15 +82,16 @@ const repo = (): iUsersContributionsRepo => {
         }
     }
 
-    // distinct users worth refreshing a q for - only those with at least one
-    // active design selection actually need one, mirroring
-    // scheduler.repo.ts's own is_active/design_selections.is_active gating.
+    // distinct users worth refreshing a q for - only those with an active
+    // design selection AND a current paid period actually paint, mirroring
+    // scheduler.repo.ts's gating.
     const findActiveUsers = async () => {
         try {
             const sqlString = `
                 SELECT DISTINCT u.id AS user_id, u.github_username
                 FROM users u
                 JOIN design_selections ds ON ds.user_id = u.id AND ds.is_active
+                JOIN user_billing ub ON ub.user_id = u.id AND ub.paid_until > NOW()
                 WHERE u.is_active;
             `;
             const result = await pool.query(sqlString);

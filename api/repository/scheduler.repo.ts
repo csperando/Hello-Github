@@ -42,9 +42,16 @@ const repo = (): iSchedulerRepo => {
                 FROM users u
                 LEFT JOIN user_profiles up ON up.user_id = u.id
                 LEFT JOIN users_contributions uc ON uc.user_id = u.id
+                LEFT JOIN user_billing ub ON ub.user_id = u.id
                 JOIN design_selections ds ON ds.user_id = u.id AND ds.is_active
                 JOIN designs d ON d.id = ds.design_id
                 WHERE u.is_active
+                    -- gated on a current paid period, compared at whole-day
+                    -- granularity in the user's own timezone so they paint
+                    -- through the last calendar day of their year (a NULL
+                    -- paid_until - never paid - fails this and is excluded)
+                    AND (ub.paid_until AT TIME ZONE COALESCE(up.timezone, 'UTC'))::date
+                        >= (NOW() AT TIME ZONE COALESCE(up.timezone, 'UTC'))::date
                     AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE COALESCE(up.timezone, 'UTC'))) >= $1
                     AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE COALESCE(up.timezone, 'UTC'))) < $2
                     AND NOT EXISTS (

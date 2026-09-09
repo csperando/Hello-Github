@@ -10,7 +10,7 @@ describe("UsersContributionsRepository", () => {
     const usersRepo = UsersRepository.repo();
     const contributionsRepo = UsersContributionsRepository.repo();
     // fixed, out-of-range-for-real-GitHub id so this test never collides with real data
-    const testGitHubId = -13;
+    const testGitHubId = -106;
 
     let userId: string;
 
@@ -24,17 +24,27 @@ describe("UsersContributionsRepository", () => {
             github_username: "octocat-userscontrib-repo-test",
             github_email: "octocat-userscontrib-repo-test@example.com",
             github_noreply_email: `${testGitHubId}+octocat-userscontrib-repo-test@users.noreply.github.com`,
-            github_node_id: "MDE6VXNlcjEz",
+            github_node_id: "MDE6VXNlcjEwNg==",
             github_profile_url: "https://github.com/octocat-userscontrib-repo-test",
-            avatar_url: "https://avatars.githubusercontent.com/u/13?v=4",
+            avatar_url: "https://avatars.githubusercontent.com/u/106?v=4",
         } as iGitHubUpsertInput);
         userId = user.id;
     });
 
     afterEach(async () => {
         await pool.query("DELETE FROM users_contributions WHERE user_id = $1;", [userId]);
+        await pool.query("DELETE FROM user_billing WHERE user_id = $1;", [userId]);
+        await pool.query("DELETE FROM design_selections WHERE user_id = $1;", [userId]);
+        await pool.query("DELETE FROM designs WHERE user_id = $1;", [userId]);
         await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
     });
+
+    const makeCovered = () =>
+        pool.query(
+            `INSERT INTO user_billing (user_id, paid_until) VALUES ($1, NOW() + INTERVAL '1 year')
+             ON CONFLICT (user_id) DO UPDATE SET paid_until = EXCLUDED.paid_until;`,
+            [userId],
+        );
 
     describe("findByUserId", () => {
         it("returns null when no row exists yet", async () => {
@@ -155,13 +165,27 @@ describe("UsersContributionsRepository", () => {
         const designsRepo = DesignsRepository.repo();
         const designSelectionsRepo = DesignSelectionsRepository.repo();
 
-        it("includes a user with an active design selection", async () => {
+        it("includes a user with an active design selection and a current paid period", async () => {
             const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
             await designSelectionsRepo.create(userId, design.id, { start_date: "2026-01-04", is_active: true });
+            await makeCovered();
 
             const active = await contributionsRepo.findActiveUsers();
 
             expect(active).toContainEqual({ user_id: userId, github_username: "octocat-userscontrib-repo-test" });
+
+            await designSelectionsRepo.delete(userId, design.id);
+            await pool.query("DELETE FROM designs WHERE id = $1;", [design.id]);
+        });
+
+        it("excludes an active-selection user with no current paid period", async () => {
+            const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
+            await designSelectionsRepo.create(userId, design.id, { start_date: "2026-01-04", is_active: true });
+            // no makeCovered()
+
+            const active = await contributionsRepo.findActiveUsers();
+
+            expect(active).not.toContainEqual(expect.objectContaining({ user_id: userId }));
 
             await designSelectionsRepo.delete(userId, design.id);
             await pool.query("DELETE FROM designs WHERE id = $1;", [design.id]);
