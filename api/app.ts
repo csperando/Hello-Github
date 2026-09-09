@@ -5,12 +5,17 @@ import { logger } from "./config/logger";
 import { config } from "./config/config";
 import cors from "./config/cors";
 import router from "./routes";
+import { stripeWebhookRawParser, stripeWebhookHandler } from "./routes/paymentsWebhook";
 import { iResponse } from "./models/response";
 
 const app = express();
 
 app.use(cors);
 app.use(cookieParser(config.SESSION_SECRET));
+
+// Stripe webhook - must be registered before router(app), which applies
+// bodyParser.json() globally; signature verification needs the raw body.
+app.post("/payments/webhook", stripeWebhookRawParser, stripeWebhookHandler);
 
 // routes
 router(app);
