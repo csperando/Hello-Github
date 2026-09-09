@@ -106,6 +106,30 @@ describe('Checkout.vue - charity + amount', () => {
     expect(wrapper.text()).toContain('No charity selected')
   })
 
+  it('lets the user override the prefilled charity from the search results', async () => {
+    getOrgByIdMock.mockResolvedValue(jsonResponse({ data: charity }))
+    const other = { ...charity, id: 9, name: 'Khan Academy' }
+    searchOrgsMock.mockResolvedValue(jsonResponse({ data: [other] }))
+
+    const wrapper = await mountCheckout({}, { id: 'u1', github_username: 'octo', default_charity: 7 })
+    expect(wrapper.text()).toContain('GiveDirectly')
+
+    await wrapper.find('input[placeholder="search for a charity"]').setValue('khan')
+    await new Promise((r) => setTimeout(r, 350))
+    await flushPromises()
+    await wrapper.findAll('button').find((b) => b.text().includes('Khan Academy'))!.trigger('click')
+
+    expect(wrapper.text()).toContain('Khan Academy')
+  })
+
+  it('lets the user clear the charity back to platform-only', async () => {
+    getOrgByIdMock.mockResolvedValue(jsonResponse({ data: charity }))
+    const wrapper = await mountCheckout({}, { id: 'u1', github_username: 'octo', default_charity: 7 })
+
+    await wrapper.find('.text-btn').trigger('click') // "remove charity"
+    expect(wrapper.text()).toContain('No charity selected')
+  })
+
   it('only shows the platform/charity split slider once a charity is chosen', async () => {
     const wrapper = await mountCheckout()
     await wrapper.find('button.continue-btn').trigger('click') // -> step 2
