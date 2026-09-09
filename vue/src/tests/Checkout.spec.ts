@@ -8,10 +8,11 @@ import { useAuthStore } from '@/stores/auth'
 
 const getOrgByIdMock = vi.fn()
 const searchOrgsMock = vi.fn()
+const apiFetchMock = vi.fn()
 vi.mock('@/services/api', () => ({
   getOrgById: (...a: unknown[]) => getOrgByIdMock(...a),
   searchOrgs: (...a: unknown[]) => searchOrgsMock(...a),
-  apiFetch: vi.fn(),
+  apiFetch: (...a: unknown[]) => apiFetchMock(...a),
   githubLoginUrl: () => 'http://x',
 }))
 
@@ -79,6 +80,10 @@ beforeEach(() => {
   confirmPaymentMock.mockReset().mockResolvedValue({ paymentIntent: { status: 'succeeded' } })
   paymentElementMountMock.mockReset()
   readyCb = undefined
+  // default /auth/me poll response: covered
+  apiFetchMock.mockReset().mockResolvedValue(
+    jsonResponse({ data: [{ id: 'u1', github_username: 'octo', paid_until: new Date(Date.now() + 86_400_000).toISOString() }] }),
+  )
 })
 
 async function toCardPhase(wrapper: Awaited<ReturnType<typeof mountCheckout>>) {
@@ -202,8 +207,9 @@ describe('Checkout.vue - Stripe Payment Element', () => {
     expect(wrapper.find('#payment-element').exists()).toBe(false)
   })
 
-  it('confirms the payment and advances to the receipt on success', async () => {
-    const wrapper = await mountCheckout()
+  it('confirms the payment, then polls until covered and shows the design as live', async () => {
+    getDesignMock.mockResolvedValue(jsonResponse({ data: [{ id: 'd1', name: 'my heart', pattern: [0, 1, 2, 3, 4, 0, 0] }] }))
+    const wrapper = await mountCheckout({ designId: 'd1' })
     await toCardPhase(wrapper)
     readyCb?.()
     await wrapper.vm.$nextTick()
@@ -212,12 +218,31 @@ describe('Checkout.vue - Stripe Payment Element', () => {
     await flushPromises()
 
     expect(confirmPaymentMock).toHaveBeenCalled()
-    expect(wrapper.text()).toContain('Payment received')
+    expect(apiFetchMock).toHaveBeenCalledWith('/auth/me')
+    expect(wrapper.text()).toContain("You're all set")
+    expect(wrapper.text()).toContain('my heart')
   })
 
-  it('jumps straight to the receipt when returning from a redirect payment method (?paid=1)', async () => {
+  it('prompts a standalone purchaser to pick a design once covered', async () => {
     const wrapper = await mountCheckout({ paid: '1' })
-    expect(wrapper.text()).toContain('Payment received')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("You're all set")
+    expect(wrapper.text()).toContain("pick a design")
+    expect(wrapper.find('a[href="/editor"]').exists()).toBe(true)
+  })
+
+  it('falls back to a "refresh in a minute" message if coverage never lands', async () => {
+    vi.useFakeTimers()
+    apiFetchMock.mockResolvedValue(jsonResponse({ data: [{ id: 'u1', github_username: 'octo', paid_until: null }] }))
+
+    const wrapper = await mountCheckout({ paid: '1' })
+    await vi.runAllTimersAsync()
+    vi.useRealTimers()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('receipt is on its way')
+    expect(wrapper.text()).toContain('refresh the dashboard')
   })
 
   it('shows the decline message and stays on the card phase when confirmPayment errors', async () => {

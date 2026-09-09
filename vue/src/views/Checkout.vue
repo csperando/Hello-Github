@@ -97,7 +97,9 @@
         return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     }
 
-    const alreadyCovered = computed(() => authStore.isCovered || forcedCovered.value)
+    // show the "already covered" panel only before a payment completes here -
+    // once we reach the confirmation step the user is expected to be covered
+    const alreadyCovered = computed(() => (authStore.isCovered || forcedCovered.value) && step.value < 3)
     const coveredUntilLabel = computed(() =>
         authStore.user?.paid_until ? formatDate(authStore.user.paid_until) : "",
     )
@@ -193,6 +195,28 @@
             paying.value = false
         }
     }
+
+    // ----- step 3: wait for the webhook to open the paid period ------------
+    const POLL_ATTEMPTS = 10
+    const POLL_INTERVAL_MS = 2000
+    const activationState = ref<"pending" | "active" | "timeout">("pending")
+
+    async function pollForCoverage() {
+        activationState.value = "pending"
+        for (let i = 0; i < POLL_ATTEMPTS; i++) {
+            await authStore.refreshMe()
+            if (authStore.isCovered) {
+                activationState.value = "active"
+                return
+            }
+            await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+        }
+        activationState.value = authStore.isCovered ? "active" : "timeout"
+    }
+
+    watch(step, (value) => {
+        if (value === 3) pollForCoverage()
+    })
 
     onMounted(async () => {
         // returning from a 3DS/redirect payment method
@@ -401,18 +425,51 @@
                             <p class="secure-note">🔒 card details go straight to Stripe — they never touch our servers.</p>
                         </div>
 
-                        <!-- STEP 3: RECEIPT -->
+                        <!-- STEP 3: CONFIRMATION -->
                         <div v-else class="receipt-step">
-                            <div class="check-circle"><span class="check-mark">✓</span></div>
-                            <h1 class="receipt-title">Payment received.</h1>
-                            <p class="receipt-message">
-                                Your commits will start painting shortly — this can take a few minutes.
-                            </p>
-                            <div class="receipt-actions">
-                                <RouterLink to="/dashboard" class="flex-1">
-                                    <BaseButton class="receipt-primary-btn">go to dashboard →</BaseButton>
-                                </RouterLink>
-                            </div>
+                            <template v-if="activationState === 'pending'">
+                                <div class="pulse-dot" aria-hidden="true"></div>
+                                <h1 class="receipt-title">Payment received.</h1>
+                                <p class="receipt-message">Activating your commits — this can take a moment.</p>
+                            </template>
+
+                            <template v-else-if="activationState === 'active'">
+                                <div class="check-circle"><span class="check-mark">✓</span></div>
+                                <h1 class="receipt-title">You're all set.</h1>
+                                <p v-if="design" class="receipt-message">
+                                    <strong>{{ design.name }}</strong> is now painting on your contribution graph. It can
+                                    take a few minutes to show up.
+                                </p>
+                                <p v-else class="receipt-message">
+                                    Your year is active — now pick a design so your paid time isn't going to waste.
+                                </p>
+                                <div class="receipt-actions">
+                                    <RouterLink v-if="!design" to="/editor" class="flex-1">
+                                        <BaseButton class="receipt-primary-btn">create a design →</BaseButton>
+                                    </RouterLink>
+                                    <RouterLink to="/dashboard" class="flex-1">
+                                        <BaseButton
+                                            :variant="design ? undefined : 'secondary'"
+                                            class="receipt-primary-btn"
+                                            :class="{ 'secondary-btn': !design }"
+                                        >go to dashboard{{ design ? " →" : "" }}</BaseButton>
+                                    </RouterLink>
+                                </div>
+                            </template>
+
+                            <template v-else>
+                                <div class="check-circle"><span class="check-mark">✓</span></div>
+                                <h1 class="receipt-title">Payment received.</h1>
+                                <p class="receipt-message">
+                                    Your receipt is on its way. Your commits will activate shortly — refresh the dashboard
+                                    in a minute.
+                                </p>
+                                <div class="receipt-actions">
+                                    <RouterLink to="/dashboard" class="flex-1">
+                                        <BaseButton class="receipt-primary-btn">go to dashboard →</BaseButton>
+                                    </RouterLink>
+                                </div>
+                            </template>
                         </div>
                     </BaseCard>
 
@@ -724,6 +781,20 @@
         font-family: var(--font-mono);
         font-size: 24px;
         color: var(--color-accent-brighter);
+    }
+
+    .pulse-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--color-accent);
+        margin: 12px auto 26px;
+        animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 0.35; transform: scale(0.85); }
+        50% { opacity: 1; transform: scale(1); }
     }
 
     .receipt-title {
