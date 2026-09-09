@@ -1,99 +1,31 @@
 <script setup lang="ts">
-    import { computed, onMounted, ref } from "vue"
+    import { onMounted, ref } from "vue"
     import { useRoute, useRouter } from "vue-router"
     import BaseButton from "@/components/ui/BaseButton.vue"
-    import { githubLoginUrl, updateProfile } from "@/services/api"
+    import { githubLoginUrl } from "@/services/api"
     import { useAuthStore } from "@/stores/auth"
-    import { timezoneOptions, detectTimezone } from "@/helpers/timezone"
 
     const route = useRoute()
     const router = useRouter()
     const authStore = useAuthStore()
 
-    const initializing = ref(true)
-    const step = ref(1)
     const connecting = ref(false)
-    const saving = ref(false)
-    const saveError = ref("")
-    const displayName = ref("")
-    const charity = ref("GiveDirectly")
-    const publicOptIn = ref(true)
-    const timezone = ref(detectTimezone())
-    const useRealEmail = ref(false)
-
-    const ghHandle = computed(() =>
-        authStore.user?.github_username ? `@${authStore.user.github_username}` : "",
-    )
 
     onMounted(async () => {
         await authStore.fetchMe()
 
-        const wantsProfileStep = route.query.step === "profile"
-
-        if (authStore.isAuthenticated) {
-            if (!wantsProfileStep) {
-                // already fully signed in and not mid-onboarding - don't show the connect screen again
-                router.replace("/dashboard")
-                return
-            }
+        // already fully signed in and not mid-onboarding - don't show the
+        // connect screen again (a stale "?step=profile" link with no session
+        // just falls through and shows the connect button)
+        if (authStore.isAuthenticated && route.query.step !== "profile") {
+            router.replace("/dashboard")
         }
-        // else: stale/shared "?step=profile" link with no session - fall back to step 1 (the default)
-
-        initializing.value = false
     })
 
     function connect() {
         connecting.value = true
         window.location.href = githubLoginUrl()
     }
-
-    function togglePublic() {
-        publicOptIn.value = !publicOptIn.value
-    }
-
-    function toggleUseRealEmail() {
-        useRealEmail.value = !useRealEmail.value
-    }
-
-    function skip() {
-        step.value = 3
-    }
-
-    async function finish() {
-        saving.value = true
-        saveError.value = ""
-        try {
-            const res = await updateProfile(authStore.user!.id, {
-                display_name: displayName.value,
-                default_charity: charity.value,
-                public_opt_in: publicOptIn.value,
-                timezone: timezone.value,
-                use_real_email: useRealEmail.value,
-            })
-            if (!res.ok) {
-                saveError.value = "Something went wrong saving your profile. Please try again."
-                return
-            }
-            step.value = 3
-        } catch {
-            saveError.value = "Something went wrong saving your profile. Please try again."
-        } finally {
-            saving.value = false
-        }
-    }
-
-    const charities = computed(() =>
-        CHARITIES.map((c) => ({
-            ...c,
-            selected: c.name === charity.value,
-            borderColor: c.name === charity.value ? "var(--color-accent-border)" : "var(--color-border)",
-        })),
-    )
-
-    const firstName = computed(() => {
-        const base = displayName.value || ghHandle.value.replace("@", "")
-        return (base.split(" ")[0] ?? "").split(".")[0] ?? ""
-    })
 </script>
 
 <template>
