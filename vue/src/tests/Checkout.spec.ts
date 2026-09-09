@@ -20,6 +20,28 @@ vi.mock('@/services/designs', () => ({
   getDesign: (...a: unknown[]) => getDesignMock(...a),
 }))
 
+const createCheckoutMock = vi.fn()
+vi.mock('@/services/payments', () => ({
+  createCheckout: (...a: unknown[]) => createCheckoutMock(...a),
+}))
+
+const paymentElementMountMock = vi.fn()
+let readyCb: (() => void) | undefined
+const paymentElement = {
+  mount: paymentElementMountMock,
+  on: (evt: string, cb: () => void) => {
+    if (evt === 'ready') readyCb = cb
+  },
+}
+const confirmPaymentMock = vi.fn()
+const stripeInstance = {
+  elements: vi.fn(() => ({ create: vi.fn(() => paymentElement) })),
+  confirmPayment: confirmPaymentMock,
+}
+vi.mock('@stripe/stripe-js', () => ({
+  loadStripe: vi.fn(async () => stripeInstance),
+}))
+
 function jsonResponse(body: unknown, ok = true) {
   return { ok, json: async () => body } as Response
 }
@@ -51,7 +73,19 @@ beforeEach(() => {
   getOrgByIdMock.mockReset().mockResolvedValue(jsonResponse({ data: [] }))
   searchOrgsMock.mockReset().mockResolvedValue(jsonResponse({ data: [] }))
   getDesignMock.mockReset().mockResolvedValue(jsonResponse({ data: [] }))
+  createCheckoutMock.mockReset().mockResolvedValue(
+    jsonResponse({ data: [{ client_secret: 'cs_1', amount_total_cents: 1000 }] }),
+  )
+  confirmPaymentMock.mockReset().mockResolvedValue({ paymentIntent: { status: 'succeeded' } })
+  paymentElementMountMock.mockReset()
+  readyCb = undefined
 })
+
+async function toCardPhase(wrapper: Awaited<ReturnType<typeof mountCheckout>>) {
+  await wrapper.find('button.continue-btn').trigger('click') // step 1 -> 2
+  await wrapper.find('.actions-between .pay-btn').trigger('click') // continueToPayment
+  await flushPromises()
+}
 
 describe('Checkout.vue - charity + amount', () => {
   it('prefills the charity from the user profile default', async () => {
@@ -120,5 +154,83 @@ describe('Checkout.vue - charity + amount', () => {
     const wrapper = await mountCheckout({ designId: 'd1' })
     expect(getDesignMock).toHaveBeenCalledWith('d1')
     expect(wrapper.text()).toContain('my heart')
+  })
+})
+
+describe('Checkout.vue - Stripe Payment Element', () => {
+  it('creates the checkout with the chosen amounts and mounts the Payment Element', async () => {
+    getOrgByIdMock.mockResolvedValue(jsonResponse({ data: charity }))
+    const wrapper = await mountCheckout(
+      { designId: 'd1' },
+      { id: 'u1', github_username: 'octo', default_charity: 7 },
+    )
+    await toCardPhase(wrapper)
+
+    expect(createCheckoutMock).toHaveBeenCalledWith({
+      totalCents: 1000,
+      platformCents: 99,
+      autoRenew: true,
+      designId: 'd1',
+      charityEinId: 7,
+    })
+    expect(paymentElementMountMock).toHaveBeenCalledWith('#payment-element')
+    expect(wrapper.find('#payment-element').exists()).toBe(true)
+  })
+
+  it('omits designId/charityEinId for a standalone, no-charity purchase', async () => {
+    const wrapper = await mountCheckout()
+    await toCardPhase(wrapper)
+
+    expect(createCheckoutMock).toHaveBeenCalledWith({ totalCents: 1000, platformCents: 1000, autoRenew: true })
+  })
+
+  it('shows the already-covered panel when the checkout API returns 409', async () => {
+    createCheckoutMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({}) } as Response)
+
+    const wrapper = await mountCheckout()
+    await toCardPhase(wrapper)
+
+    expect(wrapper.text()).toContain("You're already covered")
+  })
+
+  it('surfaces a checkout error without leaving the amount phase', async () => {
+    createCheckoutMock.mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: 'bad amount' }) } as Response)
+    const wrapper = await mountCheckout()
+    await toCardPhase(wrapper)
+
+    expect(wrapper.text()).toContain('bad amount')
+    expect(wrapper.find('#payment-element').exists()).toBe(false)
+  })
+
+  it('confirms the payment and advances to the receipt on success', async () => {
+    const wrapper = await mountCheckout()
+    await toCardPhase(wrapper)
+    readyCb?.()
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(confirmPaymentMock).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Payment received')
+  })
+
+  it('jumps straight to the receipt when returning from a redirect payment method (?paid=1)', async () => {
+    const wrapper = await mountCheckout({ paid: '1' })
+    expect(wrapper.text()).toContain('Payment received')
+  })
+
+  it('shows the decline message and stays on the card phase when confirmPayment errors', async () => {
+    confirmPaymentMock.mockResolvedValue({ error: { message: 'Your card was declined.' } })
+    const wrapper = await mountCheckout()
+    await toCardPhase(wrapper)
+    readyCb?.()
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Your card was declined.')
+    expect(wrapper.text()).not.toContain('Payment received')
   })
 })

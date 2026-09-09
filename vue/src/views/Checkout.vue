@@ -1,6 +1,7 @@
 <script setup lang="ts">
-    import { computed, onMounted, ref, watch } from "vue"
+    import { computed, nextTick, onMounted, ref, watch } from "vue"
     import { useRoute } from "vue-router"
+    import { loadStripe, type Stripe, type StripeElements } from "@stripe/stripe-js"
     import AppNavbar from "@/components/layout/AppNavbar.vue"
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseCard from "@/components/ui/BaseCard.vue"
@@ -14,6 +15,7 @@
     import { getOrgById } from "@/services/api"
     import type { iOrg } from "@/services/api"
     import { getDesign, type iDesign } from "@/services/designs"
+    import { createCheckout } from "@/services/payments"
     import { useCharitySearch } from "@/composables/useCharitySearch"
     import { useAuthStore } from "@/stores/auth"
 
@@ -30,8 +32,15 @@
     const design = ref<iDesign | null>(null)
 
     const step = ref(1)
+    // within step 2: "amount" collects the total/split, "card" mounts the
+    // Stripe Payment Element against a created PaymentIntent
+    const paymentPhase = ref<"amount" | "card">("amount")
+    const preparingPayment = ref(false)
     const paying = ref(false)
     const payError = ref("")
+    // set true if the checkout API reports the user is already covered (a
+    // race against the auth-store check)
+    const forcedCovered = ref(false)
 
     // ----- charity -----------------------------------------------------------
     const selectedCharity = ref<iOrg | null>(null)
@@ -88,7 +97,7 @@
         return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     }
 
-    const alreadyCovered = computed(() => authStore.isCovered)
+    const alreadyCovered = computed(() => authStore.isCovered || forcedCovered.value)
     const coveredUntilLabel = computed(() =>
         authStore.user?.paid_until ? formatDate(authStore.user.paid_until) : "",
     )
@@ -98,17 +107,99 @@
     )
     const previewWeeks = computed(() => (design.value ? design.value.pattern.length / 7 : 24))
 
-    // ----- payment (placeholder - replaced by the Stripe Payment Element) ----
-    function pay() {
+    // ----- Stripe Payment Element ------------------------------------------
+    let stripe: Stripe | null = null
+    let elements: StripeElements | null = null
+    const elementReady = ref(false)
+
+    async function getStripe(): Promise<Stripe | null> {
+        if (!stripe) stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
+        return stripe
+    }
+
+    async function continueToPayment() {
         payError.value = ""
+        preparingPayment.value = true
+        try {
+            const res = await createCheckout({
+                totalCents: totalCents.value,
+                platformCents: effectivePlatformCents.value,
+                autoRenew: autoRenew.value,
+                ...(designId.value ? { designId: designId.value } : {}),
+                ...(selectedCharity.value ? { charityEinId: selectedCharity.value.id } : {}),
+            })
+            const body = await res.json().catch(() => ({}))
+
+            if (res.status === 409) {
+                forcedCovered.value = true
+                return
+            }
+            if (!res.ok) {
+                payError.value = body.error ?? "Could not start checkout. Please try again."
+                return
+            }
+
+            const clientSecret: string | undefined = body.data?.[0]?.client_secret
+            if (!clientSecret) {
+                payError.value = "Could not start checkout. Please try again."
+                return
+            }
+
+            const s = await getStripe()
+            if (!s) {
+                payError.value = "Payments are unavailable right now."
+                return
+            }
+
+            elements = s.elements({ clientSecret })
+            const paymentElement = elements.create("payment")
+            paymentElement.on("ready", () => {
+                elementReady.value = true
+            })
+            paymentPhase.value = "card"
+            await nextTick()
+            paymentElement.mount("#payment-element")
+        } finally {
+            preparingPayment.value = false
+        }
+    }
+
+    function editAmount() {
+        paymentPhase.value = "amount"
+        elements = null
+        elementReady.value = false
+    }
+
+    async function pay() {
+        payError.value = ""
+        if (!stripe || !elements) return
         paying.value = true
-        setTimeout(() => {
+        try {
+            const { error, paymentIntent } = await stripe.confirmPayment({
+                elements,
+                confirmParams: { return_url: `${window.location.origin}/checkout?paid=1` },
+                redirect: "if_required",
+            })
+
+            if (error) {
+                // card declined, validation, 3DS failure, network - all land here
+                payError.value = error.message ?? "Payment failed. Please try another card."
+                return
+            }
+            if (paymentIntent && (paymentIntent.status === "succeeded" || paymentIntent.status === "processing")) {
+                step.value = 3
+            }
+        } finally {
             paying.value = false
-            step.value = 3
-        }, 800)
+        }
     }
 
     onMounted(async () => {
+        // returning from a 3DS/redirect payment method
+        if (route.query.paid || route.query.redirect_status === "succeeded") {
+            step.value = 3
+        }
+
         const charityId = authStore.user?.default_charity
         if (charityId) {
             try {
@@ -194,8 +285,8 @@
                             </div>
                         </div>
 
-                        <!-- STEP 2: AMOUNT + PAYMENT -->
-                        <div v-else-if="step === 2">
+                        <!-- STEP 2: AMOUNT then CARD -->
+                        <div v-else-if="step === 2 && paymentPhase === 'amount'">
                             <h1 class="step-title">Set your contribution</h1>
                             <p class="amount-subtitle">
                                 One payment covers a year of automated commits<span v-if="selectedCharity">
@@ -270,15 +361,44 @@
                             <div class="actions-between">
                                 <BaseButton variant="secondary" @click="step = 1" class="secondary-btn">back</BaseButton>
                                 <BaseButton
-                                    @click="pay"
-                                    :disabled="paying"
-                                    :loading="paying"
+                                    @click="continueToPayment"
+                                    :disabled="preparingPayment"
+                                    :loading="preparingPayment"
                                     class="continue-btn pay-btn"
                                 >
-                                    <span v-if="paying">processing…</span>
-                                    <span v-else>pay {{ formatCents(totalCents) }} →</span>
+                                    <span v-if="preparingPayment">preparing…</span>
+                                    <span v-else>continue to payment →</span>
                                 </BaseButton>
                             </div>
+                        </div>
+
+                        <!-- STEP 2 (card phase): Stripe Payment Element -->
+                        <div v-else-if="step === 2 && paymentPhase === 'card'">
+                            <h1 class="step-title">Payment</h1>
+                            <div class="card-amount-summary">
+                                <span>paying <strong>{{ formatCents(totalCents) }}</strong>{{ autoRenew ? " / year" : "" }}</span>
+                                <button type="button" class="text-btn" @click="editAmount">edit</button>
+                            </div>
+
+                            <form @submit.prevent="pay">
+                                <div id="payment-element" class="payment-element"></div>
+
+                                <div v-if="payError" class="pay-error">{{ payError }}</div>
+
+                                <div class="actions-between">
+                                    <BaseButton variant="secondary" type="button" @click="editAmount" class="secondary-btn">back</BaseButton>
+                                    <BaseButton
+                                        type="submit"
+                                        :disabled="paying || !elementReady"
+                                        :loading="paying"
+                                        class="continue-btn pay-btn"
+                                    >
+                                        <span v-if="paying">processing…</span>
+                                        <span v-else>pay {{ formatCents(totalCents) }} →</span>
+                                    </BaseButton>
+                                </div>
+                            </form>
+                            <p class="secure-note">🔒 card details go straight to Stripe — they never touch our servers.</p>
                         </div>
 
                         <!-- STEP 3: RECEIPT -->
@@ -546,6 +666,29 @@
         font-size: 13px;
         color: var(--color-danger);
         margin-bottom: 14px;
+    }
+
+    .card-amount-summary {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        font-family: var(--font-mono);
+        font-size: 13.5px;
+        margin-bottom: 20px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .payment-element {
+        min-height: 40px;
+        margin-bottom: 20px;
+    }
+
+    .secure-note {
+        font-size: 11.5px;
+        color: var(--color-text-muted-5);
+        margin: 16px 0 0;
     }
 
     .secondary-btn {
