@@ -1,5 +1,5 @@
 <script setup lang="ts">
-    import { onMounted, ref } from "vue"
+    import { computed, onMounted, ref } from "vue"
     import AppNavbar from "@/components/layout/AppNavbar.vue"
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseCard from "@/components/ui/BaseCard.vue"
@@ -11,6 +11,7 @@
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import { getOrgById, updateProfile } from "@/services/api"
     import type { iOrg } from "@/services/api"
+    import { listPayments, setAutoRenew, type iPayment } from "@/services/payments"
     import { useAuthStore } from "@/stores/auth"
     import { timezoneOptions } from "@/helpers/timezone"
     import { useCharitySearch } from "@/composables/useCharitySearch"
@@ -39,7 +40,76 @@
         handleCleared: handleCharitySearchCleared,
     } = useCharitySearch()
 
+    // ----- billing --------------------------------------------------------
+    const payments = ref<iPayment[]>([])
+    const charityNames = ref<Record<number, string>>({})
+    const autoRenewSaving = ref(false)
+    const billingError = ref("")
+
+    const isCovered = computed(() => authStore.isCovered)
+    const paidUntilLabel = computed(() => {
+        const until = authStore.user?.paid_until
+        return until
+            ? new Date(until).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+            : ""
+    })
+    const autoRenewOn = computed(() => !!authStore.user?.auto_renew)
+    const subscriptionStatus = computed(() => authStore.user?.subscription_status ?? null)
+
+    async function resolveOrgName(id: number): Promise<void> {
+        if (charityNames.value[id]) return
+        try {
+            const res = await getOrgById(id)
+            if (!res.ok) return
+            const body = await res.json()
+            const org = Array.isArray(body.data) ? undefined : body.data
+            if (org) charityNames.value[id] = org.name
+        } catch {
+            // non-fatal - the row just shows "charity" without a name
+        }
+    }
+
+    async function loadPayments(): Promise<void> {
+        try {
+            const res = await listPayments()
+            if (!res.ok) return
+            const body = await res.json()
+            payments.value = body.data ?? []
+            const ids = [...new Set(payments.value.map((p) => p.charity_ein_id).filter((x): x is number => x != null))]
+            await Promise.all(ids.map(resolveOrgName))
+        } catch {
+            // non-fatal - the history list just stays empty
+        }
+    }
+
+    async function toggleAutoRenew(): Promise<void> {
+        if (autoRenewSaving.value) return
+        billingError.value = ""
+        autoRenewSaving.value = true
+        const next = !autoRenewOn.value
+        try {
+            const res = await setAutoRenew(next)
+            const body = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                billingError.value = body.error ?? "Couldn't update auto-renew. Please try again."
+                return
+            }
+            if (authStore.user) authStore.user.auto_renew = next
+        } finally {
+            autoRenewSaving.value = false
+        }
+    }
+
+    function fmtCents(cents: number): string {
+        return `$${(cents / 100).toFixed(2)}`
+    }
+    function fmtPaymentDate(iso: string): string {
+        return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    }
+
     onMounted(async () => {
+        loadPayments()
+
         const currentId = authStore.user?.default_charity
         if (!currentId) return
 
@@ -165,6 +235,61 @@
                         <span v-else>save changes</span>
                     </BaseButton>
                 </BaseCard>
+
+                <h2 id="billing" class="title billing-title">Billing</h2>
+                <BaseCard>
+                    <div class="billing-status">
+                        <div>
+                            <div class="billing-status-label">
+                                {{ isCovered ? "painting active until " + paidUntilLabel : "no active plan" }}
+                            </div>
+                            <div v-if="subscriptionStatus" class="billing-status-sub">
+                                subscription: {{ subscriptionStatus }}
+                            </div>
+                        </div>
+                        <RouterLink v-if="!isCovered" to="/checkout">
+                            <BaseButton class="start-plan-btn">start a plan →</BaseButton>
+                        </RouterLink>
+                    </div>
+
+                    <div v-if="isCovered" class="toggle-row toggle-row-tall">
+                        <div>
+                            <div class="toggle-row-title">auto-renew every year</div>
+                            <div class="toggle-row-desc">
+                                {{ autoRenewOn
+                                    ? "we'll charge your saved card each year so your design keeps painting"
+                                    : "your plan ends on the date above unless you renew" }}
+                            </div>
+                        </div>
+                        <ToggleSwitch
+                            data-testid="auto-renew-toggle"
+                            :checked="autoRenewOn"
+                            :disabled="autoRenewSaving"
+                            @click="toggleAutoRenew"
+                        />
+                    </div>
+                    <div v-if="billingError" class="save-error">{{ billingError }}</div>
+
+                    <label class="field-label billing-history-label">payment history</label>
+                    <p v-if="payments.length === 0" class="hint">no payments yet.</p>
+                    <ul v-else class="history-list">
+                        <li v-for="p in payments" :key="p.id" class="history-row">
+                            <div class="history-main">
+                                <span class="history-date">{{ fmtPaymentDate(p.created_at) }}</span>
+                                <span class="history-total">{{ fmtCents(p.amount_total_cents) }}</span>
+                            </div>
+                            <div class="history-detail">
+                                {{ fmtCents(p.amount_platform_cents) }} platform
+                                <template v-if="p.amount_charity_cents > 0">
+                                    · {{ fmtCents(p.amount_charity_cents) }} to
+                                    {{ p.charity_ein_id != null ? (charityNames[p.charity_ein_id] || "charity") : "charity" }}
+                                </template>
+                                · {{ p.kind === "subscription" ? "auto-renew" : "one-time" }}
+                                · {{ p.status }}
+                            </div>
+                        </li>
+                    </ul>
+                </BaseCard>
             </div>
         </main>
 
@@ -272,5 +397,69 @@
         font-size: 14px;
         border-radius: 8px;
         padding: 13px 18px;
+    }
+
+    .billing-title {
+        margin-top: 40px;
+        scroll-margin-top: 90px;
+    }
+
+    .billing-status {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .billing-status-label {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .billing-status-sub {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--color-text-muted-4);
+        margin-top: 3px;
+    }
+
+    .start-plan-btn {
+        font-size: 13px;
+        border-radius: 8px;
+        padding: 10px 16px;
+        white-space: nowrap;
+    }
+
+    .billing-history-label {
+        margin-top: 20px;
+    }
+
+    .history-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .history-row {
+        padding: 12px 0;
+        border-top: 1px solid var(--color-border);
+    }
+
+    .history-main {
+        display: flex;
+        justify-content: space-between;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 3px;
+    }
+
+    .history-detail {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--color-text-muted-4);
+        line-height: 1.5;
     }
 </style>

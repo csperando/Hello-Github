@@ -10,6 +10,8 @@ import type { iOrg } from '../services/api'
 const updateProfileMock = vi.fn()
 const getOrgByIdMock = vi.fn()
 const searchOrgsMock = vi.fn()
+const listPaymentsMock = vi.fn()
+const setAutoRenewMock = vi.fn()
 
 vi.mock('@/services/api', () => ({
   githubLoginUrl: () => 'https://api.test/auth/github/login',
@@ -18,6 +20,13 @@ vi.mock('@/services/api', () => ({
   getOrgById: (...args: unknown[]) => getOrgByIdMock(...args),
   searchOrgs: (...args: unknown[]) => searchOrgsMock(...args),
 }))
+
+vi.mock('@/services/payments', () => ({
+  listPayments: (...args: unknown[]) => listPaymentsMock(...args),
+  setAutoRenew: (...args: unknown[]) => setAutoRenewMock(...args),
+}))
+
+const FUTURE = new Date(Date.now() + 30 * 86_400_000).toISOString()
 
 function jsonResponse(body: unknown, ok = true) {
   return { ok, json: async () => body } as Response
@@ -73,6 +82,8 @@ describe('Settings.vue', () => {
     updateProfileMock.mockReset()
     getOrgByIdMock.mockReset()
     searchOrgsMock.mockReset()
+    listPaymentsMock.mockReset().mockResolvedValue(jsonResponse({ data: [] }))
+    setAutoRenewMock.mockReset().mockResolvedValue(jsonResponse({ data: [{ auto_renew: true }] }))
     getOrgByIdMock.mockResolvedValue(jsonResponse({ data: effOrg }))
   })
 
@@ -188,6 +199,82 @@ describe('Settings.vue', () => {
       await findButton(wrapper, 'GiveDirectly').trigger('click')
 
       expect(findButton(wrapper, 'GiveDirectly').attributes('aria-pressed')).toBe('true')
+    })
+  })
+
+  describe('billing section', () => {
+    it('shows "no active plan" and a start-a-plan link when the user is not covered', async () => {
+      const { wrapper } = await mountSettings(buildUser())
+      expect(wrapper.get('#billing').text()).toBe('Billing')
+      expect(wrapper.text()).toContain('no active plan')
+      expect(wrapper.find('a[href="/checkout"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="auto-renew-toggle"]').exists()).toBe(false)
+    })
+
+    it('shows the paid-through date and the auto-renew toggle when covered', async () => {
+      const { wrapper } = await mountSettings(buildUser({ paid_until: FUTURE, auto_renew: true }))
+      expect(wrapper.text()).toContain('painting active until')
+      expect(wrapper.get('[data-testid="auto-renew-toggle"]').attributes('aria-checked')).toBe('true')
+    })
+
+    it('lists payment history with the platform/charity split and charity name', async () => {
+      listPaymentsMock.mockResolvedValue(
+        jsonResponse({
+          data: [
+            {
+              id: 'p1',
+              kind: 'one_time',
+              status: 'succeeded',
+              amount_total_cents: 2500,
+              amount_platform_cents: 99,
+              amount_charity_cents: 2401,
+              charity_ein_id: 42,
+              created_at: '2026-09-01T00:00:00Z',
+            },
+          ],
+        }),
+      )
+      getOrgByIdMock.mockResolvedValue(jsonResponse({ data: effOrg }))
+
+      const { wrapper } = await mountSettings(buildUser({ paid_until: FUTURE }))
+      await flushPromises()
+
+      const history = wrapper.get('.history-list').text()
+      expect(history).toContain('$25.00')
+      expect(history).toContain('$0.99 platform')
+      expect(history).toContain('$24.01 to EFF')
+      expect(history).toContain('one-time')
+    })
+
+    it('turning the auto-renew toggle off calls setAutoRenew(false) and updates the store', async () => {
+      setAutoRenewMock.mockResolvedValue(jsonResponse({ data: [{ auto_renew: false }] }))
+      const { wrapper, authStore } = await mountSettings(buildUser({ paid_until: FUTURE, auto_renew: true }))
+
+      await wrapper.get('[data-testid="auto-renew-toggle"]').trigger('click')
+      await flushPromises()
+
+      expect(setAutoRenewMock).toHaveBeenCalledWith(false)
+      expect(authStore.user?.auto_renew).toBe(false)
+    })
+
+    it('turning the auto-renew toggle on calls setAutoRenew(true)', async () => {
+      const { wrapper } = await mountSettings(buildUser({ paid_until: FUTURE, auto_renew: false }))
+
+      await wrapper.get('[data-testid="auto-renew-toggle"]').trigger('click')
+      await flushPromises()
+
+      expect(setAutoRenewMock).toHaveBeenCalledWith(true)
+    })
+
+    it('surfaces a billing error and does not flip the toggle on failure', async () => {
+      setAutoRenewMock.mockResolvedValue(jsonResponse({ error: 'no card on file' }, false))
+      const { wrapper, authStore } = await mountSettings(buildUser({ paid_until: FUTURE, auto_renew: false }))
+
+      await wrapper.get('[data-testid="auto-renew-toggle"]').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('no card on file')
+      expect(authStore.user?.auto_renew).toBe(false)
     })
   })
 })
