@@ -1,5 +1,5 @@
 import server from "../server";
-import pool from "../../config/db";
+import pool, { withTransaction } from "../../config/db";
 import UsersRepository from "../../repository/users.repo";
 import { iGitHubUpsertInput } from "../../models/users";
 
@@ -12,6 +12,50 @@ describe("Postgres config tests", () => {
         const sqlString = "SELECT 'test' as t;";
         const result = await pool.query(sqlString);
         expect(result.rows[0].t).toBe("test");
+    });
+});
+
+describe("withTransaction", () => {
+    // fixed, out-of-range-for-real-GitHub id so this test never collides with real data
+    const testGitHubId = -2;
+
+    afterEach(async () => {
+        await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
+    });
+
+    const insertSql = `
+        INSERT INTO users (github_id, github_username, github_email, github_noreply_email, github_node_id, github_profile_url, avatar_url)
+        VALUES ($1, 'octocat-withtx-test', 'octocat-withtx-test@example.com', '-2+octocat-withtx-test@users.noreply.github.com', 'node-id', 'https://github.com/octocat-withtx-test', 'https://avatars.githubusercontent.com/u/2?v=4')
+    `;
+
+    it("commits every query run against the shared client when fn resolves", async () => {
+        const result = await withTransaction(async (client) => {
+            const inserted = await client.query(`${insertSql} RETURNING id;`, [testGitHubId]);
+            return inserted.rows[0].id;
+        });
+
+        expect(result).toEqual(expect.any(String));
+        const row = await pool.query("SELECT * FROM users WHERE github_id = $1;", [testGitHubId]);
+        expect(row.rows).toHaveLength(1);
+    });
+
+    it("rolls back every query run against the shared client when fn throws, and rethrows", async () => {
+        await expect(
+            withTransaction(async (client) => {
+                await client.query(`${insertSql};`, [testGitHubId]);
+                throw new Error("boom");
+            }),
+        ).rejects.toThrow("boom");
+
+        const row = await pool.query("SELECT * FROM users WHERE github_id = $1;", [testGitHubId]);
+        expect(row.rows).toHaveLength(0);
+    });
+
+    it("releases the client back to the pool after commit and after rollback", async () => {
+        const before = pool.idleCount;
+        await withTransaction(async (client) => client.query("SELECT 1;"));
+        await expect(withTransaction(async () => { throw new Error("boom"); })).rejects.toThrow("boom");
+        expect(pool.idleCount).toBe(before);
     });
 });
 

@@ -1,4 +1,4 @@
-import { Pool, types } from "pg";
+import { Pool, PoolClient, types } from "pg";
 import { config } from "./config";
 
 // pg's default type parser turns DATE columns (OID 1082) into JS Date
@@ -23,5 +23,31 @@ const pool = new Pool({
     password: config.POSTGRES_PASSWORD,
     database: config.POSTGRES_DATABASE,
 });
+
+/**
+ * Runs `fn` against a single checked-out client inside a BEGIN/COMMIT
+ * transaction: every query `fn` issues via that client either all commit
+ * together or all roll back together. On any error from `fn` (or from the
+ * COMMIT itself), the transaction is rolled back and the error is rethrown -
+ * callers should let it propagate rather than swallow it, unless they mean
+ * to treat a specific expected failure (e.g. a unique-violation) as a clean
+ * outcome. The client is always released back to the pool.
+ */
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const result = await fn(client);
+        await client.query("COMMIT");
+        return result;
+
+    } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+
+    } finally {
+        client.release();
+    }
+}
 
 export default pool;
