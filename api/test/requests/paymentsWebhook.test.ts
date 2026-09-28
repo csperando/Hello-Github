@@ -23,6 +23,15 @@ const mockStripe = {
 };
 jest.mock("../../config/stripe", () => ({ __esModule: true, default: mockStripe }));
 
+// A fake client is enough here: the repo methods it's passed to are
+// themselves fully mocked above, so nothing ever issues a real query against
+// it - this keeps the route test from depending on a reachable database.
+const fakeClient = { query: jest.fn() };
+jest.mock("../../config/db", () => ({
+    __esModule: true,
+    withTransaction: (fn: (client: unknown) => Promise<unknown>) => fn(fakeClient),
+}));
+
 import server from "../server";
 
 afterAll(() => server.close());
@@ -87,7 +96,7 @@ describe("POST /payments/webhook", () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ received: true });
-        expect(billingRepoMock.bumpPaidUntilOneYear).toHaveBeenCalledWith("u1");
+        expect(billingRepoMock.bumpPaidUntilOneYear).toHaveBeenCalledWith("u1", fakeClient);
         expect(paymentsRepoMock.create).toHaveBeenCalled();
     });
 

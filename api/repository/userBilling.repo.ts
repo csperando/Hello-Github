@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import pool from "../config/db";
 import { logger } from "../config/logger";
 
@@ -19,7 +20,7 @@ export interface iUserBillingRepo {
     upsertCustomerId: (userId: string, stripeCustomerId: string) => Promise<any>;
     updateSubscription: (userId: string, input: iUserBillingSubscriptionInput) => Promise<any>;
     setPaidUntil: (userId: string, paidUntilIso: string) => Promise<any>;
-    bumpPaidUntilOneYear: (userId: string) => Promise<any>;
+    bumpPaidUntilOneYear: (userId: string, client?: PoolClient) => Promise<any>;
     listLapsedActiveUsers: () => Promise<iLapsedActiveUser[]>;
 }
 
@@ -125,7 +126,7 @@ const repo = (): iUserBillingRepo => {
     // NULL paid_until, so a first-time payer gets NOW() + 1 year. Duplicate
     // webhook deliveries are already screened out upstream by the payments
     // ledger's stripe_event_id uniqueness before this is called.
-    const bumpPaidUntilOneYear = async (userId: string) => {
+    const bumpPaidUntilOneYear = async (userId: string, client?: PoolClient) => {
         try {
             const sqlString = `
                 INSERT INTO user_billing (user_id, paid_until)
@@ -135,7 +136,7 @@ const repo = (): iUserBillingRepo => {
                     , updated_at = NOW()
                 RETURNING *;
             `;
-            const result = await pool.query(sqlString, [userId]);
+            const result = await (client ?? pool).query(sqlString, [userId]);
             return result.rows[0];
 
         } catch(err: any) {

@@ -1,11 +1,15 @@
 import type Stripe from "stripe";
 import stripe from "../config/stripe";
+import { withTransaction } from "../config/db";
 import UserBillingRepository from "../repository/userBilling.repo";
 import PaymentsRepository from "../repository/payments.repo";
 import DesignSelectionsRepository from "../repository/designSelections.repo";
 import UserRepository from "../repository/users.repo";
+import { isUniqueViolationOn } from "../repository/dbErrors";
 import { config } from "../config/config";
 import { logger } from "../config/logger";
+
+const PAYMENTS_STRIPE_EVENT_ID_UNIQUE = "payments_stripe_event_id_unique";
 
 export interface iProposedAmounts {
     // integer cents, as sent by the client - never trusted, always revalidated here
@@ -348,25 +352,43 @@ export class PaymentsService {
         if (pi.metadata?.kind !== "checkout_one_time") {
             return { handled: false, note: "not a one-time checkout payment - handled via invoice.paid" };
         }
+        // Fast-path only: skips the DB round trip below on Stripe's ordinary
+        // post-200 redelivery of an event already fully processed. It cannot
+        // by itself close the race between two truly concurrent deliveries -
+        // the transaction + unique-violation catch below is what guarantees
+        // at most one credit even then.
         if (await this.paymentsRepo.existsByStripeEventId(event.id)) return { handled: true, note: "duplicate" };
 
         const userId = await this.resolveUserId(pi.metadata?.user_id, pi.customer);
         if (!userId) throw new Error(`payment_intent.succeeded ${pi.id}: cannot resolve user`);
 
-        const billing = await this.billingRepo.bumpPaidUntilOneYear(userId);
         const split = this.splitFromMetadata(pi.metadata, pi.amount_received ?? pi.amount);
 
-        await this.paymentsRepo.create({
-            user_id: userId,
-            stripe_event_id: event.id,
-            stripe_object_id: pi.id,
-            kind: "one_time",
-            status: "succeeded",
-            ...split,
-            charity_ein_id: this.parseCharityId(pi.metadata?.charity_ein_id),
-            period_start: new Date().toISOString(),
-            period_end: billing.paid_until,
-        });
+        // The credit and the ledger insert commit or roll back together: if a
+        // concurrent duplicate delivery wins the insert first, this one's
+        // credit is rolled back with it instead of being double-applied.
+        try {
+            await withTransaction(async (client) => {
+                const billingRow = await this.billingRepo.bumpPaidUntilOneYear(userId, client);
+                await this.paymentsRepo.create({
+                    user_id: userId,
+                    stripe_event_id: event.id,
+                    stripe_object_id: pi.id,
+                    kind: "one_time",
+                    status: "succeeded",
+                    ...split,
+                    charity_ein_id: this.parseCharityId(pi.metadata?.charity_ein_id),
+                    period_start: new Date().toISOString(),
+                    period_end: billingRow.paid_until,
+                }, client);
+            });
+        } catch (err: any) {
+            if (isUniqueViolationOn(err, PAYMENTS_STRIPE_EVENT_ID_UNIQUE)) {
+                logger.info(`payment_intent.succeeded ${event.id}: lost the race to a concurrent duplicate delivery`);
+                return { handled: true, note: "duplicate" };
+            }
+            throw err;
+        }
 
         await this.maybeActivateDesign(userId, pi.metadata?.design_id);
 
@@ -412,17 +434,29 @@ export class PaymentsService {
         const metadata = subscription.metadata ?? subDetails?.metadata;
         const split = this.splitFromMetadata(metadata, invoice.amount_paid);
 
-        await this.paymentsRepo.create({
-            user_id: userId,
-            stripe_event_id: event.id,
-            stripe_object_id: invoice.id,
-            kind: "subscription",
-            status: "paid",
-            ...split,
-            charity_ein_id: this.parseCharityId(metadata?.charity_ein_id),
-            period_start: new Date((invoice.period_start ?? 0) * 1000).toISOString(),
-            period_end: paidUntilIso,
-        });
+        // Unlike the one-time path, `setPaidUntil` above is already an
+        // idempotent absolute set, so a losing race here can't double-credit
+        // - it only needs to not blow up with an unhandled exception, so no
+        // withTransaction is needed, just a catch on the insert itself.
+        try {
+            await this.paymentsRepo.create({
+                user_id: userId,
+                stripe_event_id: event.id,
+                stripe_object_id: invoice.id,
+                kind: "subscription",
+                status: "paid",
+                ...split,
+                charity_ein_id: this.parseCharityId(metadata?.charity_ein_id),
+                period_start: new Date((invoice.period_start ?? 0) * 1000).toISOString(),
+                period_end: paidUntilIso,
+            });
+        } catch (err: any) {
+            if (isUniqueViolationOn(err, PAYMENTS_STRIPE_EVENT_ID_UNIQUE)) {
+                logger.info(`invoice.paid ${event.id}: lost the race to a concurrent duplicate delivery`);
+                return { handled: true, note: "duplicate" };
+            }
+            throw err;
+        }
 
         await this.maybeActivateDesign(userId, metadata?.design_id);
         return { handled: true };

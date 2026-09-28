@@ -1,4 +1,4 @@
-import pool from "../../config/db";
+import pool, { withTransaction } from "../../config/db";
 import { runMigrations } from "../../data/migrate";
 import UsersRepository from "../../repository/users.repo";
 import UserBillingRepository from "../../repository/userBilling.repo";
@@ -123,6 +123,17 @@ describe("UserBillingRepository", () => {
             const days = (new Date(row.paid_until).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
             expect(days).toBeGreaterThan(360);
             expect(days).toBeLessThan(371);
+        });
+
+        it("given a client, runs on that transaction and rolls back with it", async () => {
+            await expect(
+                withTransaction(async (client) => {
+                    await billingRepo.bumpPaidUntilOneYear(userId, client);
+                    throw new Error("boom");
+                }),
+            ).rejects.toThrow("boom");
+
+            expect(await billingRepo.getByUserId(userId)).toBeNull();
         });
     });
 

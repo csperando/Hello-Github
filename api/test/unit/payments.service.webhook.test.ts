@@ -20,6 +20,14 @@ const mockStripe = {
 };
 jest.mock("../../config/stripe", () => ({ __esModule: true, default: mockStripe }));
 
+// A fake client is enough here: the repo methods it's passed to are
+// themselves fully mocked above, so nothing ever issues a real query against
+// it. withTransaction's actual commit/rollback behavior under concurrency is
+// covered by the integration tests instead.
+const fakeClient = { query: jest.fn() };
+const mockWithTransaction = jest.fn((fn: (client: unknown) => Promise<unknown>) => fn(fakeClient));
+jest.mock("../../config/db", () => ({ __esModule: true, withTransaction: (fn: any) => mockWithTransaction(fn) }));
+
 import { PaymentsService } from "../../services/payments.service";
 
 const svc = () => new PaymentsService();
@@ -68,7 +76,7 @@ describe("PaymentsService.handleWebhookEvent", () => {
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
 
             expect(res.handled).toBe(true);
-            expect(billingRepoMock.bumpPaidUntilOneYear).toHaveBeenCalledWith("u1");
+            expect(billingRepoMock.bumpPaidUntilOneYear).toHaveBeenCalledWith("u1", fakeClient);
             expect(paymentsRepoMock.create).toHaveBeenCalledWith(
                 expect.objectContaining({
                     user_id: "u1",
@@ -79,6 +87,7 @@ describe("PaymentsService.handleWebhookEvent", () => {
                     charity_ein_id: 42,
                     period_end: "2027-01-01T00:00:00.000Z",
                 }),
+                fakeClient,
             );
             expect(selectionsRepoMock.setActiveExclusive).toHaveBeenCalledWith("u1", "d1");
         });
@@ -126,7 +135,21 @@ describe("PaymentsService.handleWebhookEvent", () => {
             billingRepoMock.getByStripeCustomerId.mockResolvedValue(null);
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
             expect(res.handled).toBe(true);
-            expect(billingRepoMock.bumpPaidUntilOneYear).toHaveBeenCalledWith("u1");
+            expect(billingRepoMock.bumpPaidUntilOneYear).toHaveBeenCalledWith("u1", fakeClient);
+        });
+
+        it("returns a clean duplicate response when it loses the race on the ledger's unique constraint", async () => {
+            paymentsRepoMock.create.mockRejectedValueOnce({ code: "23505", constraint: "payments_stripe_event_id_unique" });
+            const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
+
+            expect(res).toEqual({ handled: true, note: "duplicate" });
+            expect(selectionsRepoMock.setActiveExclusive).not.toHaveBeenCalled();
+            expect(mockStripe.customers.update).not.toHaveBeenCalled();
+        });
+
+        it("still throws an unrelated DB error from the transaction (so Stripe retries)", async () => {
+            paymentsRepoMock.create.mockRejectedValueOnce({ code: "23505", constraint: "some_other_constraint" });
+            await expect(svc().handleWebhookEvent(evt("payment_intent.succeeded", pi))).rejects.toBeDefined();
         });
 
         it("throws (so Stripe retries) when the user cannot be resolved at all", async () => {
@@ -184,6 +207,19 @@ describe("PaymentsService.handleWebhookEvent", () => {
             paymentsRepoMock.existsByStripeEventId.mockResolvedValue(true);
             const res = await svc().handleWebhookEvent(evt("invoice.paid", invoice));
             expect(res).toEqual({ handled: true, note: "duplicate" });
+        });
+
+        it("returns a clean duplicate response when it loses the race on the ledger's unique constraint", async () => {
+            paymentsRepoMock.create.mockRejectedValueOnce({ code: "23505", constraint: "payments_stripe_event_id_unique" });
+            const res = await svc().handleWebhookEvent(evt("invoice.paid", invoice));
+
+            expect(res).toEqual({ handled: true, note: "duplicate" });
+            expect(selectionsRepoMock.setActiveExclusive).not.toHaveBeenCalled();
+        });
+
+        it("still throws an unrelated DB error from the insert (so Stripe retries)", async () => {
+            paymentsRepoMock.create.mockRejectedValueOnce({ code: "23505", constraint: "some_other_constraint" });
+            await expect(svc().handleWebhookEvent(evt("invoice.paid", invoice))).rejects.toBeDefined();
         });
     });
 

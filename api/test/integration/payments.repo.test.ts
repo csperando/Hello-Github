@@ -1,4 +1,4 @@
-import pool from "../../config/db";
+import pool, { withTransaction } from "../../config/db";
 import { runMigrations } from "../../data/migrate";
 import UsersRepository from "../../repository/users.repo";
 import PaymentsRepository from "../../repository/payments.repo";
@@ -80,6 +80,17 @@ describe("PaymentsRepository", () => {
         it("rejects a second row with the same stripe_event_id", async () => {
             await paymentsRepo.create(baseInput({ stripe_event_id: "evt_dup" }));
             await expect(paymentsRepo.create(baseInput({ stripe_event_id: "evt_dup", stripe_object_id: "pi_2" }))).rejects.toThrow();
+        });
+
+        it("given a client, runs on that transaction and rolls back with it", async () => {
+            await expect(
+                withTransaction(async (client) => {
+                    await paymentsRepo.create(baseInput({ stripe_event_id: "evt_tx" }), client);
+                    throw new Error("boom");
+                }),
+            ).rejects.toThrow("boom");
+
+            expect(await paymentsRepo.existsByStripeEventId("evt_tx")).toBe(false);
         });
     });
 

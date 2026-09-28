@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import pool from "../config/db";
 import { logger } from "../config/logger";
 
@@ -19,7 +20,7 @@ export interface iPaymentCreateInput {
 
 // define the type of the return object from the repo() method
 export interface iPaymentsRepo {
-    create: (input: iPaymentCreateInput) => Promise<any>;
+    create: (input: iPaymentCreateInput, client?: PoolClient) => Promise<any>;
     existsByStripeEventId: (stripeEventId: string) => Promise<boolean>;
     listForUser: (userId: string) => Promise<any[]>;
     getLatestForUser: (userId: string) => Promise<any | null>;
@@ -27,7 +28,10 @@ export interface iPaymentsRepo {
 
 // main repo init function to be called in the service factories
 const repo = (): iPaymentsRepo => {
-    const create = async (input: iPaymentCreateInput) => {
+    // `client` lets a caller run this against an existing transaction (e.g.
+    // atomically with a `user_billing` credit) instead of a fresh pool
+    // connection; every existing call site omits it and is unaffected.
+    const create = async (input: iPaymentCreateInput, client?: PoolClient) => {
         try {
             const sqlString = `
                 INSERT INTO payments (
@@ -45,7 +49,7 @@ const repo = (): iPaymentsRepo => {
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING *;
             `;
-            const result = await pool.query(sqlString, [
+            const result = await (client ?? pool).query(sqlString, [
                 input.user_id,
                 input.stripe_event_id,
                 input.stripe_object_id ?? null,
