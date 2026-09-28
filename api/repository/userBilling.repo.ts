@@ -123,9 +123,13 @@ const repo = (): iUserBillingRepo => {
 
     // Additive extend by one year from whichever is later, now or the
     // current paid_until - used for a one-time payment. GREATEST ignores a
-    // NULL paid_until, so a first-time payer gets NOW() + 1 year. Duplicate
-    // webhook deliveries are already screened out upstream by the payments
-    // ledger's stripe_event_id uniqueness before this is called.
+    // NULL paid_until, so a first-time payer gets NOW() + 1 year. Because
+    // this is additive rather than an absolute set, a duplicate webhook
+    // delivery calling it twice would double-credit the user; the caller is
+    // responsible for running this and the payments ledger insert in the
+    // same transaction (see PaymentsService.onPaymentIntentSucceeded) so a
+    // losing concurrent delivery's credit rolls back with its failed insert
+    // instead of being applied twice.
     const bumpPaidUntilOneYear = async (userId: string, client?: PoolClient) => {
         try {
             const sqlString = `

@@ -70,9 +70,14 @@ const repo = (): iPaymentsRepo => {
         }
     }
 
-    // The webhook idempotency check: has this exact Stripe event already
-    // produced a ledger row? (The UNIQUE constraint is the backstop; this is
-    // the cheap up-front guard.)
+    // A fast-path only: has this exact Stripe event already produced a
+    // ledger row? Skips redundant work (Stripe API calls, the DB write
+    // below) on Stripe's ordinary post-200 redelivery of an already-fully-
+    // processed event. It cannot by itself close the race between two truly
+    // concurrent deliveries - the UNIQUE constraint on stripe_event_id below,
+    // paired with the transaction/catch in the webhook handlers that write
+    // here, is what actually guarantees at most one row (and, for the
+    // additive one-time-payment credit, at most one charge applied).
     const existsByStripeEventId = async (stripeEventId: string) => {
         try {
             const sqlString = `SELECT EXISTS(SELECT 1 FROM payments WHERE stripe_event_id = $1) AS exists;`;

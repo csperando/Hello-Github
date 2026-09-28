@@ -415,6 +415,9 @@ export class PaymentsService {
         const subRef = subDetails?.subscription;
         const subId = typeof subRef === "string" ? subRef : subRef?.id;
         if (!subId) return { handled: false, note: "non-subscription invoice" };
+        // Fast-path only, same as onPaymentIntentSucceeded's - the catch on
+        // the ledger insert below is what actually guarantees a losing
+        // concurrent delivery resolves cleanly rather than throwing.
         if (await this.paymentsRepo.existsByStripeEventId(event.id)) return { handled: true, note: "duplicate" };
 
         const userId = await this.resolveUserId(undefined, invoice.customer);
