@@ -73,6 +73,12 @@ describe("User routes", () => {
         const res = await request(server).get("/user");
         expect(res.status).toBe(401);
     });
+
+    it("Should reject /user/gh/:ghUsername with no session", async () => {
+        const res = await request(server).get("/user/gh/admin_user");
+        expect(res.status).toBe(401);
+        expect(usersRepoMock.getUserByGitHubUsername).not.toHaveBeenCalled();
+    });
 });
 
 describe("User routes - Role: User", () => {
@@ -99,12 +105,26 @@ describe("User routes - Role: User", () => {
             expect(body.success).toBe(false);
         });
     
-        it("Should get any user by github username", async () => {
+        it("Should not get another user by github username", async () => {
             usersRepoMock.getUserByGitHubUsername.mockResolvedValue(mockAdminUser);
             const res = await request(server).get("/user/gh/" + mockAdminUser.github_username).set("Cookie", basicCookie);
             const body: iResponse = JSON.parse(res.text);
-            expect(res.status).toBe(200);
-            expect(body.success).toBe(true);
+            expect(res.status).toBe(403);
+            expect(body.success).toBe(false);
+            expect(body.data).toBeUndefined();
+            expect(usersRepoMock.getUserByGitHubUsername).not.toHaveBeenCalled();
+        });
+
+        it("Should return the same 403 for a nonexistent github username", async () => {
+            usersRepoMock.getUserByGitHubUsername.mockResolvedValue(mockAdminUser);
+            const existing = await request(server).get("/user/gh/" + mockAdminUser.github_username).set("Cookie", basicCookie);
+
+            usersRepoMock.getUserByGitHubUsername.mockResolvedValue(undefined);
+            const missing = await request(server).get("/user/gh/does_not_exist").set("Cookie", basicCookie);
+
+            expect(missing.status).toBe(403);
+            expect(missing.status).toBe(existing.status);
+            expect(JSON.parse(missing.text)).toEqual(JSON.parse(existing.text));
         });
     });
 
@@ -296,10 +316,31 @@ describe("User routes - Role: Admin", () => {
             expect(body.success).toBe(true);
         });
     
+        it("Should get a different user by github username", async () => {
+            usersRepoMock.getUserByGitHubUsername.mockResolvedValue(mockBasicUser);
+            const res = await request(server)
+                .get("/user/gh/" + mockBasicUser.github_username)
+                .set("Cookie", adminCookie);
+
+            const body: iResponse = JSON.parse(res.text);
+            expect(res.status).toBe(200);
+            expect(body.success).toBe(true);
+            expect(body.data).toEqual(mockBasicUser);
+            expect(usersRepoMock.getUserByGitHubUsername).toHaveBeenCalledWith(mockBasicUser.github_username);
+        });
+
         it("Should fail to get users for an inactive admin account", async () => {
             usersRepoMock.getUserById.mockResolvedValue({ ...mockAdminUser, is_active: false });
             const res = await request(server).get("/user/" + mockAdminUser.id).set("Cookie", adminCookie);
             expect(res.status).toBe(403);
+        });
+
+        it("Should fail to get a user by github username for an inactive admin account", async () => {
+            usersRepoMock.getUserById.mockResolvedValue({ ...mockAdminUser, is_active: false });
+            usersRepoMock.getUserByGitHubUsername.mockResolvedValue(mockBasicUser);
+            const res = await request(server).get("/user/gh/" + mockBasicUser.github_username).set("Cookie", adminCookie);
+            expect(res.status).toBe(403);
+            expect(usersRepoMock.getUserByGitHubUsername).not.toHaveBeenCalled();
         });
     });
 
