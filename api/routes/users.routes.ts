@@ -57,7 +57,7 @@ router.get("/:userId", [requireRole("admin")], async (req: Request, res: Respons
 /**
  * Get user by github username
  */
-router.get("/gh/:ghUsername", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/gh/:ghUsername", [requireRole("admin")], async (req: Request, res: Response, next: NextFunction) => {
     try {
         const ghUsername = (req.params.ghUsername) as string || "0";
         const users = await userService.getUserByGitHubUsername(ghUsername);
