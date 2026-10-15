@@ -30,6 +30,7 @@ const baseInput = (overrides: Record<string, unknown> = {}) => ({
     totalCents: 1000,
     platformCents: 300,
     autoRenew: false,
+    attemptId: "attempt-1",
     ...overrides,
 });
 
@@ -60,8 +61,8 @@ describe("PaymentsService.createCheckout", () => {
     });
 
     it("rejects an amount that fails server-side validation without calling Stripe", async () => {
-        const res = await new PaymentsService().createCheckout(baseInput({ platformCents: 1 }));
-        expect(res.error).toMatch(/platform amount must be at least/i);
+        const res = await new PaymentsService().createCheckout(baseInput({ platformCents: -1 }));
+        expect(res.error).toMatch(/platform amount cannot be negative/i);
         expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
     });
 
@@ -102,6 +103,29 @@ describe("PaymentsService.createCheckout", () => {
         });
         const options = mockStripe.paymentIntents.create.mock.calls[0][1];
         expect(options.idempotencyKey).toContain("checkout-onetime-u1-1000-300");
+    });
+
+    // The idempotency key only dedupes retries within one checkout attempt. A
+    // later purchase with the same amount + design must get a fresh PI, not the
+    // already-paid one Stripe cached under the old key.
+    it("scopes the one-time idempotency key to the checkout attempt", async () => {
+        const service = new PaymentsService();
+        await service.createCheckout(baseInput({ attemptId: "attempt-1" }));
+        await service.createCheckout(baseInput({ attemptId: "attempt-1" }));
+        await service.createCheckout(baseInput({ attemptId: "attempt-2" }));
+
+        const keys = mockStripe.paymentIntents.create.mock.calls.map((c: any[]) => c[1].idempotencyKey);
+        expect(keys[0]).toBe(keys[1]);
+        expect(keys[2]).not.toBe(keys[0]);
+    });
+
+    it("scopes the subscription idempotency key to the checkout attempt", async () => {
+        const service = new PaymentsService();
+        await service.createCheckout(baseInput({ autoRenew: true, attemptId: "attempt-1" }));
+        await service.createCheckout(baseInput({ autoRenew: true, attemptId: "attempt-2" }));
+
+        const keys = mockStripe.subscriptions.create.mock.calls.map((c: any[]) => c[1].idempotencyKey);
+        expect(keys[1]).not.toBe(keys[0]);
     });
 
     it("provisions a Stripe customer once and persists the id", async () => {

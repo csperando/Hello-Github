@@ -3,7 +3,7 @@
 # REST_PORT := 3000
 # VUE_PORT := 5176
 
-.PHONY: prep dev api-dev api-test api-install vue-dev vue-install db-init db-promote-admin
+.PHONY: prep dev api-dev api-test api-install vue-dev vue-install db-init db-promote-admin stripe-listen
 
 prep: api-install vue-install
 
@@ -38,3 +38,12 @@ db-init:
 # usage: make db-promote-admin GH_USER=<github_username>
 db-promote-admin:
 	PGPASSWORD=$(POSTGRES_PASSWORD) psql -h $(POSTGRES_HOST) -p $(POSTGRES_PORT) -U $(POSTGRES_USER) -d $(POSTGRES_DATABASE) -c "UPDATE users SET role = 'admin' WHERE github_username = '$(GH_USER)';"
+
+# STRIPE
+# forward test-mode webhooks to the local API (run `stripe login` once first);
+# copy the printed whsec_... into .env as STRIPE_WEBHOOK_SECRET and restart the API
+# keep STRIPE_EVENTS in sync with PaymentsService.handleWebhookEvent
+STRIPE_EVENTS := payment_intent.succeeded,invoice.paid,customer.subscription.updated,customer.subscription.deleted,charge.refunded,charge.dispute.created
+
+stripe-listen:
+	stripe listen --events $(STRIPE_EVENTS) --forward-to localhost:$(or $(REST_PORT),3000)/payments/webhook

@@ -65,20 +65,23 @@
         [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
     ]
 
-    const TEMPLATES = [
-        { key: "blank", name: "Blank canvas", icon: "▢", build: () => emptyGrid() },
-        { key: "heart", name: "Heart", icon: "♥", build: () => stampPattern(HEART, 19, 4) },
-        { key: "smiley", name: "Smiley", icon: "☺", build: () => stampPattern(SMILEY, 21, 3) },
-        { key: "diamond", name: "Diamond", icon: "◆", build: () => stampPattern(DIAMOND, 20, 4) },
-    ]
+    // Templates are hidden for now - see the commented-out panel in the left sidebar.
+    // const TEMPLATES = [
+    //     { key: "blank", name: "Blank canvas", icon: "▢", build: () => emptyGrid() },
+    //     { key: "heart", name: "Heart", icon: "♥", build: () => stampPattern(HEART, 19, 4) },
+    //     { key: "smiley", name: "Smiley", icon: "☺", build: () => stampPattern(SMILEY, 21, 3) },
+    //     { key: "diamond", name: "Diamond", icon: "◆", build: () => stampPattern(DIAMOND, 20, 4) },
+    // ]
 
     type TabKey = "year" | "today"
     const currentYear = new Date().getFullYear()
 
-    const grid = ref<number[]>(stampPattern(HEART, 19, 4))
-    const selectedTemplate = ref("heart")
-    const brush = ref(4)
-    const painting = ref(false)
+    const grid = ref<number[]>(emptyGrid())
+    // const selectedTemplate = ref("heart")
+    // Brush intensity is fixed for now - the intensity picker is commented out.
+    const BRUSH_LEVEL = 1
+    // const brush = ref(4)
+    // const painting = ref(false)
     const activeTab = ref<TabKey>("today")
     const publicOptIn = ref(true)
     const designName = ref("my first design")
@@ -167,40 +170,45 @@
     const indefiniteButtonStyle = computed(() => modeButtonStyle(repeatIndefinitely.value))
     const untilButtonStyle = computed(() => modeButtonStyle(!repeatIndefinitely.value))
 
-    function cycleCell(idx: number) {
-        const current = grid.value[idx] ?? 0
-        grid.value[idx] = (current + 1) % 5
-    }
+    // Click-to-cycle and drag-to-paint are disabled for now; a click just toggles a cell on/off.
+    // function cycleCell(idx: number) {
+    //     const current = grid.value[idx] ?? 0
+    //     grid.value[idx] = (current + 1) % 5
+    // }
 
-    function paintCell(idx: number, level: number) {
-        grid.value[idx] = level
-    }
+    // function paintCell(idx: number, level: number) {
+    //     grid.value[idx] = level
+    // }
 
-    function onCellDown(idx: number) {
-        painting.value = true
-        cycleCell(idx)
-    }
+    // function onCellDown(idx: number) {
+    //     painting.value = true
+    //     cycleCell(idx)
+    // }
 
-    function onCellEnter(idx: number) {
-        if (painting.value) paintCell(idx, brush.value)
+    // function onCellEnter(idx: number) {
+    //     if (painting.value) paintCell(idx, brush.value)
+    // }
+
+    function toggleCell(idx: number) {
+        grid.value[idx] = (grid.value[idx] ?? 0) > 0 ? 0 : BRUSH_LEVEL
     }
 
     function onClear() {
         grid.value = emptyGrid()
-        selectedTemplate.value = "blank"
+        // selectedTemplate.value = "blank"
     }
 
     function onRandomize() {
-        grid.value = emptyGrid().map(() => (Math.random() < 0.35 ? 1 + Math.floor(Math.random() * 4) : 0))
-        selectedTemplate.value = "blank"
+        grid.value = emptyGrid().map(() => (Math.random() < 0.35 ? BRUSH_LEVEL : 0))
+        // selectedTemplate.value = "blank"
     }
 
-    function applyTemplate(key: string) {
-        const tpl = TEMPLATES.find((t) => t.key === key)
-        if (!tpl) return
-        grid.value = tpl.build()
-        selectedTemplate.value = key
-    }
+    // function applyTemplate(key: string) {
+    //     const tpl = TEMPLATES.find((t) => t.key === key)
+    //     if (!tpl) return
+    //     grid.value = tpl.build()
+    //     selectedTemplate.value = key
+    // }
 
     // The design currently being edited, if the route carries a :designId - see
     // onMounted below. While set, it overrides the tab-based anchor with the
@@ -241,7 +249,7 @@
         loadedDesign.value = null
         loadedSelection.value = null
         grid.value = emptyGrid()
-        selectedTemplate.value = "blank"
+        // selectedTemplate.value = "blank"
     }
 
     /**
@@ -279,7 +287,7 @@
             if (i < newGrid.length) newGrid[i] = level
         })
         grid.value = newGrid
-        selectedTemplate.value = "blank"
+        // selectedTemplate.value = "blank"
     }
 
     const route = useRoute()
@@ -352,25 +360,25 @@
         return labels
     })
 
-    const templates = computed(() =>
-        TEMPLATES.map((t) => ({
-            key: t.key,
-            name: t.name,
-            icon: t.icon,
-            selected: t.key === selectedTemplate.value,
-            bg: t.key === selectedTemplate.value ? "var(--color-accent-soft)" : "transparent",
-            border: t.key === selectedTemplate.value ? "var(--color-accent-border)" : "var(--color-border)",
-        })),
-    )
+    // const templates = computed(() =>
+    //     TEMPLATES.map((t) => ({
+    //         key: t.key,
+    //         name: t.name,
+    //         icon: t.icon,
+    //         selected: t.key === selectedTemplate.value,
+    //         bg: t.key === selectedTemplate.value ? "var(--color-accent-soft)" : "transparent",
+    //         border: t.key === selectedTemplate.value ? "var(--color-accent-border)" : "var(--color-border)",
+    //     })),
+    // )
 
-    const brushLevels = computed(() =>
-        LEVEL_COLORS.map((color, lvl) => ({
-            lvl,
-            bg: color,
-            selected: lvl === brush.value,
-            border: lvl === brush.value ? "var(--color-text)" : "transparent",
-        })),
-    )
+    // const brushLevels = computed(() =>
+    //     LEVEL_COLORS.map((color, lvl) => ({
+    //         lvl,
+    //         bg: color,
+    //         selected: lvl === brush.value,
+    //         border: lvl === brush.value ? "var(--color-text)" : "transparent",
+    //     })),
+    // )
 
     const TABS: { key: TabKey; label: string }[] = [
         { key: "year", label: String(currentYear) },
@@ -388,7 +396,7 @@
     const activeTabLabel = computed(() => TABS.find((t) => t.key === activeTab.value)?.label ?? "Today")
 
     const painted = computed(() => grid.value.filter((l) => l > 0).length)
-    const commitCount = computed(() => painted.value * brush.value * 2)
+    const commitCount = computed(() => painted.value * BRUSH_LEVEL * 2)
 
     const router = useRouter()
     const designsStore = useDesignsStore()
@@ -580,8 +588,9 @@
         <!-- BODY -->
         <div class="body-grid grid grid-cols-1 md:grid-cols-[236px_1fr] lg:grid-cols-[236px_1fr_268px]">
 
-            <!-- LEFT SIDEBAR: TEMPLATES + BRUSH -->
+            <!-- LEFT SIDEBAR: ACTIONS (templates + brush intensity hidden for now) -->
             <aside class="sidebar-left order-2 md:order-1">
+                <!--
                 <div class="panel-label">templates</div>
                 <div class="template-list">
                     <button
@@ -611,6 +620,7 @@
                         :style="{ background: lvl.bg, borderColor: lvl.border }"
                     ></button>
                 </div>
+                -->
 
                 <div class="panel-label">actions</div>
                 <div class="action-list">
@@ -624,7 +634,7 @@
                 <div class="canvas-wrap">
                     <div class="canvas-header">
                         <div class="canvas-title">{{ activeTabLabel }} contribution graph · starts {{ anchorDateLabel }}</div>
-                        <div class="canvas-hint">drag to paint · click to cycle intensity</div>
+                        <!-- <div class="canvas-hint">drag to paint · click to cycle intensity</div> -->
                     </div>
                     <BaseCard padding="28px 26px 24px">
                         <div class="grid-scroll-wrap">
@@ -651,9 +661,6 @@
                                     <div
                                         role="group"
                                         :aria-label="'contribution graph editor, ' + painted + ' of ' + grid.length + ' squares painted'"
-                                        @mousedown="painting = true"
-                                        @mouseup="painting = false"
-                                        @mouseleave="painting = false"
                                         class="grid-cells-wrap"
                                     >
                                         <div
@@ -661,8 +668,7 @@
                                             :key="cell.idx"
                                             data-testid="grid-cell"
                                             :title="cell.title"
-                                            @mousedown="onCellDown(cell.paintIdx)"
-                                            @mouseenter="onCellEnter(cell.paintIdx)"
+                                            @mousedown="toggleCell(cell.paintIdx)"
                                             class="grid-cell"
                                             :style="{ background: cell.bg, opacity: cell.opacity }"
                                         ></div>
@@ -687,7 +693,7 @@
                 <div class="panel-label panel-label--stats">design stats</div>
                 <div class="stats-box">
                     <div class="stats-row"><span class="stats-label">squares painted</span><span class="stats-value">{{ painted }} / {{ grid.length }}</span></div>
-                    <div class="stats-row"><span class="stats-label">estimated commits</span><span class="stats-value">{{ commitCount }}</span></div>
+                    <!-- <div class="stats-row"><span class="stats-label">estimated commits</span><span class="stats-value">{{ commitCount }}</span></div> -->
                 </div>
 
                 <div class="panel-label panel-label--stats">supporting</div>

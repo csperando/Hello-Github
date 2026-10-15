@@ -93,10 +93,10 @@ router.get("/github/callback", async (req: Request, res: Response) => {
         let userId: any;
 
         // check existence
-        const existingUsers = await userService.getUserByGitHubId(ghUser.id);
-        if(existingUsers.length) {
+        const existingUser = await userService.getUserByGitHubId(ghUser.id);
+        if(existingUser) {
             redirectUrl = `${config.FRONTEND_URL}/dashboard`;
-            userId = existingUsers[0]?.id;
+            userId = existingUser.id;
 
         } else {
             const user = await userService.upsertFromGitHub(upsertInput);

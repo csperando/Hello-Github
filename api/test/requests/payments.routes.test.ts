@@ -34,7 +34,14 @@ const userId = "323e4567-e89b-12d3-a456-426614174099";
 const cookie = signedSidCookie(userId);
 const apiKeyHeader = { "X-API-Key": config.SCHEDULER_API_KEY };
 
-const validBody = { totalCents: 1000, platformCents: 300, autoRenew: false, designId: "d1", charityEinId: 42 };
+const validBody = {
+    totalCents: 1000,
+    platformCents: 300,
+    autoRenew: false,
+    designId: "d1",
+    charityEinId: 42,
+    attemptId: "3f1c2b9e-8d4a-4c7e-9b1a-2e5f6a7b8c9d",
+};
 
 beforeEach(() => {
     billingRepoMock.__reset();
@@ -67,14 +74,14 @@ describe("POST /payments/checkout", () => {
         expect(res.status).toBe(400);
     });
 
-    it("400s an amount that fails the platform floor", async () => {
+    it("400s a negative platform amount", async () => {
         const res = await request(server)
             .post("/payments/checkout")
             .set("Cookie", cookie)
-            .send({ ...validBody, platformCents: 1 });
+            .send({ ...validBody, platformCents: -1 });
         expect(res.status).toBe(400);
         const body: iResponse = JSON.parse(res.text);
-        expect(body.error).toMatch(/platform amount must be at least/i);
+        expect(body.error).toMatch(/platformCents must be a non-negative/i);
     });
 
     it("returns a client secret and the authoritative amounts on success", async () => {

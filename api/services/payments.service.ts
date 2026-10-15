@@ -6,7 +6,6 @@ import PaymentsRepository from "../repository/payments.repo";
 import DesignSelectionsRepository from "../repository/designSelections.repo";
 import UserRepository from "../repository/users.repo";
 import { isUniqueViolationOn } from "../repository/dbErrors";
-import { config } from "../config/config";
 import { logger } from "../config/logger";
 
 const PAYMENTS_STRIPE_EVENT_ID_UNIQUE = "payments_stripe_event_id_unique";
@@ -23,15 +22,13 @@ export interface iAuthoritativeAmounts {
     amount_charity_cents: number;
 }
 
-// Stripe rejects a charge below 50 cents (USD). PLATFORM_MIN_CENTS is
-// asserted >= 50 in config, so a valid platform cut already clears this,
-// but the check is kept explicit.
+// Stripe rejects a charge below 50 cents (USD).
 const STRIPE_MIN_CHARGE_CENTS = 50;
 
 /**
  * The server-authoritative amount for a checkout. Takes the client's
- * proposed total and platform cut, rejects anything malformed or below the
- * platform floor, and returns the split with the charity portion derived
+ * proposed total and platform cut, rejects anything malformed or out of
+ * range (the platform cut may be zero), and returns the split with the charity portion derived
  * (total - platform) rather than trusting a client-sent charity figure.
  * Currency is USD-only for now.
  */
@@ -48,8 +45,8 @@ export function computeAuthoritativeAmounts(
         return { error: `The total must be at least $${(STRIPE_MIN_CHARGE_CENTS / 100).toFixed(2)}.` };
     }
 
-    if (platformCents < config.PLATFORM_MIN_CENTS) {
-        return { error: `The platform amount must be at least $${(config.PLATFORM_MIN_CENTS / 100).toFixed(2)}.` };
+    if (platformCents < 0) {
+        return { error: "The platform amount cannot be negative." };
     }
 
     if (platformCents > totalCents) {
@@ -74,6 +71,9 @@ export interface iCreateCheckoutInput {
     totalCents: number;
     platformCents: number;
     autoRenew: boolean;
+    // one per checkout visit: retries within it reuse the same PI/subscription,
+    // a later purchase gets a fresh one instead of Stripe's cached (paid) response
+    attemptId: string;
 }
 
 export interface iCreateCheckoutResult {
@@ -208,6 +208,7 @@ export class PaymentsService {
                 amounts.amount_platform_cents,
                 input.designIdToActivate ?? "none",
                 input.autoRenew ? "sub" : "onetime",
+                input.attemptId,
             ].join("-");
 
             if (input.autoRenew) {

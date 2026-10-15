@@ -21,6 +21,8 @@ export interface iCheckoutPayload {
   designId?: string
   /** an eo_bmf id; omit for a platform-only payment */
   charityEinId?: number
+  /** one per checkout visit; the API scopes its Stripe idempotency key to it */
+  attemptId: string
 }
 
 /** The checkout response: a Stripe client secret plus the server-authoritative split. */

@@ -86,6 +86,8 @@ beforeEach(() => {
   )
 })
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 async function toCardPhase(wrapper: Awaited<ReturnType<typeof mountCheckout>>) {
   await wrapper.find('button.continue-btn').trigger('click') // step 1 -> 2
   await wrapper.find('.actions-between .pay-btn').trigger('click') // continueToPayment
@@ -142,13 +144,17 @@ describe('Checkout.vue - charity + amount', () => {
     expect(wrapper.find('#checkout-split').exists()).toBe(true)
   })
 
-  it('enforces the $0.99 platform floor on the split slider', async () => {
+  it('lets the split slider go down to a $0 platform share', async () => {
     getOrgByIdMock.mockResolvedValue(jsonResponse({ data: charity }))
     const wrapper = await mountCheckout({}, { id: 'u1', github_username: 'octo', default_charity: 7 })
     await wrapper.find('button.continue-btn').trigger('click')
 
     const slider = wrapper.find('#checkout-split')
-    expect(slider.attributes('min')).toBe('99')
+    expect(slider.attributes('min')).toBe('0')
+
+    await slider.setValue(0)
+    expect(wrapper.text()).toContain('$10.00')
+    expect(wrapper.text()).toContain('$0.00')
   })
 
   it('a preset sets the total and the fee box reflects the split', async () => {
@@ -158,7 +164,7 @@ describe('Checkout.vue - charity + amount', () => {
 
     await wrapper.findAll('.preset-btn')[2]!.trigger('click') // $25.00
     expect(wrapper.text()).toContain('$25.00')
-    // platform defaults to the floor, charity gets the rest
+    // platform defaults to the suggested $0.99, charity gets the rest
     expect(wrapper.text()).toContain('$0.99')
     expect(wrapper.text()).toContain('$24.01')
   })
@@ -201,6 +207,7 @@ describe('Checkout.vue - Stripe Payment Element', () => {
       autoRenew: true,
       designId: 'd1',
       charityEinId: 7,
+      attemptId: expect.stringMatching(UUID_RE),
     })
     expect(paymentElementMountMock).toHaveBeenCalledWith('#payment-element')
     expect(wrapper.find('#payment-element').exists()).toBe(true)
@@ -210,7 +217,28 @@ describe('Checkout.vue - Stripe Payment Element', () => {
     const wrapper = await mountCheckout()
     await toCardPhase(wrapper)
 
-    expect(createCheckoutMock).toHaveBeenCalledWith({ totalCents: 1000, platformCents: 1000, autoRenew: true })
+    expect(createCheckoutMock).toHaveBeenCalledWith({
+      totalCents: 1000,
+      platformCents: 1000,
+      autoRenew: true,
+      attemptId: expect.stringMatching(UUID_RE),
+    })
+  })
+
+  it('reuses one attemptId within a visit and uses a new one on the next visit', async () => {
+    const first = await mountCheckout()
+    await toCardPhase(first)
+    await first.find('.text-btn').trigger('click') // edit amount
+    await first.find('.actions-between .pay-btn').trigger('click')
+    await flushPromises()
+
+    const second = await mountCheckout()
+    await toCardPhase(second)
+
+    const ids = createCheckoutMock.mock.calls.map((c) => (c[0] as { attemptId: string }).attemptId)
+    expect(ids).toHaveLength(3)
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[2]).not.toBe(ids[0])
   })
 
   it('shows the already-covered panel when the checkout API returns 409', async () => {

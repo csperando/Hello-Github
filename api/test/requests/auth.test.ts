@@ -76,7 +76,52 @@ describe("Auth routes", () => {
     it("should work on this test suite again later", () => {
         expect(1).toBe(1);
     });
-    
+
+    describe("GET /auth/github/callback redirect", () => {
+        const loginAndCallback = async () => {
+            const loginRes = await request(testApp).get("/auth/github/login");
+            const state = new URL(loginRes.headers.location as string).searchParams.get("state")!;
+            const setCookie = loginRes.headers["set-cookie"] as unknown as string[];
+            const stateCookie = setCookie.find((c) => c.startsWith("gh_oauth_state="))!.split(";")[0]!;
+
+            return request(testApp)
+                .get(`/auth/github/callback?code=some-code&state=${state}`)
+                .set("Cookie", stateCookie);
+        };
+
+        beforeEach(() => {
+            (githubService.exchangeCodeForToken as jest.Mock).mockResolvedValue("gho_abc123");
+            (githubService.fetchGitHubUser as jest.Mock).mockResolvedValue(mockGhUser);
+            (githubService.fetchGitHubEmails as jest.Mock).mockResolvedValue([]);
+            (githubService.pickPrimaryVerifiedEmail as jest.Mock).mockReturnValue("primary@example.com");
+            (githubService.pickNoreplyEmail as jest.Mock).mockReturnValue("1+octocat-test@users.noreply.github.com");
+        });
+
+        it("sends a brand-new user to the profile step", async () => {
+            usersRepoMock.getUserByGitHubId.mockResolvedValue(undefined);
+            usersRepoMock.upsertFromGitHub.mockResolvedValue(mockUser);
+
+            const res = await loginAndCallback();
+
+            expect(res.status).toBe(302);
+            expect(res.headers.location).toBe(`${config.FRONTEND_URL}/signup/profile`);
+            expect(usersRepoMock.upsertFromGitHub).toHaveBeenCalled();
+        });
+
+        it("sends an existing user straight to the dashboard", async () => {
+            usersRepoMock.getUserByGitHubId.mockResolvedValue(mockUser);
+
+            const res = await loginAndCallback();
+
+            expect(res.status).toBe(302);
+            expect(res.headers.location).toBe(`${config.FRONTEND_URL}/dashboard`);
+            expect(usersRepoMock.upsertFromGitHub).not.toHaveBeenCalled();
+
+            const setCookie = res.headers["set-cookie"] as unknown as string[];
+            expect(setCookie.some((c) => c.startsWith("sid="))).toBe(true);
+        });
+    });
+
     // describe("GET /auth/github/login", () => {
     //     it("redirects to GitHub's authorize endpoint and sets a signed state cookie", async () => {
     //         const res = await request(testApp).get("/auth/github/login");

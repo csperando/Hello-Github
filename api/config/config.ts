@@ -20,7 +20,6 @@ const {
     SCHEDULER_API_KEY,
     STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET,
-    PLATFORM_MIN_CENTS,
 } = process.env;
 
 assert(REST_NODE_ENV, "[REST_NODE_ENV] is required.");
@@ -39,16 +38,6 @@ assert(SCHEDULER_API_KEY, "[SCHEDULER_API_KEY] is required.");
 assert(STRIPE_SECRET_KEY, "[STRIPE_SECRET_KEY] is required.");
 assert(STRIPE_WEBHOOK_SECRET, "[STRIPE_WEBHOOK_SECRET] is required.");
 
-// Optional - the platform's minimum cut of any payment, in integer cents.
-// Defaults to 99 ($0.99), which is also the effective minimum total charge
-// (and clears Stripe's own $0.50 hard floor). Kept as config so it can be
-// tuned without a code change.
-const platformMinCents = Number(PLATFORM_MIN_CENTS ?? 99);
-assert(
-    Number.isInteger(platformMinCents) && platformMinCents >= 50,
-    "[PLATFORM_MIN_CENTS] must be an integer >= 50.",
-);
-
 export interface iConfig {
     REST_NODE_ENV: string;
     REST_PORT: number | string;
@@ -65,7 +54,6 @@ export interface iConfig {
     SCHEDULER_API_KEY: string;
     STRIPE_SECRET_KEY: string;
     STRIPE_WEBHOOK_SECRET: string;
-    PLATFORM_MIN_CENTS: number;
 };
 
 export const config: iConfig = {
@@ -84,5 +72,4 @@ export const config: iConfig = {
     SCHEDULER_API_KEY: SCHEDULER_API_KEY,
     STRIPE_SECRET_KEY: STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: STRIPE_WEBHOOK_SECRET,
-    PLATFORM_MIN_CENTS: platformMinCents,
 };

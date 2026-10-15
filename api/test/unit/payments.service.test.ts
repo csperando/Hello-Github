@@ -1,5 +1,4 @@
 import { computeAuthoritativeAmounts } from "../../services/payments.service";
-import { config } from "../../config/config";
 
 describe("computeAuthoritativeAmounts", () => {
     it("derives the charity portion as total minus platform", () => {
@@ -18,22 +17,17 @@ describe("computeAuthoritativeAmounts", () => {
         expect(amounts?.amount_charity_cents).toBe(0);
     });
 
-    it("accepts a platform cut exactly at the configured floor", () => {
-        const { amounts, error } = computeAuthoritativeAmounts({
-            totalCents: config.PLATFORM_MIN_CENTS + 100,
-            platformCents: config.PLATFORM_MIN_CENTS,
-        });
+    it("accepts a zero platform cut, sending the whole total to the charity", () => {
+        const { amounts, error } = computeAuthoritativeAmounts({ totalCents: 1000, platformCents: 0 });
         expect(error).toBeUndefined();
-        expect(amounts?.amount_platform_cents).toBe(config.PLATFORM_MIN_CENTS);
+        expect(amounts?.amount_platform_cents).toBe(0);
+        expect(amounts?.amount_charity_cents).toBe(1000);
     });
 
-    it("rejects a platform cut below the floor", () => {
-        const { amounts, error } = computeAuthoritativeAmounts({
-            totalCents: 1000,
-            platformCents: config.PLATFORM_MIN_CENTS - 1,
-        });
+    it("rejects a negative platform cut", () => {
+        const { amounts, error } = computeAuthoritativeAmounts({ totalCents: 1000, platformCents: -1 });
         expect(amounts).toBeUndefined();
-        expect(error).toMatch(/platform amount must be at least/i);
+        expect(error).toMatch(/platform amount cannot be negative/i);
     });
 
     it("rejects a platform cut larger than the total", () => {

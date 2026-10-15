@@ -49,10 +49,10 @@ export class UserService {
         }
     }
 
-    public async getUserByGitHubId(ghId: number): Promise<iUser[]> {
+    public async getUserByGitHubId(ghId: number): Promise<iUser | undefined> {
         try {
-            const users = await this.repo.getUserByGitHubId(ghId) || [];
-            return users;
+            const user = await this.repo.getUserByGitHubId(ghId);
+            return user;
 
         } catch(err: any) {
             logger.error(err);

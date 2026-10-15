@@ -4,7 +4,11 @@ export interface iCheckoutInput {
     autoRenew: boolean;
     designId?: string;
     charityEinId?: number;
+    // client-generated per checkout visit; scopes the Stripe idempotency key
+    attemptId: string;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Shape/type check for POST /payments/checkout. The business rules on the
@@ -13,7 +17,7 @@ export interface iCheckoutInput {
  * rejects a malformed body.
  */
 export function extractCheckoutInput(body: Record<string, unknown>): { input?: iCheckoutInput; error?: string } {
-    const { totalCents, platformCents, autoRenew, designId, charityEinId } = body ?? {};
+    const { totalCents, platformCents, autoRenew, designId, charityEinId, attemptId } = body ?? {};
 
     if (!Number.isInteger(totalCents) || (totalCents as number) <= 0) {
         return { error: "totalCents must be a positive integer number of cents." };
@@ -30,11 +34,15 @@ export function extractCheckoutInput(body: Record<string, unknown>): { input?: i
     if (charityEinId !== undefined && (!Number.isInteger(charityEinId) || (charityEinId as number) <= 0)) {
         return { error: "charityEinId must be a positive integer id when provided." };
     }
+    if (typeof attemptId !== "string" || !UUID_RE.test(attemptId)) {
+        return { error: "attemptId must be a UUID." };
+    }
 
     const input: iCheckoutInput = {
         totalCents: totalCents as number,
         platformCents: platformCents as number,
         autoRenew,
+        attemptId,
     };
     if (designId !== undefined) input.designId = designId as string;
     if (charityEinId !== undefined) input.charityEinId = charityEinId as number;

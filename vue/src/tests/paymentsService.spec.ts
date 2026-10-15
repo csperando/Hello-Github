@@ -13,11 +13,12 @@ beforeEach(() => {
 
 describe('payments service', () => {
   it('createCheckout POSTs the payload to /payments/checkout', async () => {
-    await createCheckout({ totalCents: 1000, platformCents: 300, autoRenew: true, designId: 'd1', charityEinId: 42 })
+    const payload = { totalCents: 1000, platformCents: 300, autoRenew: true, designId: 'd1', charityEinId: 42, attemptId: 'a1' }
+    await createCheckout(payload)
 
     expect(apiFetchMock).toHaveBeenCalledWith('/payments/checkout', {
       method: 'POST',
-      body: JSON.stringify({ totalCents: 1000, platformCents: 300, autoRenew: true, designId: 'd1', charityEinId: 42 }),
+      body: JSON.stringify(payload),
     })
   })
 

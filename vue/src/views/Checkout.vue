@@ -19,7 +19,9 @@
     import { useCharitySearch } from "@/composables/useCharitySearch"
     import { useAuthStore } from "@/stores/auth"
 
-    const PLATFORM_MIN_CENTS = 99
+    // suggested platform share; the user can slide it down to $0
+    const PLATFORM_SUGGESTED_CENTS = 99
+    const TOTAL_MIN_CENTS = 99
     const PRESETS_CENTS = [500, 1000, 2500, 5000]
     const MAX_TOTAL_CENTS = 50000
 
@@ -41,6 +43,9 @@
     // set true if the checkout API reports the user is already covered (a
     // race against the auth-store check)
     const forcedCovered = ref(false)
+    // one per visit: a retry or "edit amount" round-trip reuses it, so the API
+    // doesn't double-create; a later visit gets a new one and a fresh PaymentIntent
+    const attemptId = crypto.randomUUID()
 
     // ----- charity -----------------------------------------------------------
     const selectedCharity = ref<iOrg | null>(null)
@@ -64,13 +69,13 @@
 
     // ----- amount + split ---------------------------------------------------
     const totalCents = ref(1000)
-    // the platform's cut; with a charity the user slides this between the
-    // floor and the total, without one the whole total is the platform's
-    const platformCents = ref(PLATFORM_MIN_CENTS)
+    // the platform's cut; with a charity the user slides this between $0
+    // and the total, without one the whole total is the platform's
+    const platformCents = ref(PLATFORM_SUGGESTED_CENTS)
 
     watch([totalCents, hasCharity], () => {
         const max = hasCharity.value ? totalCents.value : totalCents.value
-        platformCents.value = Math.min(Math.max(platformCents.value, PLATFORM_MIN_CENTS), max)
+        platformCents.value = Math.min(Math.max(platformCents.value, 0), max)
     })
 
     const effectivePlatformCents = computed(() =>
@@ -79,7 +84,7 @@
     const effectiveCharityCents = computed(() => Math.max(0, totalCents.value - effectivePlatformCents.value))
 
     function setTotal(cents: number) {
-        totalCents.value = Math.min(Math.max(cents, PLATFORM_MIN_CENTS), MAX_TOTAL_CENTS)
+        totalCents.value = Math.min(Math.max(cents, TOTAL_MIN_CENTS), MAX_TOTAL_CENTS)
     }
     function onTotalInput(e: Event) {
         const dollars = Number((e.target as HTMLInputElement).value)
@@ -127,6 +132,7 @@
                 totalCents: totalCents.value,
                 platformCents: effectivePlatformCents.value,
                 autoRenew: autoRenew.value,
+                attemptId,
                 ...(designId.value ? { designId: designId.value } : {}),
                 ...(selectedCharity.value ? { charityEinId: selectedCharity.value.id } : {}),
             })
@@ -346,15 +352,14 @@
                                 <input
                                     id="checkout-split"
                                     type="range"
-                                    :min="PLATFORM_MIN_CENTS"
+                                    min="0"
                                     :max="totalCents"
                                     step="1"
                                     v-model.number="platformCents"
                                     class="split-range"
                                 />
                                 <p class="split-hint">
-                                    drag left to send more to {{ selectedCharity.name }} (minimum platform share is
-                                    {{ formatCents(PLATFORM_MIN_CENTS) }})
+                                    drag left to send more to {{ selectedCharity.name }}
                                 </p>
                             </div>
 

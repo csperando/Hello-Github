@@ -35,6 +35,7 @@ router.post("/checkout", requireAuth, async (req: Request, res: Response, next: 
             totalCents: input!.totalCents,
             platformCents: input!.platformCents,
             autoRenew: input!.autoRenew,
+            attemptId: input!.attemptId,
         });
 
         if (result.alreadyCovered) {
