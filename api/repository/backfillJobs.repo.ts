@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import pool from "../config/db";
 import { logger } from "../config/logger";
 
@@ -5,7 +6,7 @@ export type iBackfillJobStatus = "awaiting_issue" | "ready" | "painting" | "done
 
 // define the type of the return object from the repo() method
 export interface iBackfillJobsRepo {
-    create: (userId: string, designId: string, year: number) => Promise<any>;
+    create: (userId: string, designId: string, year: number, client?: PoolClient) => Promise<any>;
     getByUserAndDesign: (userId: string, designId: string) => Promise<any>;
     markIssueOpened: (id: string, issueUrl: string) => Promise<any>;
     claimReady: () => Promise<any[]>;
@@ -15,8 +16,9 @@ export interface iBackfillJobsRepo {
 // main repo init function to be called in the service factories
 const repo = (): iBackfillJobsRepo => {
     // a redelivered payment webhook must not create a second job - the
-    // no-op DO UPDATE makes RETURNING hand back the existing row
-    const create = async (userId: string, designId: string, year: number) => {
+    // no-op DO UPDATE makes RETURNING hand back the existing row. `client`
+    // lets the payment webhook create it inside its ledger transaction.
+    const create = async (userId: string, designId: string, year: number, client?: PoolClient) => {
         try {
             const sqlString = `
                 INSERT INTO backfill_jobs (user_id, design_id, year)
@@ -25,7 +27,7 @@ const repo = (): iBackfillJobsRepo => {
                 DO UPDATE SET user_id = backfill_jobs.user_id
                 RETURNING *;
             `;
-            const result = await pool.query(sqlString, [userId, designId, year]);
+            const result = await (client ?? pool).query(sqlString, [userId, designId, year]);
             return result.rows[0];
 
         } catch(err: any) {

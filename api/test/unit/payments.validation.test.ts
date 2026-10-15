@@ -4,7 +4,7 @@ describe("extractCheckoutInput", () => {
     const valid = {
         totalCents: 1000,
         platformCents: 99,
-        autoRenew: false,
+        designId: "d1",
         attemptId: "3f1c2b9e-8d4a-4c7e-9b1a-2e5f6a7b8c9d",
     };
 
@@ -21,5 +21,16 @@ describe("extractCheckoutInput", () => {
 
     it("rejects an attemptId that isn't a UUID", () => {
         expect(extractCheckoutInput({ ...valid, attemptId: "not-a-uuid" }).error).toMatch(/attemptId/);
+    });
+
+    it("requires a designId (every checkout buys one design)", () => {
+        const { designId: _omit, ...body } = valid;
+        expect(extractCheckoutInput(body).error).toMatch(/designId/);
+    });
+
+    it("no longer requires autoRenew (checkout is always one-time)", () => {
+        const { input, error } = extractCheckoutInput(valid);
+        expect(error).toBeUndefined();
+        expect(input).not.toHaveProperty("autoRenew");
     });
 });

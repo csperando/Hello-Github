@@ -1,4 +1,4 @@
-import { getPatternIndexForDate, getIntensityForDate, computeQ, deriveCommitCounts, DEFAULT_Q, assessDesignFeasibility, iScheduleFields } from "../../services/designs.schedule";
+import { getPatternIndexForDate, getIntensityForDate, computeQ, deriveCommitCounts, DEFAULT_Q, assessDesignFeasibility, designYear, iScheduleFields } from "../../services/designs.schedule";
 
 function selection(overrides: Partial<iScheduleFields>): iScheduleFields {
     return {
@@ -227,5 +227,16 @@ describe("assessDesignFeasibility", () => {
         const result = assessDesignFeasibility(onePattern, s, 2026);
 
         expect(result.feasible).toBe(true);
+    });
+});
+
+describe("designYear", () => {
+    it("reads the year a week after start_date, since a year's grid starts on the Sunday on/before Jan 1", () => {
+        expect(designYear("2024-12-29")).toBe(2025);
+    });
+
+    it("returns start_date's own year when it falls inside the year", () => {
+        expect(designYear("2023-01-01")).toBe(2023);
+        expect(designYear("2025-06-15")).toBe(2025);
     });
 });

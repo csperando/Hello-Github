@@ -5,10 +5,11 @@
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseCard from "@/components/ui/BaseCard.vue"
     import BaseTextInput from "@/components/ui/BaseTextInput.vue"
+    import BaseSelect from "@/components/ui/BaseSelect.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import CustomRangeSlider from "@/components/ui/CustomRangeSlider.vue"
     import GridLegend from "@/components/ui/GridLegend.vue"
-    import { LEVEL_COLORS, todayAnchor, currentYearAnchor, toDateString } from "@/helpers/grid"
+    import { LEVEL_COLORS, yearAnchor, pastYears, toDateString } from "@/helpers/grid"
     import { getDesign, getSelectionCount, type iDesign, type iDesignCreatePayload } from "@/services/designs"
     import { useDesignsStore } from "@/stores/designs"
     import { useAuthStore } from "@/stores/auth"
@@ -73,8 +74,9 @@
     //     { key: "diamond", name: "Diamond", icon: "◆", build: () => stampPattern(DIAMOND, 20, 4) },
     // ]
 
-    type TabKey = "year" | "today"
-    const currentYear = new Date().getFullYear()
+    // Designs paint a past year only (backfilled in one go after purchase) -
+    // the editor offers the last few full years, most recent first.
+    const YEARS = pastYears()
 
     const grid = ref<number[]>(emptyGrid())
     // const selectedTemplate = ref("heart")
@@ -82,7 +84,7 @@
     const BRUSH_LEVEL = 1
     // const brush = ref(4)
     // const painting = ref(false)
-    const activeTab = ref<TabKey>("today")
+    const selectedYear = ref<number>(YEARS[0]!)
     const publicOptIn = ref(true)
     const designName = ref("my first design")
 
@@ -224,24 +226,34 @@
         recurrence_end_date?: string | null
     } | null>(null)
 
-    // The grid's first column is always the most recent Sunday on/before this
-    // anchor date - "today" gives a rolling window starting now, "year" starts
-    // from Jan 1 of the current year for year-to-date designs. Both tabs use the
-    // same fixed 53-week grid width, extending forward from the anchor (this app
-    // designs future contributions, unlike GitHub's own profile graph which runs
-    // backward from today).
+    // The grid's first column is always the most recent Sunday on/before Jan 1
+    // of the selected year, matching GitHub's own year layout. The fixed 53-week
+    // width means a few cells at either end fall in the neighbouring years -
+    // the backfill only paints days inside the selected year.
     const anchorDate = computed(() => {
         if (loadedSelection.value) return new Date(`${loadedSelection.value.start_date}T00:00:00Z`)
-        return activeTab.value === "today" ? todayAnchor() : currentYearAnchor()
+        return yearAnchor(selectedYear.value)
     })
     const anchorDateLabel = computed(() =>
         anchorDate.value.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }),
     )
 
-    function selectTab(key: TabKey) {
-        if (key === activeTab.value) return
-        activeTab.value = key
-        // Switching tabs re-bases the grid onto a different real-world date range,
+    // Custom-range tiling always stops at the end of the selected year.
+    const yearEndDate = computed(() => `${selectedYear.value}-12-31`)
+    const yearEndLabel = computed(() =>
+        new Date(`${yearEndDate.value}T00:00:00Z`).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            timeZone: "UTC",
+        }),
+    )
+
+    function selectYear(value: string) {
+        const year = Number(value)
+        if (year === selectedYear.value) return
+        selectedYear.value = year
+        // Switching years re-bases the grid onto a different real-world date range,
         // so painted cells can't be meaningfully remapped onto new columns - reset
         // the canvas rather than leaving stale art anchored to the wrong dates.
         // This also detaches from any loaded design: further edits become a new
@@ -266,6 +278,11 @@
     ) {
         loadedDesign.value = design
         loadedSelection.value = selection
+        // start_date may fall in the last days of the previous year (the
+        // Sunday on/before Jan 1), so its year is read a week later.
+        const startWeekEnd = new Date(`${selection.start_date}T00:00:00Z`)
+        startWeekEnd.setUTCDate(startWeekEnd.getUTCDate() + 6)
+        selectedYear.value = startWeekEnd.getUTCFullYear()
 
         designName.value = design.name
         publicOptIn.value = design.is_public
@@ -380,20 +397,7 @@
     //     })),
     // )
 
-    const TABS: { key: TabKey; label: string }[] = [
-        { key: "year", label: String(currentYear) },
-        { key: "today", label: "Today" },
-    ]
-
-    const tabs = computed(() =>
-        TABS.map((t) => ({
-            ...t,
-            bg: t.key === activeTab.value ? "var(--color-accent)" : "transparent",
-            color: t.key === activeTab.value ? "var(--color-accent-on)" : "var(--color-text-muted-2)",
-        })),
-    )
-
-    const activeTabLabel = computed(() => TABS.find((t) => t.key === activeTab.value)?.label ?? "Today")
+    const yearOptions = YEARS.map((year) => ({ value: String(year), label: String(year) }))
 
     const painted = computed(() => grid.value.filter((l) => l > 0).length)
     const commitCount = computed(() => painted.value * BRUSH_LEVEL * 2)
@@ -465,13 +469,11 @@
             return false
         }
 
-        // Neither recurrence mechanism active means the design is a one-off that
-        // doesn't repeat at all - regardless of what the shared duration control
-        // happens to be set to.
-        const recurrenceActive = repeatEveryYear.value || customRangeEnabled.value
-        const finalRepeatIndefinitely = recurrenceActive && repeatIndefinitely.value
-        const finalRecurrenceEndDate =
-            recurrenceActive && !repeatIndefinitely.value && recurrenceEndDate.value ? recurrenceEndDate.value : null
+        // Past-year designs never repeat indefinitely: a custom range tiles
+        // through the end of the selected year, anything else is a one-off.
+        // ("repeat every year" and the duration control are hidden for now.)
+        const finalRepeatIndefinitely = false
+        const finalRecurrenceEndDate = customRangeEnabled.value ? yearEndDate.value : null
 
         isSaving.value = true
         try {
@@ -524,10 +526,9 @@
         }
     }
 
-    // "continue to checkout" saves the design first, then:
-    //  - already covered -> activate this selection right away, go to dashboard
-    //  - not covered      -> go to checkout, carrying the design id so the
-    //                        webhook can activate it once payment settles
+    // "continue to checkout" saves the design first, then goes to checkout
+    // carrying the design id (the webhook creates its backfill job once
+    // payment settles) and its year (for the checkout copy)
     async function onContinueToCheckout() {
         const saved = await saveDesign()
         if (!saved) return
@@ -535,17 +536,7 @@
         const designId = loadedDesign.value?.id
         if (!designId) return
 
-        if (authStore.isCovered) {
-            const result = await designsStore.setActive(designId, true)
-            if (!result.ok) {
-                saveError.value = result.error
-                return
-            }
-            router.push("/dashboard")
-            return
-        }
-
-        router.push({ name: "Checkout", query: { designId } })
+        router.push({ name: "Checkout", query: { designId, year: String(selectedYear.value) } })
     }
 </script>
 
@@ -562,15 +553,15 @@
                 <span class="draft-label">saved as draft</span>
             </div>
 
-            <div class="tabs-wrap">
-                <button
-                    v-for="t in tabs"
-                    :key="t.key"
-                    class="tab-btn"
-                    @click="selectTab(t.key)"
-                    :style="{ background: t.bg, color: t.color }"
-                >{{ t.label }}</button>
-            </div>
+            <label class="year-picker">
+                <span class="year-picker-label">year</span>
+                <BaseSelect
+                    id="editor-year"
+                    :model-value="String(selectedYear)"
+                    :options="yearOptions"
+                    @update:model-value="selectYear"
+                />
+            </label>
 
             <div class="sub-bar-right">
                 <span v-if="saveError" class="save-error">{{ saveError }}</span>
@@ -633,7 +624,7 @@
             <main class="canvas-main order-1 md:order-2">
                 <div class="canvas-wrap">
                     <div class="canvas-header">
-                        <div class="canvas-title">{{ activeTabLabel }} contribution graph · starts {{ anchorDateLabel }}</div>
+                        <div class="canvas-title">{{ selectedYear }} contribution graph · starts {{ anchorDateLabel }}</div>
                         <!-- <div class="canvas-hint">drag to paint · click to cycle intensity</div> -->
                     </div>
                     <BaseCard padding="28px 26px 24px">
@@ -721,6 +712,7 @@
                     </div>
                 </div>
 
+                <!-- "repeat every year" (forward painting) is hidden while designs paint a past year only
                 <div class="panel-label panel-label--section">recurrence</div>
                 <div class="toggle-box">
                     <div>
@@ -735,7 +727,7 @@
                         <button @click="setRecurrenceUntil" :style="untilButtonStyle">end date</button>
                     </div>
                     <div v-if="repeatIndefinitely" class="duration-indefinite">
-                        <span>∞</span><span>renews from {{ activeTabLabel }} → forever, until you cancel</span>
+                        <span>∞</span><span>renews from {{ selectedYear }} → forever, until you cancel</span>
                     </div>
                     <input
                         v-else
@@ -744,6 +736,7 @@
                         class="date-input"
                     />
                 </div>
+                -->
 
                 <div class="panel-label panel-label--section">custom range</div>
                 <div class="toggle-box">
@@ -754,19 +747,9 @@
                     <ToggleSwitch :checked="customRangeEnabled" @click="toggleCustomRange" />
                 </div>
                 <div v-if="customRangeEnabled" class="recurrence-detail">
-                    <div class="duration-btn-row">
-                        <button @click="setRecurrenceIndefinite" :style="indefiniteButtonStyle">indefinitely</button>
-                        <button @click="setRecurrenceUntil" :style="untilButtonStyle">end date</button>
+                    <div class="duration-indefinite">
+                        <span>↻</span><span>repeats through {{ yearEndLabel }}</span>
                     </div>
-                    <div v-if="repeatIndefinitely" class="duration-indefinite">
-                        <span>∞</span><span>repeats from {{ activeTabLabel }} → forever, until you cancel</span>
-                    </div>
-                    <input
-                        v-else
-                        type="date"
-                        v-model="recurrenceEndDate"
-                        class="date-input"
-                    />
                 </div>
             </aside>
         </div>
@@ -812,24 +795,24 @@
         color: var(--color-text-muted-1);
     }
 
-    .tabs-wrap {
+    .year-picker {
         display: flex;
         align-items: center;
-        gap: 4px;
-        background: var(--color-bg-raised);
-        border: 1px solid var(--color-border);
-        border-radius: 8px;
-        padding: 3px;
+        gap: 8px;
+        width: 150px;
     }
 
-    .tab-btn {
+    .year-picker-label {
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        color: var(--color-text-muted-2);
+    }
+
+    .year-picker :deep(.base-select) {
         font-family: var(--font-mono);
         font-size: 12.5px;
         font-weight: 600;
-        border: none;
-        border-radius: 6px;
-        padding: 8px 14px;
-        cursor: pointer;
+        padding: 8px 12px;
     }
 
     .sub-bar-right {

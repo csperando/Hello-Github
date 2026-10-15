@@ -41,6 +41,10 @@ describe("BackfillJobsRepository", () => {
         await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
     });
 
+    afterAll(async () => {
+        await pool.end();
+    });
+
     it("creates a job awaiting its issue", async () => {
         const job = await backfillRepo.create(userId, designId, 2024);
 

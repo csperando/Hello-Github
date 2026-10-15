@@ -7,6 +7,7 @@ import type { iUserBillingRepo } from "../../repository/userBilling.repo";
 import type { iPaymentsRepo } from "../../repository/payments.repo";
 import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
 import type { iUserRepo } from "../../repository/users.repo";
+import type { iBackfillJobsRepo } from "../../repository/backfillJobs.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 
 const billingRepoMock = createMockRepoProxy<iUserBillingRepo>();
@@ -17,6 +18,8 @@ const selectionsRepoMock = createMockRepoProxy<iDesignSelectionsRepo>();
 mockRepo("repository/designSelections.repo", selectionsRepoMock);
 const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
+const backfillJobsRepoMock = createMockRepoProxy<iBackfillJobsRepo>();
+mockRepo("repository/backfillJobs.repo", backfillJobsRepoMock);
 
 const mockStripe = {
     customers: { create: jest.fn(), update: jest.fn() },
@@ -37,7 +40,6 @@ const apiKeyHeader = { "X-API-Key": config.SCHEDULER_API_KEY };
 const validBody = {
     totalCents: 1000,
     platformCents: 300,
-    autoRenew: false,
     designId: "d1",
     charityEinId: 42,
     attemptId: "3f1c2b9e-8d4a-4c7e-9b1a-2e5f6a7b8c9d",
@@ -48,6 +50,7 @@ beforeEach(() => {
     paymentsRepoMock.__reset();
     selectionsRepoMock.__reset();
     usersRepoMock.__reset();
+    backfillJobsRepoMock.__reset();
     mockStripe.customers.create.mockReset().mockResolvedValue({ id: "cus_1" });
     mockStripe.customers.update.mockReset();
     mockStripe.paymentIntents.create.mockReset().mockResolvedValue({ id: "pi_1", client_secret: "pi_1_secret" });
@@ -96,10 +99,46 @@ describe("POST /payments/checkout", () => {
         });
     });
 
-    it("409s when the user is already covered", async () => {
+    it("charges a user whose paid_until is still in the future (no coverage gate)", async () => {
         billingRepoMock.getByUserId.mockResolvedValue({ paid_until: new Date(Date.now() + 8.64e7).toISOString() });
         const res = await request(server).post("/payments/checkout").set("Cookie", cookie).send(validBody);
-        expect(res.status).toBe(409);
+        expect(res.status).toBe(200);
+    });
+
+    it("400s a body without a designId", async () => {
+        const { designId: _omit, ...body } = validBody;
+        const res = await request(server).post("/payments/checkout").set("Cookie", cookie).send(body);
+        expect(res.status).toBe(400);
+    });
+});
+
+describe("GET /payments/backfill/:designId", () => {
+    it("401s without a session cookie", async () => {
+        const res = await request(server).get("/payments/backfill/d1");
+        expect(res.status).toBe(401);
+    });
+
+    it("returns the caller's job for that design", async () => {
+        backfillJobsRepoMock.getByUserAndDesign.mockResolvedValue({
+            id: "j1",
+            user_id: userId,
+            design_id: "d1",
+            year: 2025,
+            status: "awaiting_issue",
+            issue_url: null,
+        });
+
+        const res = await request(server).get("/payments/backfill/d1").set("Cookie", cookie);
+        expect(res.status).toBe(200);
+        const body: iResponse = JSON.parse(res.text);
+        expect(body.data![0]).toMatchObject({ design_id: "d1", year: 2025, status: "awaiting_issue" });
+        expect(backfillJobsRepoMock.getByUserAndDesign).toHaveBeenCalledWith(userId, "d1");
+    });
+
+    it("404s when the caller has no job for that design", async () => {
+        backfillJobsRepoMock.getByUserAndDesign.mockResolvedValue(undefined);
+        const res = await request(server).get("/payments/backfill/d1").set("Cookie", cookie);
+        expect(res.status).toBe(404);
     });
 });
 

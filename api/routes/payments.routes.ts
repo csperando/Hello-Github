@@ -15,10 +15,10 @@ router.all("/{*splat}", [], async (req: Request, res: Response, next: NextFuncti
 });
 
 /**
- * Start a checkout for one year of automated commits (plus optional
- * donation). Returns a Stripe client secret for the frontend Payment
- * Element to confirm. Nothing is granted here - a verified webhook does
- * that. 409 when the user is already covered.
+ * Start a checkout for one design (plus optional donation). Returns a
+ * Stripe client secret for the frontend Payment Element to confirm.
+ * Nothing is granted here - a verified webhook creates the design's
+ * backfill job.
  */
 router.post("/checkout", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -30,22 +30,13 @@ router.post("/checkout", requireAuth, async (req: Request, res: Response, next: 
 
         const result = await paymentsService.createCheckout({
             userId: req.user!.id,
-            designIdToActivate: input!.designId ?? null,
+            designId: input!.designId,
             charityEinId: input!.charityEinId ?? null,
             totalCents: input!.totalCents,
             platformCents: input!.platformCents,
-            autoRenew: input!.autoRenew,
             attemptId: input!.attemptId,
         });
 
-        if (result.alreadyCovered) {
-            res.status(409).json({
-                status: 409,
-                success: false,
-                error: "You already have an active paid period.",
-            } as iResponse);
-            return;
-        }
         if (result.error) {
             res.status(400).json({ status: 400, success: false, error: result.error } as iResponse);
             return;
@@ -68,6 +59,25 @@ router.get("/", requireAuth, async (req: Request, res: Response, next: NextFunct
     try {
         const payments = await paymentsService.listPayments(req.user!.id);
         res.status(200).json({ status: 200, success: true, data: payments } as iResponse);
+
+    } catch (err) {
+        logger.error(err);
+        next(err);
+    }
+});
+
+/**
+ * The authenticated user's backfill job for a design they bought - the
+ * checkout confirmation step polls this until the webhook has created it.
+ */
+router.get("/backfill/:designId", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const job = await paymentsService.getBackfillJob(req.user!.id, req.params.designId as string);
+        if (!job) {
+            res.status(404).json({ status: 404, success: false, error: "No backfill job for that design." } as iResponse);
+            return;
+        }
+        res.status(200).json({ status: 200, success: true, data: [job] } as iResponse);
 
     } catch (err) {
         logger.error(err);

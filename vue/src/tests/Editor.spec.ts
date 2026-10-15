@@ -92,7 +92,7 @@ const loadedSelectionRow = {
 describe('Editor.vue', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-01-07T12:00:00Z')) // a Wednesday; todayAnchor -> 2026-01-04
+    vi.setSystemTime(new Date('2026-01-07T12:00:00Z')) // default year 2025 -> yearAnchor 2024-12-29
     createDesignMock.mockReset()
     listSelectionsMock.mockReset()
     listSelectionsMock.mockResolvedValue(jsonResponse({ data: [] }))
@@ -144,7 +144,7 @@ describe('Editor.vue', () => {
 
     expect(createDesignMock).toHaveBeenCalledTimes(1)
     const payload = createDesignMock.mock.calls[0]![0]
-    expect(payload.start_date).toBe('2026-01-18') // anchor (01-04) + 2 weeks
+    expect(payload.start_date).toBe('2025-01-12') // anchor (2024-12-29) + 2 weeks
     expect(payload.pattern).toEqual([0, 1, 0, 1, 0, 0, 0])
     expect(payload.repeat_indefinitely).toBe(false)
     expect(payload.recurrence_end_date).toBeNull()
@@ -172,13 +172,69 @@ describe('Editor.vue', () => {
 
     expect(createDesignMock).toHaveBeenCalledTimes(1)
     const payload = createDesignMock.mock.calls[0]![0]
-    expect(payload.start_date).toBe('2026-01-04') // anchor + 0 weeks (rangeStart)
+    expect(payload.start_date).toBe('2024-12-29') // anchor + 0 weeks (rangeStart)
     expect(payload.pattern).toHaveLength(49) // 7 weeks
     expect(payload.pattern[1 * 7 + 2]).toBe(1)
     expect(payload.pattern.filter((v: number) => v > 0)).toHaveLength(1)
-    // custom range is active with the default "indefinitely" duration
-    expect(payload.repeat_indefinitely).toBe(true)
-    expect(payload.recurrence_end_date).toBeNull()
+    // custom range always tiles through the end of the selected year
+    expect(payload.repeat_indefinitely).toBe(false)
+    expect(payload.recurrence_end_date).toBe('2025-12-31')
+  })
+
+  it('offers the last 3 full years, defaulting to the most recent, with no Today tab', async () => {
+    const { wrapper } = await mountEditor('/editor')
+
+    const select = wrapper.get('select#editor-year')
+    expect(select.findAll('option').map((o) => o.text())).toEqual(['2025', '2024', '2023'])
+    expect((select.element as HTMLSelectElement).value).toBe('2025')
+    expect(wrapper.findAll('button').some((b) => b.text() === 'Today')).toBe(false)
+    expect(wrapper.text()).toContain('starts Dec 29, 2024')
+  })
+
+  it('re-anchors the grid on the chosen year and saves against it', async () => {
+    createDesignMock.mockResolvedValue(
+      jsonResponse({ data: [{ design: { id: 'new-id' }, selection: { id: 'sel-id' } }] }),
+    )
+
+    const { wrapper } = await mountEditor('/editor')
+
+    await wrapper.get('select#editor-year').setValue('2023')
+    expect(wrapper.text()).toContain('starts Jan 1, 2023')
+
+    const cells = wrapper.findAll('[data-testid="grid-cell"]')
+    // switching year clears the canvas, so this is the only painted cell
+    await cells[3 * 7 + 1]!.trigger('mousedown')
+
+    await findButton(wrapper, 'save as draft').trigger('click')
+    await flushPromises()
+
+    const payload = createDesignMock.mock.calls[0]![0]
+    expect(payload.start_date).toBe('2023-01-22') // anchor (2023-01-01) + 3 weeks
+    expect(payload.pattern).toEqual([0, 1, 0, 0, 0, 0, 0])
+  })
+
+  it('hides "repeat every year" and replaces the custom-range duration controls with the year end', async () => {
+    const { wrapper } = await mountEditor('/editor')
+
+    expect(wrapper.text()).not.toContain('repeat every year')
+
+    await findClickableDiv(wrapper, 'select custom range').find('button').trigger('click')
+
+    expect(wrapper.findAll('button').some((b) => b.text() === 'indefinitely')).toBe(false)
+    expect(wrapper.findAll('button').some((b) => b.text() === 'end date')).toBe(false)
+    expect(wrapper.text()).toContain('repeats through Dec 31, 2025')
+  })
+
+  it('selects the year of a loaded past-year design', async () => {
+    getDesignMock.mockResolvedValue(jsonResponse({ data: [loadedDesignContent] }))
+    listSelectionsMock.mockResolvedValue(
+      jsonResponse({ data: [{ ...loadedSelectionRow, start_date: '2023-01-01', recurrence_end_date: '2023-12-31' }] }),
+    )
+
+    const { wrapper } = await mountEditor('/editor/d1')
+
+    expect((wrapper.get('select#editor-year').element as HTMLSelectElement).value).toBe('2023')
+    expect(wrapper.text()).toContain('starts Jan 1, 2023')
   })
 
   it('loads an existing design from the route param, joined with the caller\'s own selection', async () => {
@@ -267,7 +323,7 @@ describe('Editor.vue', () => {
       await flushPromises()
     }
 
-    it('routes an uncovered user to /checkout carrying the saved design id', async () => {
+    it('routes to /checkout carrying the saved design id and its year', async () => {
       createDesignMock.mockResolvedValue(
         jsonResponse({ data: [{ design: { id: 'new-id' }, selection: { id: 'sel-id' } }] }),
       )
@@ -277,10 +333,12 @@ describe('Editor.vue', () => {
 
       expect(router.currentRoute.value.path).toBe('/checkout')
       expect(router.currentRoute.value.query.designId).toBe('new-id')
+      expect(router.currentRoute.value.query.year).toBe('2025')
       expect(updateSelectionMock).not.toHaveBeenCalled()
     })
 
-    it('activates the selection directly and routes to /dashboard when the user is already covered', async () => {
+    // every purchase buys one design, so an unexpired paid_until no longer skips checkout
+    it('routes a user with an unexpired paid_until to /checkout too', async () => {
       createDesignMock.mockResolvedValue(
         jsonResponse({ data: [{ design: { id: 'new-id' }, selection: { id: 'sel-id' } }] }),
       )
@@ -295,8 +353,8 @@ describe('Editor.vue', () => {
 
       await paintAndContinue(wrapper)
 
-      expect(updateSelectionMock).toHaveBeenCalledWith('new-id', { is_active: true })
-      expect(router.currentRoute.value.path).toBe('/dashboard')
+      expect(updateSelectionMock).not.toHaveBeenCalled()
+      expect(router.currentRoute.value.path).toBe('/checkout')
     })
   })
 })

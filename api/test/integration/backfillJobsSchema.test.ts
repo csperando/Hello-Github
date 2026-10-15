@@ -39,6 +39,10 @@ describe("0011_create_backfill_jobs migration", () => {
         await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
     });
 
+    afterAll(async () => {
+        await pool.end();
+    });
+
     it("has the expected columns and defaults", async () => {
         const columns = await pool.query(`
             SELECT column_name, is_nullable, column_default

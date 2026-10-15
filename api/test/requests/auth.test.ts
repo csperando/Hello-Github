@@ -10,6 +10,10 @@ import type { iUserRepo } from "../../repository/users.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
+import type { iBackfillJobsRepo } from "../../repository/backfillJobs.repo";
+const backfillJobsRepoMock = createMockRepoProxy<iBackfillJobsRepo>();
+mockRepo("repository/backfillJobs.repo", backfillJobsRepoMock);
+import { signedSidCookie } from "../helpers";
 
 jest.mock("../../services/github.service", () => ({
     __esModule: true,
@@ -19,6 +23,7 @@ jest.mock("../../services/github.service", () => ({
     pickPrimaryVerifiedEmail: jest.fn(),
     pickNoreplyEmail: jest.fn(),
     computeNoreplyEmail: jest.fn(),
+    createIssue: jest.fn(),
 }));
 import * as githubService from "../../services/github.service";
 
@@ -71,6 +76,8 @@ describe("Auth routes", () => {
         (githubService.pickPrimaryVerifiedEmail as jest.Mock).mockReset();
         (githubService.pickNoreplyEmail as jest.Mock).mockReset();
         (githubService.computeNoreplyEmail as jest.Mock).mockReset();
+        (githubService.createIssue as jest.Mock).mockReset();
+        backfillJobsRepoMock.__reset();
     });
 
     it("should work on this test suite again later", () => {
@@ -360,4 +367,127 @@ describe("Auth routes", () => {
     //         expect(setCookie.some((c) => c.startsWith("sid=;"))).toBe(true);
     //     });
     // });
+
+    describe("paint consent (step-up OAuth that opens the canvas-repo issue as the user)", () => {
+        const sid = signedSidCookie(mockUser.id as string);
+        const paintCallbackUrl = `${config.GITHUB_CALLBACK_URL}/paint`;
+        const awaitingJob = { id: "j1", user_id: mockUser.id, design_id: "d1", year: 2025, status: "awaiting_issue" };
+        // carries the design so the error page can send the user straight back into consent
+        const failedUrl = `${config.FRONTEND_URL}/error?type=paint_consent_failed&designId=d1`;
+
+        const startPaint = () => request(testApp).get("/auth/github/paint?designId=d1").set("Cookie", sid);
+
+        const startAndCallback = async (stateOverride?: string) => {
+            const startRes = await startPaint();
+            const state = new URL(startRes.headers.location as string).searchParams.get("state")!;
+            const setCookie = startRes.headers["set-cookie"] as unknown as string[];
+            const paintCookie = setCookie.find((c) => c.startsWith("gh_paint_state="))!.split(";")[0]!;
+
+            return request(testApp)
+                .get(`/auth/github/callback/paint?code=paint-code&state=${stateOverride ?? state}`)
+                .set("Cookie", [sid, paintCookie].join("; "));
+        };
+
+        beforeEach(() => {
+            backfillJobsRepoMock.getByUserAndDesign.mockResolvedValue(awaitingJob);
+            backfillJobsRepoMock.markIssueOpened.mockResolvedValue({ ...awaitingJob, status: "ready" });
+            usersRepoMock.getUserById.mockResolvedValue(mockUser);
+            (githubService.exchangeCodeForToken as jest.Mock).mockResolvedValue("gho_paint");
+            (githubService.fetchGitHubUser as jest.Mock).mockResolvedValue(mockGhUser);
+            (githubService.createIssue as jest.Mock).mockResolvedValue("https://github.com/owner/canvas/issues/7");
+        });
+
+        describe("GET /auth/github/paint", () => {
+            it("401s without a session", async () => {
+                const res = await request(testApp).get("/auth/github/paint?designId=d1");
+                expect(res.status).toBe(401);
+            });
+
+            it("redirects to GitHub asking for public_repo, back to the paint callback, with a signed state cookie", async () => {
+                const res = await startPaint();
+
+                expect(res.status).toBe(302);
+                const location = new URL(res.headers.location as string);
+                expect(location.origin + location.pathname).toBe("https://github.com/login/oauth/authorize");
+                expect(location.searchParams.get("client_id")).toBe(config.GITHUB_CLIENT_ID);
+                expect(location.searchParams.get("scope")).toBe("public_repo");
+                expect(location.searchParams.get("redirect_uri")).toBe(paintCallbackUrl);
+                expect(location.searchParams.get("state")).toBeTruthy();
+
+                const setCookie = res.headers["set-cookie"] as unknown as string[];
+                const paintCookie = setCookie.find((c) => c.startsWith("gh_paint_state="))!;
+                expect(paintCookie).toMatch(/HttpOnly/i);
+                expect(backfillJobsRepoMock.getByUserAndDesign).toHaveBeenCalledWith(mockUser.id, "d1");
+            });
+
+            it("sends the user to the dashboard when the job is already past the issue step", async () => {
+                backfillJobsRepoMock.getByUserAndDesign.mockResolvedValue({ ...awaitingJob, status: "ready" });
+
+                const res = await startPaint();
+                expect(res.status).toBe(302);
+                expect(res.headers.location).toBe(`${config.FRONTEND_URL}/dashboard`);
+            });
+
+            it("sends the user to the error page when they have no job for that design", async () => {
+                backfillJobsRepoMock.getByUserAndDesign.mockResolvedValue(undefined);
+
+                const res = await startPaint();
+                expect(res.headers.location).toBe(failedUrl);
+            });
+        });
+
+        describe("GET /auth/github/callback/paint", () => {
+            it("opens the issue as the user, marks the job ready, and lands on the dashboard", async () => {
+                const res = await startAndCallback();
+
+                expect(res.status).toBe(302);
+                expect(res.headers.location).toBe(`${config.FRONTEND_URL}/dashboard`);
+                expect(githubService.exchangeCodeForToken).toHaveBeenCalledWith("paint-code", paintCallbackUrl);
+                expect(githubService.createIssue).toHaveBeenCalledWith(
+                    "gho_paint",
+                    config.PAINT_TARGET_REPO,
+                    "🎨 @octocat-test is painting their 2025 graph",
+                    expect.stringContaining("Commits for Good"),
+                );
+                expect(backfillJobsRepoMock.markIssueOpened).toHaveBeenCalledWith(
+                    "j1",
+                    "https://github.com/owner/canvas/issues/7",
+                );
+            });
+
+            it("never hands the token back to the browser", async () => {
+                const res = await startAndCallback();
+
+                const setCookie = (res.headers["set-cookie"] as unknown as string[] | undefined) ?? [];
+                expect(res.headers.location).not.toContain("gho_paint");
+                expect(setCookie.join("\n")).not.toContain("gho_paint");
+            });
+
+            it("refuses a mismatched state without exchanging the code", async () => {
+                const res = await startAndCallback("not-the-state");
+
+                expect(res.headers.location).toBe(failedUrl);
+                expect(githubService.exchangeCodeForToken).not.toHaveBeenCalled();
+            });
+
+            it("refuses consent from a different GitHub account than the logged-in user", async () => {
+                (githubService.fetchGitHubUser as jest.Mock).mockResolvedValue({ ...mockGhUser, id: 999, login: "someone-else" });
+
+                const res = await startAndCallback();
+
+                expect(res.headers.location).toBe(failedUrl);
+                expect(githubService.createIssue).not.toHaveBeenCalled();
+                expect(backfillJobsRepoMock.markIssueOpened).not.toHaveBeenCalled();
+            });
+
+            it("leaves the job awaiting its issue when GitHub refuses to open it", async () => {
+                (githubService.createIssue as jest.Mock).mockRejectedValue(new Error("GitHub 403"));
+
+                const res = await startAndCallback();
+
+                expect(res.headers.location).toBe(failedUrl);
+                expect(backfillJobsRepoMock.markIssueOpened).not.toHaveBeenCalled();
+            });
+        });
+    });
 });

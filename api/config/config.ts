@@ -20,6 +20,7 @@ const {
     SCHEDULER_API_KEY,
     STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET,
+    PAINT_TARGET_REPO,
 } = process.env;
 
 assert(REST_NODE_ENV, "[REST_NODE_ENV] is required.");
@@ -37,6 +38,7 @@ assert(FRONTEND_URL, "[FRONTEND_URL] is required.");
 assert(SCHEDULER_API_KEY, "[SCHEDULER_API_KEY] is required.");
 assert(STRIPE_SECRET_KEY, "[STRIPE_SECRET_KEY] is required.");
 assert(STRIPE_WEBHOOK_SECRET, "[STRIPE_WEBHOOK_SECRET] is required.");
+assert(PAINT_TARGET_REPO, "[PAINT_TARGET_REPO] is required.");
 
 export interface iConfig {
     REST_NODE_ENV: string;
@@ -54,6 +56,8 @@ export interface iConfig {
     SCHEDULER_API_KEY: string;
     STRIPE_SECRET_KEY: string;
     STRIPE_WEBHOOK_SECRET: string;
+    // owner/name of the canvas repo; buyers open an issue on it (see backfill.service.ts)
+    PAINT_TARGET_REPO: string;
 };
 
 export const config: iConfig = {
@@ -72,4 +76,5 @@ export const config: iConfig = {
     SCHEDULER_API_KEY: SCHEDULER_API_KEY,
     STRIPE_SECRET_KEY: STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: STRIPE_WEBHOOK_SECRET,
+    PAINT_TARGET_REPO: PAINT_TARGET_REPO,
 };

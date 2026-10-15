@@ -19,7 +19,9 @@ export interface iGitHubEmail {
     visibility: string | null;
 }
 
-export const exchangeCodeForToken = async (code: string): Promise<string> => {
+// redirectUri must match the one the authorize step used - the login flow's
+// callback by default, or the paint-consent sub-path
+export const exchangeCodeForToken = async (code: string, redirectUri: string = config.GITHUB_CALLBACK_URL): Promise<string> => {
     const res = await fetch("https://github.com/login/oauth/access_token", {
         method: "POST",
         headers: {
@@ -30,7 +32,7 @@ export const exchangeCodeForToken = async (code: string): Promise<string> => {
             client_id: config.GITHUB_CLIENT_ID,
             client_secret: config.GITHUB_CLIENT_SECRET,
             code,
-            redirect_uri: config.GITHUB_CALLBACK_URL,
+            redirect_uri: redirectUri,
         }),
     });
 
@@ -57,6 +59,26 @@ export const fetchGitHubUser = async (accessToken: string): Promise<iGitHubUser>
     }
 
     return (await res.json()) as iGitHubUser;
+};
+
+/** Opens an issue on `repo` (owner/name) as the token's user; returns its html_url. */
+export const createIssue = async (accessToken: string, repo: string, title: string, body: string): Promise<string> => {
+    const res = await fetch(`https://api.github.com/repos/${repo}/issues`, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github+json",
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title, body }),
+    });
+
+    if (!res.ok) {
+        throw new Error(`Failed to open GitHub issue on ${repo} (status ${res.status}).`);
+    }
+
+    const issue: any = await res.json();
+    return issue.html_url;
 };
 
 export const fetchGitHubEmails = async (accessToken: string): Promise<iGitHubEmail[]> => {

@@ -2,6 +2,8 @@ import pool from "../../config/db";
 import { runMigrations } from "../../data/migrate";
 import UsersRepository from "../../repository/users.repo";
 import UserBillingRepository from "../../repository/userBilling.repo";
+import DesignsRepository from "../../repository/designs.repo";
+import DesignSelectionsRepository from "../../repository/designSelections.repo";
 import { iGitHubUpsertInput } from "../../models/users";
 
 // Real Postgres, mocked Stripe API calls - what's under test here is the
@@ -25,6 +27,8 @@ import { PaymentsService } from "../../services/payments.service";
 describe("PaymentsService.handleWebhookEvent (concurrent duplicate delivery, real DB)", () => {
     const usersRepo = UsersRepository.repo();
     const billingRepo = UserBillingRepository.repo();
+    const designsRepo = DesignsRepository.repo();
+    const selectionsRepo = DesignSelectionsRepository.repo();
     // fixed, out-of-range-for-real-GitHub id so this test never collides with real data
     const testGitHubId = -106;
 
@@ -51,12 +55,21 @@ describe("PaymentsService.handleWebhookEvent (concurrent duplicate delivery, rea
     });
 
     afterEach(async () => {
+        await pool.query("DELETE FROM backfill_jobs WHERE user_id = $1;", [userId]);
+        await pool.query("DELETE FROM design_selections WHERE user_id = $1;", [userId]);
+        await pool.query("DELETE FROM designs WHERE user_id = $1;", [userId]);
         await pool.query("DELETE FROM payments WHERE user_id = $1;", [userId]);
         await pool.query("DELETE FROM user_billing WHERE user_id = $1;", [userId]);
         await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
     });
 
-    it("credits paid_until exactly once when the same payment_intent.succeeded event is delivered concurrently", async () => {
+    it("writes exactly one ledger row and one backfill job when the same payment_intent.succeeded event is delivered concurrently", async () => {
+        const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
+        await selectionsRepo.create(userId, design.id, {
+            start_date: "2024-12-29",
+            repeat_indefinitely: false,
+        });
+
         const service = new PaymentsService();
         const event = {
             id: "evt_concurrent_pi",
@@ -72,7 +85,7 @@ describe("PaymentsService.handleWebhookEvent (concurrent duplicate delivery, rea
                     metadata: {
                         kind: "checkout_one_time",
                         user_id: userId,
-                        design_id: "",
+                        design_id: design.id,
                         amount_total_cents: "1000",
                         amount_platform_cents: "300",
                         amount_charity_cents: "700",
@@ -98,10 +111,12 @@ describe("PaymentsService.handleWebhookEvent (concurrent duplicate delivery, rea
         const paymentsRows = await pool.query("SELECT * FROM payments WHERE user_id = $1;", [userId]);
         expect(paymentsRows.rows).toHaveLength(1);
 
+        const jobs = await pool.query("SELECT year, status FROM backfill_jobs WHERE user_id = $1;", [userId]);
+        expect(jobs.rows).toEqual([{ year: 2025, status: "awaiting_issue" }]);
+
+        // a purchase no longer opens a paid period
         const billing = await pool.query("SELECT paid_until FROM user_billing WHERE user_id = $1;", [userId]);
-        const days = (new Date(billing.rows[0].paid_until).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
-        expect(days).toBeGreaterThan(360); // ~1 year credited
-        expect(days).toBeLessThan(371); // not ~2 years (double-credited)
+        expect(billing.rows[0]?.paid_until ?? null).toBeNull();
     });
 
     it("writes exactly one payments row when the same invoice.paid event is delivered concurrently", async () => {

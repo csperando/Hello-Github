@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mostRecentSunday, todayAnchor, currentYearAnchor, toDateString, getPatternIndexForDate } from '../helpers/grid'
+import { describe, it, expect } from 'vitest'
+import { mostRecentSunday, yearAnchor, pastYears, toDateString, getPatternIndexForDate } from '../helpers/grid'
 
 describe('mostRecentSunday', () => {
   it('returns the preceding Sunday for a mid-week date', () => {
@@ -14,23 +14,25 @@ describe('mostRecentSunday', () => {
   })
 })
 
-describe('todayAnchor / currentYearAnchor', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-01-07T12:00:00Z')) // a Wednesday
+describe('yearAnchor', () => {
+  it('anchors to the most recent Sunday on/before Jan 1 of the given year', () => {
+    // Jan 1 2025 is a Wednesday, so the preceding Sunday is Dec 29 2024
+    expect(toDateString(yearAnchor(2025))).toBe('2024-12-29')
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
+  it('anchors on Jan 1 itself when it is a Sunday', () => {
+    // Jan 1 2023 is a Sunday
+    expect(toDateString(yearAnchor(2023))).toBe('2023-01-01')
+  })
+})
+
+describe('pastYears', () => {
+  it('returns the last 3 full years, most recent first', () => {
+    expect(pastYears(new Date('2026-01-07T12:00:00Z'))).toEqual([2025, 2024, 2023])
   })
 
-  it('todayAnchor defaults to the most recent Sunday on/before now', () => {
-    expect(toDateString(todayAnchor())).toBe('2026-01-04')
-  })
-
-  it('currentYearAnchor anchors to the most recent Sunday on/before Jan 1 of this year', () => {
-    // Jan 1 2026 is a Thursday, so the preceding Sunday is Dec 28 2025
-    expect(toDateString(currentYearAnchor())).toBe('2025-12-28')
+  it('never includes the current year, even on Dec 31', () => {
+    expect(pastYears(new Date('2026-12-31T23:00:00Z'))).toEqual([2025, 2024, 2023])
   })
 })
 

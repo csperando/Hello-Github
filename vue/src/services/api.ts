@@ -4,6 +4,11 @@ export function githubLoginUrl(): string {
     return `${API_URL}/auth/github/login`
 }
 
+/** One-off step-up consent after buying a design: GitHub asks to let us open the canvas-repo issue as the user. */
+export function githubPaintUrl(designId: string): string {
+    return `${API_URL}/auth/github/paint?designId=${encodeURIComponent(designId)}`
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
     return fetch(`${API_URL}${path}`, {
         ...init,

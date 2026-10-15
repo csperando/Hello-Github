@@ -5,6 +5,8 @@ import UserBillingRepository from "../repository/userBilling.repo";
 import PaymentsRepository from "../repository/payments.repo";
 import DesignSelectionsRepository from "../repository/designSelections.repo";
 import UserRepository from "../repository/users.repo";
+import BackfillJobsRepository from "../repository/backfillJobs.repo";
+import { designYear } from "./designs.schedule";
 import { isUniqueViolationOn } from "../repository/dbErrors";
 import { logger } from "../config/logger";
 
@@ -64,13 +66,13 @@ export function computeAuthoritativeAmounts(
 
 export interface iCreateCheckoutInput {
     userId: string;
-    // the design whose selection should go active once payment settles;
-    // omitted for a standalone "buy a year" purchase (activates nothing)
-    designIdToActivate?: string | null;
+    // the design being bought - its backfill job is created once payment settles
+    designId: string;
     charityEinId?: number | null;
     totalCents: number;
     platformCents: number;
-    autoRenew: boolean;
+    // the annual-subscription path is kept but unused: checkout never sets this
+    autoRenew?: boolean;
     // one per checkout visit: retries within it reuse the same PI/subscription,
     // a later purchase gets a fresh one instead of Stripe's cached (paid) response
     attemptId: string;
@@ -79,7 +81,6 @@ export interface iCreateCheckoutInput {
 export interface iCreateCheckoutResult {
     clientSecret?: string;
     amounts?: iAuthoritativeAmounts;
-    alreadyCovered?: boolean;
     error?: string;
 }
 
@@ -120,12 +121,24 @@ export class PaymentsService {
     public paymentsRepo: any;
     public selectionsRepo: any;
     public usersRepo: any;
+    public backfillJobsRepo: any;
 
     constructor() {
         this.billingRepo = UserBillingRepository.repo();
         this.paymentsRepo = PaymentsRepository.repo();
         this.selectionsRepo = DesignSelectionsRepository.repo();
         this.usersRepo = UserRepository.repo();
+        this.backfillJobsRepo = BackfillJobsRepository.repo();
+    }
+
+    /** The caller's backfill job for a design they bought, or undefined. */
+    public async getBackfillJob(userId: string, designId: string): Promise<any> {
+        try {
+            return await this.backfillJobsRepo.getByUserAndDesign(userId, designId);
+        } catch (err: any) {
+            logger.error(err);
+            throw err;
+        }
     }
 
     /** The user's payment history, newest first. */
@@ -169,9 +182,9 @@ export class PaymentsService {
     }
 
     /**
-     * Starts a checkout: validates the amount split server-side, refuses
-     * when the user is already covered or the design-to-activate isn't
-     * theirs, then creates a one-time PaymentIntent or (autoRenew) an
+     * Starts a checkout for one design: validates the amount split
+     * server-side, refuses a design that isn't one of the user's
+     * selections, then creates a one-time PaymentIntent or (autoRenew) an
      * annual Subscription whose first invoice is paid through the same
      * Payment Element. Returns the client secret for the frontend to
      * confirm. Nothing is granted here - a verified webhook does that.
@@ -184,18 +197,16 @@ export class PaymentsService {
             });
             if (error || !amounts) return { error: error ?? "Invalid amount." };
 
-            if (await this.isCovered(input.userId)) return { alreadyCovered: true };
-
-            if (input.designIdToActivate) {
-                const selection = await this.selectionsRepo.getByUserAndDesign(input.userId, input.designIdToActivate);
-                if (!selection) return { error: "That design isn't one of your selections." };
-            }
+            // buying the same design again is allowed (the frontend warns
+            // first) - it's a donation; the webhook leaves the existing job be
+            const selection = await this.selectionsRepo.getByUserAndDesign(input.userId, input.designId);
+            if (!selection) return { error: "That design isn't one of your selections." };
 
             const customerId = await this.getOrCreateStripeCustomer(input.userId);
 
             const metadata: Record<string, string> = {
                 user_id: input.userId,
-                design_id: input.designIdToActivate ?? "",
+                design_id: input.designId,
                 charity_ein_id: input.charityEinId != null ? String(input.charityEinId) : "",
                 amount_total_cents: String(amounts.amount_total_cents),
                 amount_platform_cents: String(amounts.amount_platform_cents),
@@ -206,7 +217,7 @@ export class PaymentsService {
                 input.userId,
                 amounts.amount_total_cents,
                 amounts.amount_platform_cents,
-                input.designIdToActivate ?? "none",
+                input.designId,
                 input.autoRenew ? "sub" : "onetime",
                 input.attemptId,
             ].join("-");
@@ -252,9 +263,6 @@ export class PaymentsService {
                     amount: amounts.amount_total_cents,
                     currency: "usd",
                     automatic_payment_methods: { enabled: true },
-                    // keep the card on file so a later "turn on auto-renew"
-                    // from settings has something to charge at renewal
-                    setup_future_usage: "off_session",
                     // marks this as our one-time checkout PI so the
                     // payment_intent.succeeded handler can tell it apart from
                     // a subscription invoice's PI (which it ignores in favour
@@ -365,12 +373,21 @@ export class PaymentsService {
 
         const split = this.splitFromMetadata(pi.metadata, pi.amount_received ?? pi.amount);
 
-        // The credit and the ledger insert commit or roll back together: if a
-        // concurrent duplicate delivery wins the insert first, this one's
-        // credit is rolled back with it instead of being double-applied.
+        // The design's selection says which year to paint. Without one the
+        // payment is still recorded (the money arrived), but there is no job
+        // to create - logged for a manual follow-up.
+        const designId = pi.metadata?.design_id;
+        const selection = designId ? await this.selectionsRepo.getByUserAndDesign(userId, designId) : undefined;
+        if (!selection) {
+            logger.error(`payment_intent.succeeded ${pi.id}: user ${userId} has no selection for design ${designId} - no backfill job created`);
+        }
+
+        // The ledger insert and the job commit or roll back together: if a
+        // concurrent duplicate delivery wins the insert first, this one's job
+        // is rolled back with it. A repeat purchase of the same design is a
+        // donation - the job create is a no-op returning the existing row.
         try {
             await withTransaction(async (client) => {
-                const billingRow = await this.billingRepo.bumpPaidUntilOneYear(userId, client);
                 await this.paymentsRepo.create({
                     user_id: userId,
                     stripe_event_id: event.id,
@@ -379,9 +396,13 @@ export class PaymentsService {
                     status: "succeeded",
                     ...split,
                     charity_ein_id: this.parseCharityId(pi.metadata?.charity_ein_id),
-                    period_start: new Date().toISOString(),
-                    period_end: billingRow.paid_until,
+                    // a purchase buys one design, not a period of time
+                    period_start: null,
+                    period_end: null,
                 }, client);
+                if (selection) {
+                    await this.backfillJobsRepo.create(userId, designId, designYear(selection.start_date), client);
+                }
             });
         } catch (err: any) {
             if (isUniqueViolationOn(err, PAYMENTS_STRIPE_EVENT_ID_UNIQUE)) {
@@ -389,22 +410,6 @@ export class PaymentsService {
                 return { handled: true, note: "duplicate" };
             }
             throw err;
-        }
-
-        await this.maybeActivateDesign(userId, pi.metadata?.design_id);
-
-        // remember the card as the customer's default so a future
-        // auto-renew subscription can charge it without re-prompting
-        const paymentMethod = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id;
-        const customerId = typeof pi.customer === "string" ? pi.customer : pi.customer?.id;
-        if (paymentMethod && customerId) {
-            try {
-                await stripe.customers.update(customerId, {
-                    invoice_settings: { default_payment_method: paymentMethod },
-                });
-            } catch (err: any) {
-                logger.error(err); // non-fatal: the payment already succeeded
-            }
         }
 
         return { handled: true };

@@ -15,14 +15,18 @@ export function mostRecentSunday(date: Date): Date {
   return d
 }
 
-/** "Today" tab anchor: the grid's first column is the most recent Sunday on/before today. */
-export function todayAnchor(now: Date = new Date()): Date {
-  return mostRecentSunday(now)
+/** How many past years the editor offers - kept short for now; may grow (e.g. back to the user's GitHub join year). */
+export const PAST_YEAR_COUNT = 3
+
+/** Grid anchor for a year: the most recent Sunday on/before Jan 1, matching GitHub's own year layout. */
+export function yearAnchor(year: number): Date {
+  return mostRecentSunday(new Date(Date.UTC(year, 0, 1)))
 }
 
-/** Current-year tab anchor: the most recent Sunday on/before Jan 1 of this year, for year-to-date designs. */
-export function currentYearAnchor(now: Date = new Date()): Date {
-  return mostRecentSunday(new Date(Date.UTC(now.getUTCFullYear(), 0, 1)))
+/** The last PAST_YEAR_COUNT full calendar years before `now` (UTC), most recent first. */
+export function pastYears(now: Date = new Date()): number[] {
+  const currentYear = now.getUTCFullYear()
+  return Array.from({ length: PAST_YEAR_COUNT }, (_, i) => currentYear - 1 - i)
 }
 
 export function toDateString(date: Date): string {

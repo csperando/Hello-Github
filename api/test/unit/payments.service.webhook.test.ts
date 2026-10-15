@@ -2,6 +2,7 @@ import type { iUserBillingRepo } from "../../repository/userBilling.repo";
 import type { iPaymentsRepo } from "../../repository/payments.repo";
 import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
 import type { iUserRepo } from "../../repository/users.repo";
+import type { iBackfillJobsRepo } from "../../repository/backfillJobs.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 
 const billingRepoMock = createMockRepoProxy<iUserBillingRepo>();
@@ -12,6 +13,8 @@ const selectionsRepoMock = createMockRepoProxy<iDesignSelectionsRepo>();
 mockRepo("repository/designSelections.repo", selectionsRepoMock);
 const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
+const backfillJobsRepoMock = createMockRepoProxy<iBackfillJobsRepo>();
+mockRepo("repository/backfillJobs.repo", backfillJobsRepoMock);
 
 const mockStripe = {
     subscriptions: { retrieve: jest.fn() },
@@ -54,6 +57,7 @@ describe("PaymentsService.handleWebhookEvent", () => {
         paymentsRepoMock.__reset();
         selectionsRepoMock.__reset();
         usersRepoMock.__reset();
+        backfillJobsRepoMock.__reset();
         mockStripe.subscriptions.retrieve.mockReset();
         mockStripe.charges.retrieve.mockReset();
         mockStripe.customers.update.mockReset();
@@ -64,7 +68,9 @@ describe("PaymentsService.handleWebhookEvent", () => {
         billingRepoMock.updateSubscription.mockResolvedValue({});
         paymentsRepoMock.existsByStripeEventId.mockResolvedValue(false);
         paymentsRepoMock.create.mockResolvedValue({ id: "p1" });
-        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: "u1", design_id: "d1" });
+        // anchored on the Sunday before Jan 1 2025 - a 2025 design
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: "u1", design_id: "d1", start_date: "2024-12-29" });
+        backfillJobsRepoMock.create.mockResolvedValue({ id: "j1", status: "awaiting_issue" });
         selectionsRepoMock.setActiveExclusive.mockResolvedValue({ is_active: true });
         selectionsRepoMock.deactivateActiveForUser.mockResolvedValue([{ design_id: "d1" }]);
     });
@@ -72,11 +78,10 @@ describe("PaymentsService.handleWebhookEvent", () => {
     describe("payment_intent.succeeded (one-time)", () => {
         const pi = { id: "pi_1", customer: "cus_1", amount: 1000, amount_received: 1000, metadata: oneTimeMetadata };
 
-        it("bumps paid_until, writes a one_time ledger row, and activates the design", async () => {
+        it("writes a one_time ledger row and creates the design's backfill job in the same transaction", async () => {
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
 
             expect(res.handled).toBe(true);
-            expect(billingRepoMock.bumpPaidUntilOneYear).toHaveBeenCalledWith("u1", fakeClient);
             expect(paymentsRepoMock.create).toHaveBeenCalledWith(
                 expect.objectContaining({
                     user_id: "u1",
@@ -85,11 +90,24 @@ describe("PaymentsService.handleWebhookEvent", () => {
                     amount_platform_cents: 300,
                     amount_charity_cents: 700,
                     charity_ein_id: 42,
-                    period_end: "2027-01-01T00:00:00.000Z",
+                    period_start: null,
+                    period_end: null,
                 }),
                 fakeClient,
             );
-            expect(selectionsRepoMock.setActiveExclusive).toHaveBeenCalledWith("u1", "d1");
+            expect(backfillJobsRepoMock.create).toHaveBeenCalledWith("u1", "d1", 2025, fakeClient);
+        });
+
+        it("no longer opens a paid period or activates the design", async () => {
+            await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
+
+            expect(billingRepoMock.bumpPaidUntilOneYear).not.toHaveBeenCalled();
+            expect(selectionsRepoMock.setActiveExclusive).not.toHaveBeenCalled();
+        });
+
+        it("no longer saves the card as the customer's default", async () => {
+            await svc().handleWebhookEvent(evt("payment_intent.succeeded", { ...pi, payment_method: "pm_1" }));
+            expect(mockStripe.customers.update).not.toHaveBeenCalled();
         });
 
         it("ignores a PI that isn't one of our one-time checkout PIs", async () => {
@@ -97,7 +115,7 @@ describe("PaymentsService.handleWebhookEvent", () => {
                 evt("payment_intent.succeeded", { id: "pi_sub", customer: "cus_1", metadata: {} }),
             );
             expect(res.handled).toBe(false);
-            expect(billingRepoMock.bumpPaidUntilOneYear).not.toHaveBeenCalled();
+            expect(paymentsRepoMock.create).not.toHaveBeenCalled();
         });
 
         it("skips a duplicate event id (already in the ledger)", async () => {
@@ -105,37 +123,24 @@ describe("PaymentsService.handleWebhookEvent", () => {
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
             expect(res).toEqual({ handled: true, note: "duplicate" });
             expect(paymentsRepoMock.create).not.toHaveBeenCalled();
+            expect(backfillJobsRepoMock.create).not.toHaveBeenCalled();
         });
 
-        it("saves the card as the customer's default when the PI carries a payment method", async () => {
-            await svc().handleWebhookEvent(
-                evt("payment_intent.succeeded", { ...pi, payment_method: "pm_1" }),
-            );
-            expect(mockStripe.customers.update).toHaveBeenCalledWith("cus_1", {
-                invoice_settings: { default_payment_method: "pm_1" },
-            });
-        });
-
-        it("does not fail the webhook if setting the default payment method errors", async () => {
-            mockStripe.customers.update.mockRejectedValue(new Error("stripe blip"));
-            const res = await svc().handleWebhookEvent(
-                evt("payment_intent.succeeded", { ...pi, payment_method: "pm_1" }),
-            );
-            expect(res.handled).toBe(true);
-        });
-
-        it("does not fail the webhook when the design to activate is no longer selected", async () => {
+        // the money still arrived, so the payment is recorded; with no
+        // schedule there's no year to paint, so no job
+        it("records the payment but creates no job when the design is no longer selected", async () => {
             selectionsRepoMock.getByUserAndDesign.mockResolvedValue(undefined);
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
             expect(res.handled).toBe(true);
-            expect(selectionsRepoMock.setActiveExclusive).not.toHaveBeenCalled();
+            expect(paymentsRepoMock.create).toHaveBeenCalled();
+            expect(backfillJobsRepoMock.create).not.toHaveBeenCalled();
         });
 
         it("falls back to metadata.user_id when the customer is unknown", async () => {
             billingRepoMock.getByStripeCustomerId.mockResolvedValue(null);
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
             expect(res.handled).toBe(true);
-            expect(billingRepoMock.bumpPaidUntilOneYear).toHaveBeenCalledWith("u1", fakeClient);
+            expect(paymentsRepoMock.create).toHaveBeenCalledWith(expect.objectContaining({ user_id: "u1" }), fakeClient);
         });
 
         it("returns a clean duplicate response when it loses the race on the ledger's unique constraint", async () => {
@@ -143,8 +148,7 @@ describe("PaymentsService.handleWebhookEvent", () => {
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
 
             expect(res).toEqual({ handled: true, note: "duplicate" });
-            expect(selectionsRepoMock.setActiveExclusive).not.toHaveBeenCalled();
-            expect(mockStripe.customers.update).not.toHaveBeenCalled();
+            expect(backfillJobsRepoMock.create).not.toHaveBeenCalled();
         });
 
         it("still throws an unrelated DB error from the transaction (so Stripe retries)", async () => {

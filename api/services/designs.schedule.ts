@@ -109,6 +109,18 @@ export function getPatternIndexForDate(pattern: number[], selection: iScheduleFi
     return tiledWeek * 7 + dayOfWeek;
 }
 
+/**
+ * The calendar year a past-year design paints. Mirrors the editor's rule
+ * (vue/src/views/Editor.vue): a year's grid starts on the Sunday on/before
+ * Jan 1, so start_date may sit in the last days of the previous year - its
+ * year is read a week later instead.
+ */
+export function designYear(startDate: string): number {
+    const startWeekEnd = new Date(`${startDate}T00:00:00Z`);
+    startWeekEnd.setUTCDate(startWeekEnd.getUTCDate() + 6);
+    return startWeekEnd.getUTCFullYear();
+}
+
 /** Convenience wrapper: the pattern's intensity (0-4) for a given day, or null if none. */
 export function getIntensityForDate(pattern: number[], selection: iScheduleFields, targetDate: string): number | null {
     const idx = getPatternIndexForDate(pattern, selection, targetDate);

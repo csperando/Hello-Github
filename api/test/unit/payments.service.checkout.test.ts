@@ -25,7 +25,7 @@ import { PaymentsService, __resetYearProductCacheForTests } from "../../services
 
 const baseInput = (overrides: Record<string, unknown> = {}) => ({
     userId: "u1",
-    designIdToActivate: "d1",
+    designId: "d1",
     charityEinId: 42,
     totalCents: 1000,
     platformCents: 300,
@@ -66,15 +66,15 @@ describe("PaymentsService.createCheckout", () => {
         expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
     });
 
-    it("returns alreadyCovered (and does not charge) when the user's paid_until is in the future", async () => {
+    // each purchase buys one design, so an unexpired paid_until no longer blocks checkout
+    it("charges a user whose paid_until is still in the future", async () => {
         billingRepoMock.getByUserId.mockResolvedValue({ paid_until: new Date(Date.now() + 8.64e7).toISOString() });
 
         const res = await new PaymentsService().createCheckout(baseInput());
-        expect(res.alreadyCovered).toBe(true);
-        expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
+        expect(res.clientSecret).toBe("pi_1_secret");
     });
 
-    it("rejects a designIdToActivate the user has no selection for", async () => {
+    it("rejects a designId the user has no selection for", async () => {
         selectionsRepoMock.getByUserAndDesign.mockResolvedValue(undefined);
 
         const res = await new PaymentsService().createCheckout(baseInput());
@@ -103,6 +103,12 @@ describe("PaymentsService.createCheckout", () => {
         });
         const options = mockStripe.paymentIntents.create.mock.calls[0][1];
         expect(options.idempotencyKey).toContain("checkout-onetime-u1-1000-300");
+    });
+
+    // nothing charges a saved card any more (no auto-renew), so don't keep one
+    it("does not save the card for future off-session charges", async () => {
+        await new PaymentsService().createCheckout(baseInput());
+        expect(mockStripe.paymentIntents.create.mock.calls[0][0]).not.toHaveProperty("setup_future_usage");
     });
 
     // The idempotency key only dedupes retries within one checkout attempt. A
@@ -176,12 +182,5 @@ describe("PaymentsService.createCheckout", () => {
         // second subscription in the same process reuses the memoised id
         await new PaymentsService().createCheckout(baseInput({ autoRenew: true }));
         expect(mockStripe.products.create).toHaveBeenCalledTimes(1);
-    });
-
-    it("works for a standalone purchase with no design to activate", async () => {
-        const res = await new PaymentsService().createCheckout(baseInput({ designIdToActivate: null }));
-        expect(res.clientSecret).toBe("pi_1_secret");
-        expect(selectionsRepoMock.getByUserAndDesign).not.toHaveBeenCalled();
-        expect(mockStripe.paymentIntents.create.mock.calls[0][0].metadata.design_id).toBe("");
     });
 });

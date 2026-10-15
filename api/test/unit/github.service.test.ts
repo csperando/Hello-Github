@@ -6,7 +6,9 @@ import {
     pickNoreplyEmail,
     computeNoreplyEmail,
     fetchContributionCalendar,
+    createIssue,
 } from "../../services/github.service";
+import { config } from "../../config/config";
 
 const mockFetchResponse = (body: any, ok = true, status = 200) => ({
     ok,
@@ -67,6 +69,46 @@ describe("github.service", () => {
             fetchSpy.mockResolvedValue(mockFetchResponse({}, false, 500) as any);
 
             await expect(exchangeCodeForToken("some-code")).rejects.toThrow();
+        });
+
+        it("sends the login callback URL as redirect_uri by default", async () => {
+            fetchSpy.mockResolvedValue(mockFetchResponse({ access_token: "gho_abc123" }) as any);
+
+            await exchangeCodeForToken("some-code");
+            const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
+            expect(body.redirect_uri).toBe(config.GITHUB_CALLBACK_URL);
+        });
+
+        // GitHub requires it to match the redirect_uri the authorize step used
+        it("sends a given redirect_uri instead (the paint-consent callback)", async () => {
+            fetchSpy.mockResolvedValue(mockFetchResponse({ access_token: "gho_abc123" }) as any);
+
+            await exchangeCodeForToken("some-code", `${config.GITHUB_CALLBACK_URL}/paint`);
+            const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
+            expect(body.redirect_uri).toBe(`${config.GITHUB_CALLBACK_URL}/paint`);
+        });
+    });
+
+    describe("createIssue", () => {
+        it("POSTs the issue as the token's user and returns its html_url", async () => {
+            fetchSpy.mockResolvedValue(
+                mockFetchResponse({ html_url: "https://github.com/owner/canvas/issues/7" }, true, 201) as any,
+            );
+
+            const url = await createIssue("gho_paint", "owner/canvas", "a title", "a body");
+
+            expect(url).toBe("https://github.com/owner/canvas/issues/7");
+            const [calledUrl, init] = fetchSpy.mock.calls[0]!;
+            expect(calledUrl).toBe("https://api.github.com/repos/owner/canvas/issues");
+            expect(init!.method).toBe("POST");
+            expect((init!.headers as Record<string, string>).Authorization).toBe("Bearer gho_paint");
+            expect(JSON.parse(init!.body as string)).toEqual({ title: "a title", body: "a body" });
+        });
+
+        it("throws when GitHub refuses (e.g. scope not granted)", async () => {
+            fetchSpy.mockResolvedValue(mockFetchResponse({ message: "Not Found" }, false, 404) as any);
+
+            await expect(createIssue("gho_paint", "owner/canvas", "t", "b")).rejects.toThrow(/404/);
         });
     });
 

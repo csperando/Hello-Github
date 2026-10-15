@@ -6,12 +6,15 @@
     import BaseCard from "@/components/ui/BaseCard.vue"
     import ContributionGridPreview from "@/components/ui/ContributionGridPreview.vue"
     import { LEVEL_COLORS } from "@/helpers/grid"
+    import { githubPaintUrl } from "@/services/api"
 
-    type ErrorTypeKey = "404" | "500" | "github_disconnected"
+    type ErrorTypeKey = "404" | "500" | "github_disconnected" | "paint_consent_failed"
 
     const props = withDefaults(
         defineProps<{
             errorType?: ErrorTypeKey
+            // paint_consent_failed only: the bought design, for a straight retry
+            designId?: string
         }>(),
         {
             errorType: "404",
@@ -110,6 +113,21 @@
             noiseChance: 0.14,
             colors: LEVEL_COLORS,
         },
+        paint_consent_failed: {
+            eyebrow: "github consent",
+            code: "403",
+            codeColor: "oklch(75% 0.14 85)",
+            title: "We couldn't connect your GitHub account.",
+            message:
+                "Your payment is safe and your design is saved. We just need GitHub's go-ahead to link your account to the canvas repo before we can paint it - give it another try.",
+            primaryAction: "go to dashboard",
+            showDetails: false,
+            pattern: EXCLAIM,
+            level: 3,
+            startWeek: 12,
+            noiseChance: 0.14,
+            colors: LEVEL_COLORS,
+        },
     }
 
     function buildGlitchGrid(spec: ErrorSpec): { bg: string }[] {
@@ -132,6 +150,9 @@
     }
 
     const type = computed(() => ERROR_TYPES[props.errorType] ?? ERROR_TYPES["404"])
+    const paintRetryUrl = computed(() =>
+        props.errorType === "paint_consent_failed" && props.designId ? githubPaintUrl(props.designId) : "",
+    )
     const glitchCells = ref<{ bg: string }[]>(buildGlitchGrid(type.value))
 
     function regenerate() {
@@ -143,7 +164,7 @@
     const router = useRouter()
 
     function onPrimaryAction() {
-        if (props.errorType === "404") {
+        if (props.errorType === "404" || props.errorType === "paint_consent_failed") {
             router.push("/dashboard")
         } else if (props.errorType === "github_disconnected") {
             router.push("/signup")
@@ -173,7 +194,10 @@
                 </BaseCard>
 
                 <div class="actions">
-                    <BaseButton class="primary-action" @click="onPrimaryAction">{{ type.primaryAction }}</BaseButton>
+                    <a v-if="paintRetryUrl" :href="paintRetryUrl" data-testid="paint-retry">
+                        <BaseButton class="primary-action">try again →</BaseButton>
+                    </a>
+                    <BaseButton v-else class="primary-action" @click="onPrimaryAction">{{ type.primaryAction }}</BaseButton>
                     <RouterLink to="/"><BaseButton variant="secondary" class="back-home">back home</BaseButton></RouterLink>
                 </div>
 

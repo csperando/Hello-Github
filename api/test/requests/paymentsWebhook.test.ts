@@ -65,7 +65,6 @@ beforeEach(() => {
     mockStripe.webhooks.constructEvent.mockReset();
 
     billingRepoMock.getByStripeCustomerId.mockResolvedValue({ user_id: "u1" });
-    billingRepoMock.bumpPaidUntilOneYear.mockResolvedValue({ paid_until: "2027-01-01T00:00:00.000Z" });
     paymentsRepoMock.existsByStripeEventId.mockResolvedValue(false);
     paymentsRepoMock.create.mockResolvedValue({ id: "p1" });
 });
@@ -96,8 +95,7 @@ describe("POST /payments/webhook", () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ received: true });
-        expect(billingRepoMock.bumpPaidUntilOneYear).toHaveBeenCalledWith("u1", fakeClient);
-        expect(paymentsRepoMock.create).toHaveBeenCalled();
+        expect(paymentsRepoMock.create).toHaveBeenCalledWith(expect.objectContaining({ user_id: "u1" }), fakeClient);
     });
 
     it("verifies against the raw body (json body parser did not consume it first)", async () => {
@@ -115,7 +113,7 @@ describe("POST /payments/webhook", () => {
 
     it("500s (so Stripe retries) when dispatch throws", async () => {
         mockStripe.webhooks.constructEvent.mockReturnValue(oneTimeEvent);
-        billingRepoMock.bumpPaidUntilOneYear.mockRejectedValue(new Error("db down"));
+        paymentsRepoMock.create.mockRejectedValue(new Error("db down"));
 
         const res = await request(server)
             .post("/payments/webhook")

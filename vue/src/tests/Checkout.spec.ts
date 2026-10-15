@@ -14,6 +14,7 @@ vi.mock('@/services/api', () => ({
   searchOrgs: (...a: unknown[]) => searchOrgsMock(...a),
   apiFetch: (...a: unknown[]) => apiFetchMock(...a),
   githubLoginUrl: () => 'http://x',
+  githubPaintUrl: (designId: string) => `http://x/auth/github/paint?designId=${designId}`,
 }))
 
 const getDesignMock = vi.fn()
@@ -22,8 +23,10 @@ vi.mock('@/services/designs', () => ({
 }))
 
 const createCheckoutMock = vi.fn()
+const getBackfillJobMock = vi.fn()
 vi.mock('@/services/payments', () => ({
   createCheckout: (...a: unknown[]) => createCheckoutMock(...a),
+  getBackfillJob: (...a: unknown[]) => getBackfillJobMock(...a),
 }))
 
 const paymentElementMountMock = vi.fn()
@@ -49,7 +52,10 @@ function jsonResponse(body: unknown, ok = true) {
 
 const charity = { id: 7, ein: '12-3456789', name: 'GiveDirectly', street: '', city: 'NYC', state: 'NY', zip: '' }
 
-async function mountCheckout(query: Record<string, string> = {}, user: Record<string, unknown> = { id: 'u1', github_username: 'octo' }) {
+const noJob = () => ({ ok: false, status: 404, json: async () => ({}) }) as Response
+const job = (status: string) => jsonResponse({ data: [{ id: 'j1', design_id: 'd1', year: 2025, status }] })
+
+async function mountCheckout(query: Record<string, string> = { designId: 'd1' }, user: Record<string, unknown> = { id: 'u1', github_username: 'octo' }) {
   setActivePinia(createPinia())
   const router = createRouter({
     history: createMemoryHistory(),
@@ -57,6 +63,7 @@ async function mountCheckout(query: Record<string, string> = {}, user: Record<st
       { path: '/checkout', name: 'Checkout', component: CheckoutView },
       { path: '/dashboard', name: 'Dashboard', component: { template: '<div/>' } },
       { path: '/settings', name: 'Settings', component: { template: '<div/>' } },
+      { path: '/editor', name: 'Editor', component: { template: '<div/>' } },
     ],
   })
   router.push({ path: '/checkout', query })
@@ -67,7 +74,7 @@ async function mountCheckout(query: Record<string, string> = {}, user: Record<st
 
   const wrapper = mount(CheckoutView, { global: { plugins: [router] } })
   await flushPromises()
-  return wrapper
+  return Object.assign(wrapper, { router })
 }
 
 beforeEach(() => {
@@ -77,13 +84,11 @@ beforeEach(() => {
   createCheckoutMock.mockReset().mockResolvedValue(
     jsonResponse({ data: [{ client_secret: 'cs_1', amount_total_cents: 1000 }] }),
   )
+  getBackfillJobMock.mockReset().mockResolvedValue(noJob())
   confirmPaymentMock.mockReset().mockResolvedValue({ paymentIntent: { status: 'succeeded' } })
   paymentElementMountMock.mockReset()
   readyCb = undefined
-  // default /auth/me poll response: covered
-  apiFetchMock.mockReset().mockResolvedValue(
-    jsonResponse({ data: [{ id: 'u1', github_username: 'octo', paid_until: new Date(Date.now() + 86_400_000).toISOString() }] }),
-  )
+  apiFetchMock.mockReset().mockResolvedValue(jsonResponse({ data: [] }))
 })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -97,7 +102,7 @@ async function toCardPhase(wrapper: Awaited<ReturnType<typeof mountCheckout>>) {
 describe('Checkout.vue - charity + amount', () => {
   it('prefills the charity from the user profile default', async () => {
     getOrgByIdMock.mockResolvedValue(jsonResponse({ data: charity }))
-    const wrapper = await mountCheckout({}, { id: 'u1', github_username: 'octo', default_charity: 7 })
+    const wrapper = await mountCheckout({ designId: 'd1' }, { id: 'u1', github_username: 'octo', default_charity: 7 })
 
     expect(getOrgByIdMock).toHaveBeenCalledWith(7)
     expect(wrapper.text()).toContain('GiveDirectly')
@@ -113,7 +118,7 @@ describe('Checkout.vue - charity + amount', () => {
     const other = { ...charity, id: 9, name: 'Khan Academy' }
     searchOrgsMock.mockResolvedValue(jsonResponse({ data: [other] }))
 
-    const wrapper = await mountCheckout({}, { id: 'u1', github_username: 'octo', default_charity: 7 })
+    const wrapper = await mountCheckout({ designId: 'd1' }, { id: 'u1', github_username: 'octo', default_charity: 7 })
     expect(wrapper.text()).toContain('GiveDirectly')
 
     await wrapper.find('input[placeholder="search for a charity"]').setValue('khan')
@@ -126,7 +131,7 @@ describe('Checkout.vue - charity + amount', () => {
 
   it('lets the user clear the charity back to platform-only', async () => {
     getOrgByIdMock.mockResolvedValue(jsonResponse({ data: charity }))
-    const wrapper = await mountCheckout({}, { id: 'u1', github_username: 'octo', default_charity: 7 })
+    const wrapper = await mountCheckout({ designId: 'd1' }, { id: 'u1', github_username: 'octo', default_charity: 7 })
 
     await wrapper.find('.text-btn').trigger('click') // "remove charity"
     expect(wrapper.text()).toContain('No charity selected')
@@ -146,7 +151,7 @@ describe('Checkout.vue - charity + amount', () => {
 
   it('lets the split slider go down to a $0 platform share', async () => {
     getOrgByIdMock.mockResolvedValue(jsonResponse({ data: charity }))
-    const wrapper = await mountCheckout({}, { id: 'u1', github_username: 'octo', default_charity: 7 })
+    const wrapper = await mountCheckout({ designId: 'd1' }, { id: 'u1', github_username: 'octo', default_charity: 7 })
     await wrapper.find('button.continue-btn').trigger('click')
 
     const slider = wrapper.find('#checkout-split')
@@ -159,7 +164,7 @@ describe('Checkout.vue - charity + amount', () => {
 
   it('a preset sets the total and the fee box reflects the split', async () => {
     getOrgByIdMock.mockResolvedValue(jsonResponse({ data: charity }))
-    const wrapper = await mountCheckout({}, { id: 'u1', github_username: 'octo', default_charity: 7 })
+    const wrapper = await mountCheckout({ designId: 'd1' }, { id: 'u1', github_username: 'octo', default_charity: 7 })
     await wrapper.find('button.continue-btn').trigger('click')
 
     await wrapper.findAll('.preset-btn')[2]!.trigger('click') // $25.00
@@ -169,17 +174,41 @@ describe('Checkout.vue - charity + amount', () => {
     expect(wrapper.text()).toContain('$24.01')
   })
 
-  it('defaults the auto-renew toggle to on', async () => {
+  it('has no auto-renew toggle (every purchase is one-time)', async () => {
     const wrapper = await mountCheckout()
     await wrapper.find('button.continue-btn').trigger('click')
-    expect(wrapper.get('[data-testid="auto-renew-toggle"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-testid="auto-renew-toggle"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('auto-renew')
   })
 
-  it('shows the already-covered panel instead of the flow for a covered user', async () => {
+  it('does not block a user whose paid_until is still in the future', async () => {
     const future = new Date(Date.now() + 86_400_000).toISOString()
-    const wrapper = await mountCheckout({}, { id: 'u1', github_username: 'octo', paid_until: future })
-    expect(wrapper.text()).toContain("You're already covered")
+    const wrapper = await mountCheckout({ designId: 'd1' }, { id: 'u1', github_username: 'octo', paid_until: future })
+    expect(wrapper.text()).not.toContain("You're already covered")
+    expect(wrapper.find('.step-card').exists()).toBe(true)
+  })
+
+  it('redirects to the editor without a designId', async () => {
+    const wrapper = await mountCheckout({})
+    expect(wrapper.router.currentRoute.value.path).toBe('/editor')
+  })
+
+  it('describes the purchase as painting the design onto its year', async () => {
+    const wrapper = await mountCheckout({ designId: 'd1', year: '2025' })
+    await wrapper.find('button.continue-btn').trigger('click')
+    expect(wrapper.text()).toContain('your 2025 contribution graph')
+  })
+
+  it('warns before buying a design again, and only continues once the user confirms', async () => {
+    getBackfillJobMock.mockResolvedValue(job('done'))
+    const wrapper = await mountCheckout()
+
+    expect(getBackfillJobMock).toHaveBeenCalledWith('d1')
+    expect(wrapper.text()).toContain("You've already bought this design")
     expect(wrapper.find('.step-card').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="donate-again"]').trigger('click')
+    expect(wrapper.find('.step-card').exists()).toBe(true)
   })
 
   it('loads the originating design named in ?designId as order context', async () => {
@@ -204,7 +233,6 @@ describe('Checkout.vue - Stripe Payment Element', () => {
     expect(createCheckoutMock).toHaveBeenCalledWith({
       totalCents: 1000,
       platformCents: 99,
-      autoRenew: true,
       designId: 'd1',
       charityEinId: 7,
       attemptId: expect.stringMatching(UUID_RE),
@@ -213,14 +241,14 @@ describe('Checkout.vue - Stripe Payment Element', () => {
     expect(wrapper.find('#payment-element').exists()).toBe(true)
   })
 
-  it('omits designId/charityEinId for a standalone, no-charity purchase', async () => {
+  it('omits charityEinId for a no-charity purchase', async () => {
     const wrapper = await mountCheckout()
     await toCardPhase(wrapper)
 
     expect(createCheckoutMock).toHaveBeenCalledWith({
       totalCents: 1000,
       platformCents: 1000,
-      autoRenew: true,
+      designId: 'd1',
       attemptId: expect.stringMatching(UUID_RE),
     })
   })
@@ -241,15 +269,6 @@ describe('Checkout.vue - Stripe Payment Element', () => {
     expect(ids[2]).not.toBe(ids[0])
   })
 
-  it('shows the already-covered panel when the checkout API returns 409', async () => {
-    createCheckoutMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({}) } as Response)
-
-    const wrapper = await mountCheckout()
-    await toCardPhase(wrapper)
-
-    expect(wrapper.text()).toContain("You're already covered")
-  })
-
   it('surfaces a checkout error without leaving the amount phase', async () => {
     createCheckoutMock.mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: 'bad amount' }) } as Response)
     const wrapper = await mountCheckout()
@@ -259,8 +278,10 @@ describe('Checkout.vue - Stripe Payment Element', () => {
     expect(wrapper.find('#payment-element').exists()).toBe(false)
   })
 
-  it('confirms the payment, then polls until covered and shows the design as live', async () => {
+  it('confirms the payment, then polls for the backfill job and sends the user to grant consent', async () => {
     getDesignMock.mockResolvedValue(jsonResponse({ data: [{ id: 'd1', name: 'my heart', pattern: [0, 1, 2, 3, 4, 0, 0] }] }))
+    // no job at mount (first purchase); the webhook has created it by the first poll
+    getBackfillJobMock.mockResolvedValueOnce(noJob()).mockResolvedValue(job('awaiting_issue'))
     const wrapper = await mountCheckout({ designId: 'd1' })
     await toCardPhase(wrapper)
     readyCb?.()
@@ -269,26 +290,39 @@ describe('Checkout.vue - Stripe Payment Element', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(confirmPaymentMock).toHaveBeenCalled()
-    expect(apiFetchMock).toHaveBeenCalledWith('/auth/me')
-    expect(wrapper.text()).toContain("You're all set")
+    // a 3DS redirect must come back knowing which design was bought
+    const returnUrl: string = confirmPaymentMock.mock.calls[0]![0].confirmParams.return_url
+    expect(returnUrl).toContain('/checkout?designId=d1&paid=1')
+    expect(wrapper.text()).toContain('One more step')
     expect(wrapper.text()).toContain('my heart')
+    expect(wrapper.get('a[data-testid="paint-consent"]').attributes('href')).toBe(
+      'http://x/auth/github/paint?designId=d1',
+    )
   })
 
-  it('prompts a standalone purchaser to pick a design once covered', async () => {
-    const wrapper = await mountCheckout({ paid: '1' })
+  it('on return from a redirect, skips the repeat-purchase warning and goes straight to the consent step', async () => {
+    getBackfillJobMock.mockResolvedValue(job('awaiting_issue'))
+    const wrapper = await mountCheckout({ designId: 'd1', paid: '1' })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain("You've already bought this design")
+    expect(wrapper.text()).toContain('One more step')
+  })
+
+  it('thanks a repeat purchaser without asking for consent again', async () => {
+    getBackfillJobMock.mockResolvedValue(job('done'))
+    const wrapper = await mountCheckout({ designId: 'd1', paid: '1' })
     await flushPromises()
 
     expect(wrapper.text()).toContain("You're all set")
-    expect(wrapper.text()).toContain("pick a design")
-    expect(wrapper.find('a[href="/editor"]').exists()).toBe(true)
+    expect(wrapper.find('a[data-testid="paint-consent"]').exists()).toBe(false)
   })
 
-  it('falls back to a "refresh in a minute" message if coverage never lands', async () => {
+  it('falls back to a "refresh in a minute" message if the job never appears', async () => {
     vi.useFakeTimers()
-    apiFetchMock.mockResolvedValue(jsonResponse({ data: [{ id: 'u1', github_username: 'octo', paid_until: null }] }))
+    getBackfillJobMock.mockResolvedValue(noJob())
 
-    const wrapper = await mountCheckout({ paid: '1' })
+    const wrapper = await mountCheckout({ designId: 'd1', paid: '1' })
     await vi.runAllTimersAsync()
     vi.useRealTimers()
     await flushPromises()
