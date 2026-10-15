@@ -202,32 +202,34 @@
             </div>
         </section>
 
-        <!-- COMMUNITY -->
-        <section id="community" class="section-community">
-            <div class="section-inner">
-                <div class="gallery-header">
-                    <div>
-                        <div class="eyebrow">// the gallery</div>
-                        <h2 class="section-title title-gallery">Some devs paint privately. Some show their work off.</h2>
-                    </div>
-                    <BaseButton variant="secondary" class="browse-btn">browse the gallery →</BaseButton>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
-                    <div v-for="post in gallery" :key="post.user" class="gallery-card">
-                        <div aria-hidden="true" class="gallery-thumb">
-                            <span class="gallery-thumb-label">[ user's grid design ]</span>
+        <!-- TODO - COMMUNITY -->
+        <!-- 
+            <section id="community" class="section-community">
+                <div class="section-inner">
+                    <div class="gallery-header">
+                        <div>
+                            <div class="eyebrow">// the gallery</div>
+                            <h2 class="section-title title-gallery">Some devs paint privately. Some show their work off.</h2>
                         </div>
-                        <div class="gallery-body">
-                            <div class="gallery-body-header">
-                                <span class="gallery-user">{{ post.user }}</span>
-                                <span class="gallery-likes">{{ post.likes }} likes</span>
+                        <BaseButton variant="secondary" class="browse-btn">browse the gallery →</BaseButton>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+                        <div v-for="post in gallery" :key="post.user" class="gallery-card">
+                            <div aria-hidden="true" class="gallery-thumb">
+                                <span class="gallery-thumb-label">[ user's grid design ]</span>
                             </div>
-                            <div class="gallery-charity-tag">gave to {{ post.charity }}</div>
+                            <div class="gallery-body">
+                                <div class="gallery-body-header">
+                                    <span class="gallery-user">{{ post.user }}</span>
+                                    <span class="gallery-likes">{{ post.likes }} likes</span>
+                                </div>
+                                <div class="gallery-charity-tag">gave to {{ post.charity }}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </section>
+            </section> 
+        -->
 
         <!-- FINAL CTA -->
         <section class="section-cta">
