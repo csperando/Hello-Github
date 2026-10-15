@@ -108,7 +108,7 @@
                         <RouterLink to="/#how"><BaseButton variant="secondary" class="cta-secondary">see how it works ↓</BaseButton></RouterLink>
                     </div>
                     <div class="hero-stats">
-                        <div><div class="stat-number">$182,400+</div><div class="stat-label">donated to charity</div></div>
+                        <!-- <div><div class="stat-number">$182,400+</div><div class="stat-label">donated to charity</div></div> -->
                         <div><div class="stat-number">6,400+</div><div class="stat-label">graphs designed</div></div>
                         <div><div class="stat-number">1,200+</div><div class="stat-label">charities supported</div></div>
                     </div>
