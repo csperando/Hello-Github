@@ -1,5 +1,11 @@
 import { Router, NextFunction, Request, Response } from "express";
 import { iResponse } from "../models/response";
+import {
+    toPublicDesign,
+    toPublicSelection,
+    toPublicSelectionWithDesign,
+    toPublicRunStatus,
+} from "../models/designs";
 import { DesignService } from "../services/designs.service";
 import { UserService } from "../services/users.service";
 import { requireAuth } from "../middleware/auth.middleware";
@@ -60,7 +66,7 @@ router.post("/", requireAuth, async (req: Request, res: Response, next: NextFunc
         }
 
         const created = await designService.createDesign(req.user!.id, input!);
-        const response: iResponse = { status: 200, success: true, data: [created] };
+        const response: iResponse = { status: 200, success: true, data: [{ design: toPublicDesign(created.design), selection: toPublicSelection(created.selection) }] };
         res.status(200).json(response);
 
     } catch(err: any) {
@@ -87,7 +93,7 @@ router.post("/", requireAuth, async (req: Request, res: Response, next: NextFunc
 router.get("/", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const selections = await designService.getSelectionsByUserId(req.user!.id);
-        const response: iResponse = { status: 200, success: true, data: selections };
+        const response: iResponse = { status: 200, success: true, data: selections.map(toPublicSelectionWithDesign) };
         res.status(200).json(response);
 
     } catch(err) {
@@ -105,7 +111,7 @@ router.get("/", requireAuth, async (req: Request, res: Response, next: NextFunct
 router.get("/last-run", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const statuses = await designService.getLastRunStatuses(req.user!.id);
-        const response: iResponse = { status: 200, success: true, data: statuses };
+        const response: iResponse = { status: 200, success: true, data: statuses.map(toPublicRunStatus) };
         res.status(200).json(response);
 
     } catch(err) {
@@ -136,7 +142,7 @@ router.get("/:designId", requireAuth, async (req: Request, res: Response, next: 
             }
         }
 
-        const response: iResponse = { status: 200, success: true, data: [design] };
+        const response: iResponse = { status: 200, success: true, data: [toPublicDesign(design)] };
         res.status(200).json(response);
 
     } catch(err) {
@@ -177,7 +183,7 @@ router.patch("/:designId", requireAuth, async (req: Request, res: Response, next
         }
 
         const updated = await designService.updateDesign((req.params.designId as string), input!);
-        const response: iResponse = { status: 200, success: true, data: [updated] };
+        const response: iResponse = { status: 200, success: true, data: [toPublicDesign(updated)] };
         res.status(200).json(response);
 
     } catch(err) {
@@ -255,7 +261,7 @@ router.post("/:designId/select", requireAuth, async (req: Request, res: Response
         }
 
         const selection = await designService.selectDesign(req.user!.id, req.params.designId as string, input!);
-        const response: iResponse = { status: 200, success: true, data: [selection] };
+        const response: iResponse = { status: 200, success: true, data: [toPublicSelection(selection)] };
         res.status(200).json(response);
 
     } catch(err: any) {
@@ -310,7 +316,7 @@ router.patch("/:designId/select", requireAuth, async (req: Request, res: Respons
         }
 
         const updated = await designService.updateSelection(req.user!.id, (req.params.designId as string), input!);
-        const response: iResponse = { status: 200, success: true, data: [updated] };
+        const response: iResponse = { status: 200, success: true, data: [toPublicSelection(updated)] };
         res.status(200).json(response);
 
     } catch(err: any) {

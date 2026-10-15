@@ -27,7 +27,7 @@ testApp.get("/role-only", requireRole("admin"), (req: Request, res: Response) =>
     res.status(200).json({ success: true, status: 200, data: [req.user] });
 });
 testApp.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-    const response: iResponse = { status: 500, success: false, error: err };
+    const response: iResponse = { status: 500, success: false, error: err.message };
     res.status(500).json(response);
 });
 

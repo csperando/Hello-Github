@@ -116,6 +116,22 @@ export function __resetYearProductCacheForTests(): void {
     cachedYearProductId = null;
 }
 
+/**
+ * Whether Stripe still has this customer under the current key. False for a
+ * deleted customer or a resource_missing (including a test-mode id read with
+ * a live key, or vice versa); any other failure is rethrown, not treated as
+ * missing - a Stripe outage must never mint replacement customers.
+ */
+async function stripeCustomerExists(customerId: string): Promise<boolean> {
+    try {
+        const customer = await stripe.customers.retrieve(customerId);
+        return !customer.deleted;
+    } catch (err: any) {
+        if (err?.code === "resource_missing") return false;
+        throw err;
+    }
+}
+
 export class PaymentsService {
     public billingRepo: any;
     public paymentsRepo: any;
@@ -159,12 +175,19 @@ export class PaymentsService {
 
     /**
      * The user's Stripe customer id, creating (and persisting) one on first
-     * use. One customer per user - never create a second.
+     * use. One customer per user - a new one is only made to replace a
+     * stored id Stripe no longer has (deleted, or created under the other
+     * test/live mode), and that replacement clears the stale subscription.
      */
     public async getOrCreateStripeCustomer(userId: string): Promise<string> {
         try {
             const existing = await this.billingRepo.getByUserId(userId);
-            if (existing?.stripe_customer_id) return existing.stripe_customer_id;
+            const storedId: string | null = existing?.stripe_customer_id ?? null;
+
+            if (storedId) {
+                if (await stripeCustomerExists(storedId)) return storedId;
+                logger.warn(`user ${userId}'s stored Stripe customer ${storedId} is missing or deleted - replacing it`);
+            }
 
             const user = await this.usersRepo.getUserById(userId);
             const customer = await stripe.customers.create({
@@ -172,7 +195,11 @@ export class PaymentsService {
                 metadata: { user_id: userId, github_username: user?.github_username ?? "" },
             });
 
-            await this.billingRepo.upsertCustomerId(userId, customer.id);
+            if (storedId) {
+                await this.billingRepo.replaceCustomerId(userId, customer.id);
+            } else {
+                await this.billingRepo.upsertCustomerId(userId, customer.id);
+            }
             return customer.id;
 
         } catch (err: any) {

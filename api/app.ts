@@ -1,14 +1,14 @@
 /// <reference path="./types/express.d.ts" />
-import express, { Request, Response, NextFunction } from "express";
+import express from "express";
 import cookieParser from "cookie-parser";
-import { logger } from "./config/logger";
 import { config } from "./config/config";
 import cors from "./config/cors";
 import router from "./routes";
 import { stripeWebhookRawParser, stripeWebhookHandler } from "./routes/paymentsWebhook";
-import { iResponse } from "./models/response";
+import { errorHandler } from "./middleware/errorHandler.middleware";
 
 const app = express();
+app.disable("x-powered-by");
 
 app.use(cors);
 app.use(cookieParser(config.SESSION_SECRET));
@@ -26,10 +26,6 @@ router(app);
 // });
 
 // final catch for server errors
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-    logger.error(err);
-    const response: iResponse = { status: 500, success: false, error: err };
-    res.status(500).json(response);
-});
+app.use(errorHandler);
 
 export default app;

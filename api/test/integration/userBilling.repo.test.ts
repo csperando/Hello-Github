@@ -58,6 +58,27 @@ describe("UserBillingRepository", () => {
         });
     });
 
+    describe("replaceCustomerId", () => {
+        it("swaps the customer and clears the subscription triple, keeping paid_until", async () => {
+            await billingRepo.upsertCustomerId(userId, "cus_stale");
+            await billingRepo.updateSubscription(userId, {
+                stripe_subscription_id: "sub_stale",
+                subscription_status: "active",
+                auto_renew: true,
+            });
+            const paidUntil = new Date(Date.now() + 8.64e7).toISOString();
+            await billingRepo.setPaidUntil(userId, paidUntil);
+
+            const replaced = await billingRepo.replaceCustomerId(userId, "cus_fresh");
+
+            expect(replaced.stripe_customer_id).toBe("cus_fresh");
+            expect(replaced.stripe_subscription_id).toBeNull();
+            expect(replaced.subscription_status).toBeNull();
+            expect(replaced.auto_renew).toBe(false);
+            expect(new Date(replaced.paid_until).toISOString()).toBe(paidUntil);
+        });
+    });
+
     describe("getByStripeCustomerId", () => {
         it("finds the row by customer id, or null when unknown", async () => {
             await billingRepo.upsertCustomerId(userId, "cus_lookup");

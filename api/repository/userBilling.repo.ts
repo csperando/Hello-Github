@@ -18,6 +18,7 @@ export interface iUserBillingRepo {
     getByUserId: (userId: string) => Promise<any | null>;
     getByStripeCustomerId: (stripeCustomerId: string) => Promise<any | null>;
     upsertCustomerId: (userId: string, stripeCustomerId: string) => Promise<any>;
+    replaceCustomerId: (userId: string, stripeCustomerId: string) => Promise<any>;
     updateSubscription: (userId: string, input: iUserBillingSubscriptionInput) => Promise<any>;
     setPaidUntil: (userId: string, paidUntilIso: string) => Promise<any>;
     bumpPaidUntilOneYear: (userId: string, client?: PoolClient) => Promise<any>;
@@ -58,6 +59,31 @@ const repo = (): iUserBillingRepo => {
                 ON CONFLICT (user_id) DO UPDATE
                 SET stripe_customer_id = EXCLUDED.stripe_customer_id
                     , updated_at = NOW()
+                RETURNING *;
+            `;
+            const result = await pool.query(sqlString, [userId, stripeCustomerId]);
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    // Swap in a new customer when the stored one no longer exists in Stripe
+    // (e.g. a test-mode id read with a live key). Any subscription hung off
+    // the old customer is gone with it, so the subscription triple is
+    // cleared in the same statement - paid_until is left alone.
+    const replaceCustomerId = async (userId: string, stripeCustomerId: string) => {
+        try {
+            const sqlString = `
+                UPDATE user_billing
+                SET stripe_customer_id = $2
+                    , stripe_subscription_id = NULL
+                    , subscription_status = NULL
+                    , auto_renew = FALSE
+                    , updated_at = NOW()
+                WHERE user_id = $1
                 RETURNING *;
             `;
             const result = await pool.query(sqlString, [userId, stripeCustomerId]);
@@ -179,6 +205,7 @@ const repo = (): iUserBillingRepo => {
         getByUserId,
         getByStripeCustomerId,
         upsertCustomerId,
+        replaceCustomerId,
         updateSubscription,
         setPaidUntil,
         bumpPaidUntilOneYear,

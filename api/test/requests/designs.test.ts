@@ -218,6 +218,17 @@ describe("Design routes", () => {
             expect(res.status).toBe(200);
         });
 
+        it("sends only allowlisted columns, dropping anything else on the row", async () => {
+            designsRepoMock.getById.mockResolvedValue(mockDesignRow({ internal_note: "server-only" }));
+
+            const res = await request(server).get("/design/d1").set("Cookie", ownerCookie);
+            const body: iResponse = JSON.parse(res.text);
+
+            expect(res.status).toBe(200);
+            expect(body.data![0]).toEqual(mockDesignRow());
+            expect(res.text).not.toContain("internal_note");
+        });
+
         it("rejects another user reading a private design with 403", async () => {
             designsRepoMock.getById.mockResolvedValue(mockDesignRow({ is_public: false }));
 

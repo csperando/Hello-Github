@@ -14,7 +14,7 @@ const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
 
 const mockStripe = {
-    customers: { create: jest.fn(), update: jest.fn() },
+    customers: { create: jest.fn(), update: jest.fn(), retrieve: jest.fn() },
     subscriptions: { create: jest.fn(), update: jest.fn() },
     products: { search: jest.fn(), create: jest.fn() },
 };
@@ -33,6 +33,7 @@ beforeEach(() => {
     usersRepoMock.__reset();
     mockStripe.customers.create.mockReset();
     mockStripe.customers.update.mockReset();
+    mockStripe.customers.retrieve.mockReset().mockImplementation(async (id: string) => ({ id }));
     mockStripe.subscriptions.create.mockReset();
     mockStripe.subscriptions.update.mockReset();
     mockStripe.products.search.mockReset().mockResolvedValue({ data: [{ id: "prod_1" }] });

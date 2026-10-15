@@ -14,7 +14,7 @@ const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
 
 const mockStripe = {
-    customers: { create: jest.fn() },
+    customers: { create: jest.fn(), retrieve: jest.fn() },
     paymentIntents: { create: jest.fn() },
     subscriptions: { create: jest.fn() },
     products: { search: jest.fn(), create: jest.fn() },
@@ -41,6 +41,7 @@ describe("PaymentsService.createCheckout", () => {
         selectionsRepoMock.__reset();
         usersRepoMock.__reset();
         mockStripe.customers.create.mockReset();
+        mockStripe.customers.retrieve.mockReset();
         mockStripe.paymentIntents.create.mockReset();
         mockStripe.subscriptions.create.mockReset();
         mockStripe.products.search.mockReset();
@@ -52,6 +53,7 @@ describe("PaymentsService.createCheckout", () => {
         usersRepoMock.getUserById.mockResolvedValue({ id: "u1", email: "u1@example.com", github_username: "octo" });
         selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: "u1", design_id: "d1" });
         mockStripe.customers.create.mockResolvedValue({ id: "cus_1" });
+        mockStripe.customers.retrieve.mockImplementation(async (id: string) => ({ id }));
         mockStripe.paymentIntents.create.mockResolvedValue({ id: "pi_1", client_secret: "pi_1_secret" });
         mockStripe.products.search.mockResolvedValue({ data: [{ id: "prod_1" }] });
         mockStripe.subscriptions.create.mockResolvedValue({
@@ -147,6 +149,46 @@ describe("PaymentsService.createCheckout", () => {
         expect(mockStripe.customers.create).not.toHaveBeenCalled();
         const params = mockStripe.paymentIntents.create.mock.calls[0][0];
         expect(params.customer).toBe("cus_existing");
+    });
+
+    describe("when the stored customer no longer exists in Stripe", () => {
+        beforeEach(() => {
+            billingRepoMock.getByUserId.mockResolvedValue({ stripe_customer_id: "cus_stale", paid_until: null });
+            billingRepoMock.replaceCustomerId.mockResolvedValue({ user_id: "u1", stripe_customer_id: "cus_1" });
+        });
+
+        it("replaces a resource_missing customer (e.g. test-mode id under a live key)", async () => {
+            mockStripe.customers.retrieve.mockRejectedValue(
+                Object.assign(new Error("No such customer: 'cus_stale'"), { code: "resource_missing" }),
+            );
+
+            await new PaymentsService().createCheckout(baseInput());
+
+            expect(mockStripe.customers.retrieve).toHaveBeenCalledWith("cus_stale");
+            expect(mockStripe.customers.create).toHaveBeenCalledTimes(1);
+            expect(billingRepoMock.replaceCustomerId).toHaveBeenCalledWith("u1", "cus_1");
+            expect(billingRepoMock.upsertCustomerId).not.toHaveBeenCalled();
+            expect(mockStripe.paymentIntents.create.mock.calls[0][0].customer).toBe("cus_1");
+        });
+
+        it("replaces a customer that was deleted in Stripe", async () => {
+            mockStripe.customers.retrieve.mockResolvedValue({ id: "cus_stale", deleted: true });
+
+            await new PaymentsService().createCheckout(baseInput());
+
+            expect(billingRepoMock.replaceCustomerId).toHaveBeenCalledWith("u1", "cus_1");
+            expect(mockStripe.paymentIntents.create.mock.calls[0][0].customer).toBe("cus_1");
+        });
+
+        it("rethrows any other Stripe failure without minting a replacement", async () => {
+            mockStripe.customers.retrieve.mockRejectedValue(
+                Object.assign(new Error("Stripe is down"), { code: "api_connection_error" }),
+            );
+
+            await expect(new PaymentsService().createCheckout(baseInput())).rejects.toThrow("Stripe is down");
+            expect(mockStripe.customers.create).not.toHaveBeenCalled();
+            expect(billingRepoMock.replaceCustomerId).not.toHaveBeenCalled();
+        });
     });
 
     it("creates an annual Subscription (not a one-time PI) when autoRenew is set, returning the first invoice's client secret", async () => {

@@ -1,5 +1,6 @@
 import { Router, NextFunction, Request, Response } from "express";
 import { iResponse } from "../models/response";
+import { toPublicPayment, toPublicBackfillJob } from "../models/payments";
 import { PaymentsService } from "../services/payments.service";
 import { extractCheckoutInput, extractSubscriptionPatch } from "../services/payments.validation";
 import { requireAuth } from "../middleware/auth.middleware";
@@ -58,7 +59,7 @@ router.post("/checkout", requireAuth, async (req: Request, res: Response, next: 
 router.get("/", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const payments = await paymentsService.listPayments(req.user!.id);
-        res.status(200).json({ status: 200, success: true, data: payments } as iResponse);
+        res.status(200).json({ status: 200, success: true, data: payments.map(toPublicPayment) } as iResponse);
 
     } catch (err) {
         logger.error(err);
@@ -77,7 +78,7 @@ router.get("/backfill/:designId", requireAuth, async (req: Request, res: Respons
             res.status(404).json({ status: 404, success: false, error: "No backfill job for that design." } as iResponse);
             return;
         }
-        res.status(200).json({ status: 200, success: true, data: [job] } as iResponse);
+        res.status(200).json({ status: 200, success: true, data: [toPublicBackfillJob(job)] } as iResponse);
 
     } catch (err) {
         logger.error(err);

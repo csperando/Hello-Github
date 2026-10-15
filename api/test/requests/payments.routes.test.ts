@@ -22,7 +22,7 @@ const backfillJobsRepoMock = createMockRepoProxy<iBackfillJobsRepo>();
 mockRepo("repository/backfillJobs.repo", backfillJobsRepoMock);
 
 const mockStripe = {
-    customers: { create: jest.fn(), update: jest.fn() },
+    customers: { create: jest.fn(), update: jest.fn(), retrieve: jest.fn() },
     paymentIntents: { create: jest.fn() },
     subscriptions: { create: jest.fn(), update: jest.fn() },
     products: { search: jest.fn(), create: jest.fn() },
@@ -53,6 +53,7 @@ beforeEach(() => {
     backfillJobsRepoMock.__reset();
     mockStripe.customers.create.mockReset().mockResolvedValue({ id: "cus_1" });
     mockStripe.customers.update.mockReset();
+    mockStripe.customers.retrieve.mockReset().mockImplementation(async (id: string) => ({ id }));
     mockStripe.paymentIntents.create.mockReset().mockResolvedValue({ id: "pi_1", client_secret: "pi_1_secret" });
     mockStripe.subscriptions.create.mockReset();
     mockStripe.subscriptions.update.mockReset().mockResolvedValue({});
@@ -131,7 +132,7 @@ describe("GET /payments/backfill/:designId", () => {
         const res = await request(server).get("/payments/backfill/d1").set("Cookie", cookie);
         expect(res.status).toBe(200);
         const body: iResponse = JSON.parse(res.text);
-        expect(body.data![0]).toMatchObject({ design_id: "d1", year: 2025, status: "awaiting_issue" });
+        expect(body.data![0]).toEqual({ id: "j1", design_id: "d1", year: 2025, status: "awaiting_issue", issue_url: null });
         expect(backfillJobsRepoMock.getByUserAndDesign).toHaveBeenCalledWith(userId, "d1");
     });
 
@@ -144,11 +145,25 @@ describe("GET /payments/backfill/:designId", () => {
 
 describe("GET /payments", () => {
     it("returns the caller's history", async () => {
-        paymentsRepoMock.listForUser.mockResolvedValue([{ id: "p1", amount_total_cents: 1000 }]);
+        const payment = {
+            id: "p1",
+            kind: "one_time",
+            status: "succeeded",
+            amount_total_cents: 1000,
+            amount_platform_cents: 300,
+            amount_charity_cents: 700,
+            charity_ein_id: 42,
+            period_start: null,
+            period_end: null,
+            created_at: "2026-10-15T00:00:00.000Z",
+        };
+        paymentsRepoMock.listForUser.mockResolvedValue([
+            { ...payment, user_id: userId, stripe_event_id: "evt_1", stripe_object_id: "pi_1" },
+        ]);
         const res = await request(server).get("/payments").set("Cookie", cookie);
         expect(res.status).toBe(200);
         const body: iResponse = JSON.parse(res.text);
-        expect(body.data).toEqual([{ id: "p1", amount_total_cents: 1000 }]);
+        expect(body.data).toEqual([payment]);
         expect(paymentsRepoMock.listForUser).toHaveBeenCalledWith(userId);
     });
 

@@ -70,3 +70,93 @@ export interface iDesignSelectionUpdateInput {
     repeat_indefinitely?: Boolean;
     recurrence_end_date?: String;
 }
+
+// ---- response serializers ------------------------------------------------
+// Allowlists for what the API sends back - like toPublicUser, a column added
+// to a table later stays server-side until it's deliberately listed here.
+// Typed as full DB rows (timestamps always present, nullable columns null).
+
+export interface iPublicDesign {
+    id: String;
+    user_id: String;
+    name: String;
+    is_public: Boolean;
+    pattern: Number[];
+    created_at: String;
+    updated_at: String;
+}
+
+export function toPublicDesign(design: iPublicDesign): iPublicDesign {
+    return {
+        id: design.id,
+        user_id: design.user_id,
+        name: design.name,
+        is_public: design.is_public,
+        pattern: design.pattern,
+        created_at: design.created_at,
+        updated_at: design.updated_at,
+    };
+}
+
+export interface iPublicSelection {
+    id: String;
+    user_id: String;
+    design_id: String;
+    is_active: Boolean;
+    start_date: String;
+    repeat_indefinitely: Boolean;
+    recurrence_end_date: String | null;
+    created_at: String;
+    updated_at: String;
+}
+
+export function toPublicSelection(selection: iPublicSelection): iPublicSelection {
+    return {
+        id: selection.id,
+        user_id: selection.user_id,
+        design_id: selection.design_id,
+        is_active: selection.is_active,
+        start_date: selection.start_date,
+        repeat_indefinitely: selection.repeat_indefinitely,
+        recurrence_end_date: selection.recurrence_end_date,
+        created_at: selection.created_at,
+        updated_at: selection.updated_at,
+    };
+}
+
+/** A selection joined with the design content it points at - GET /design's list shape. */
+export interface iPublicSelectionWithDesign extends iPublicSelection {
+    name: String;
+    is_public: Boolean;
+    pattern: Number[];
+    design_owner_id: String;
+}
+
+export function toPublicSelectionWithDesign(row: iPublicSelectionWithDesign): iPublicSelectionWithDesign {
+    return {
+        ...toPublicSelection(row),
+        name: row.name,
+        is_public: row.is_public,
+        pattern: row.pattern,
+        design_owner_id: row.design_owner_id,
+    };
+}
+
+/** The latest run_log entry for one design - GET /design/last-run's shape. */
+export interface iPublicRunStatus {
+    design_id: String;
+    target_date: String;
+    commit_count: Number;
+    status: String;
+    created_at: String;
+}
+
+export function toPublicRunStatus(run: iPublicRunStatus): iPublicRunStatus {
+    return {
+        design_id: run.design_id,
+        target_date: run.target_date,
+        commit_count: run.commit_count,
+        status: run.status,
+        created_at: run.created_at,
+    };
+}
