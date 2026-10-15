@@ -11,6 +11,7 @@ export interface iBackfillJobsRepo {
     markIssueOpened: (id: string, issueUrl: string) => Promise<any>;
     claimReady: () => Promise<any[]>;
     setStatus: (id: string, status: iBackfillJobStatus) => Promise<any>;
+    getPaintDetails: (jobIds: string[]) => Promise<any[]>;
 }
 
 // main repo init function to be called in the service factories
@@ -106,12 +107,50 @@ const repo = (): iBackfillJobsRepo => {
         }
     }
 
+    // everything needed to expand a claimed job into commits: who to author
+    // as, which timezone to stamp in, and the design + its schedule. A job
+    // whose selection has since been deleted has no row here.
+    const getPaintDetails = async (jobIds: string[]) => {
+        if (jobIds.length === 0) return [];
+        try {
+            const sqlString = `
+                SELECT bj.id AS job_id
+                    , bj.year
+                    , u.id AS user_id
+                    , u.github_id
+                    , u.github_username
+                    , u.github_email
+                    , u.email
+                    , COALESCE(up.use_real_email, FALSE) AS use_real_email
+                    , COALESCE(up.timezone, 'UTC') AS timezone
+                    , bj.design_id
+                    , ds.start_date
+                    , ds.repeat_indefinitely
+                    , ds.recurrence_end_date
+                    , d.pattern
+                FROM backfill_jobs bj
+                JOIN users u ON u.id = bj.user_id
+                LEFT JOIN user_profiles up ON up.user_id = u.id
+                JOIN design_selections ds ON ds.user_id = bj.user_id AND ds.design_id = bj.design_id
+                JOIN designs d ON d.id = bj.design_id
+                WHERE bj.id = ANY($1::uuid[]);
+            `;
+            const result = await pool.query(sqlString, [jobIds]);
+            return result.rows;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     return {
         create,
         getByUserAndDesign,
         markIssueOpened,
         claimReady,
         setStatus,
+        getPaintDetails,
     }
 };
 

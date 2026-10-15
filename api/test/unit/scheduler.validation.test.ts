@@ -1,4 +1,4 @@
-import { extractCompletionReports } from "../../services/scheduler.validation";
+import { extractCompletionReports, extractBackfillCompletions } from "../../services/scheduler.validation";
 
 describe("extractCompletionReports", () => {
     const validEntry = { user_id: "u1", target_date: "2026-01-04", commit_count: 5, status: "committed" };
@@ -70,5 +70,29 @@ describe("extractCompletionReports", () => {
     it("reports which entry index failed, for a mixed valid/invalid batch", () => {
         const { error } = extractCompletionReports([validEntry, { ...validEntry, status: "bogus" }]);
         expect(error).toMatch(/Entry 1/);
+    });
+});
+
+describe("extractBackfillCompletions", () => {
+    it("accepts done and failed outcomes, keeping only job_id and status", () => {
+        const { input, error } = extractBackfillCompletions([
+            { job_id: "j1", status: "done", extra: "ignored" },
+            { job_id: "j2", status: "failed" },
+        ]);
+
+        expect(error).toBeUndefined();
+        expect(input).toEqual([{ job_id: "j1", status: "done" }, { job_id: "j2", status: "failed" }]);
+    });
+
+    it("rejects a non-array body", () => {
+        expect(extractBackfillCompletions({ job_id: "j1", status: "done" }).error).toMatch(/array/);
+    });
+
+    it("rejects a missing job_id", () => {
+        expect(extractBackfillCompletions([{ status: "done" }]).error).toMatch(/job_id/);
+    });
+
+    it("rejects a status the Action can't report (e.g. painting)", () => {
+        expect(extractBackfillCompletions([{ job_id: "j1", status: "painting" }]).error).toMatch(/status/);
     });
 });

@@ -3,12 +3,16 @@ import { runMigrations } from "../../data/migrate";
 import UsersRepository from "../../repository/users.repo";
 import DesignsRepository from "../../repository/designs.repo";
 import BackfillJobsRepository from "../../repository/backfillJobs.repo";
+import DesignSelectionsRepository from "../../repository/designSelections.repo";
+import UserProfileRepository from "../../repository/userProfiles.repo";
 import { iGitHubUpsertInput } from "../../models/users";
 
 describe("BackfillJobsRepository", () => {
     const usersRepo = UsersRepository.repo();
     const designsRepo = DesignsRepository.repo();
     const backfillRepo = BackfillJobsRepository.repo();
+    const selectionsRepo = DesignSelectionsRepository.repo();
+    const profilesRepo = UserProfileRepository.repo();
     // fixed, out-of-range-for-real-GitHub id so this test never collides with real data
     const testGitHubId = -108;
 
@@ -37,6 +41,8 @@ describe("BackfillJobsRepository", () => {
 
     afterEach(async () => {
         await pool.query("DELETE FROM backfill_jobs WHERE user_id = $1;", [userId]);
+        await pool.query("DELETE FROM design_selections WHERE user_id = $1;", [userId]);
+        await pool.query("DELETE FROM user_profiles WHERE user_id = $1;", [userId]);
         await pool.query("DELETE FROM designs WHERE user_id = $1;", [userId]);
         await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
     });
@@ -87,5 +93,45 @@ describe("BackfillJobsRepository", () => {
         const done = await backfillRepo.setStatus(job.id, "done");
 
         expect(done).toMatchObject({ status: "done" });
+    });
+
+    it("getPaintDetails joins each job with what painting it needs", async () => {
+        await selectionsRepo.create(userId, designId, {
+            start_date: "2024-12-29",
+            repeat_indefinitely: false,
+            recurrence_end_date: "2025-12-31",
+        });
+        await profilesRepo.upsert(userId, { timezone: "America/Chicago" });
+        const job = await backfillRepo.create(userId, designId, 2025);
+
+        const [details] = await backfillRepo.getPaintDetails([job.id]);
+
+        expect(details).toMatchObject({
+            job_id: job.id,
+            user_id: userId,
+            github_id: testGitHubId,
+            github_username: "octocat-backfill-repo-test",
+            design_id: designId,
+            year: 2025,
+            timezone: "America/Chicago",
+            use_real_email: false,
+            pattern: [0, 1, 2, 3, 4, 0, 0],
+            start_date: "2024-12-29",
+            repeat_indefinitely: false,
+            recurrence_end_date: "2025-12-31",
+        });
+    });
+
+    it("getPaintDetails omits a job whose selection is gone, and defaults timezone to UTC", async () => {
+        const orphan = await backfillRepo.create(userId, designId, 2025);
+        expect(await backfillRepo.getPaintDetails([orphan.id])).toEqual([]);
+
+        await selectionsRepo.create(userId, designId, { start_date: "2024-12-29" });
+        const [details] = await backfillRepo.getPaintDetails([orphan.id]);
+        expect(details).toMatchObject({ timezone: "UTC" });
+    });
+
+    it("getPaintDetails returns nothing for no job ids", async () => {
+        expect(await backfillRepo.getPaintDetails([])).toEqual([]);
     });
 });

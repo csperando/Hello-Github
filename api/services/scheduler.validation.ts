@@ -1,4 +1,5 @@
 import { iCompletionReport } from "./scheduler.service";
+import { iBackfillCompletion } from "./backfill.service";
 
 const VALID_STATUSES = ["committed", "failed"] as const;
 
@@ -41,6 +42,41 @@ export function extractCompletionReports(body: unknown): { input?: iCompletionRe
             commit_count: e.commit_count as number,
             status: e.status as iCompletionReport["status"],
         });
+    }
+
+    return { input };
+}
+
+const BACKFILL_FINAL_STATUSES = ["done", "failed"] as const;
+
+/**
+ * Allow-lists and validates a POST /scheduler/backfill/complete body - an
+ * array of per-job outcomes. Only a final status can be reported; nothing
+ * else on the job is writable from here.
+ */
+export function extractBackfillCompletions(body: unknown): { input?: iBackfillCompletion[]; error?: string } {
+    if (!Array.isArray(body)) {
+        return { error: "Request body must be an array of backfill completions." };
+    }
+
+    const input: iBackfillCompletion[] = [];
+
+    for (let i = 0; i < body.length; i++) {
+        const entry = body[i];
+
+        if (typeof entry !== "object" || entry === null) {
+            return { error: `Entry ${i} must be an object.` };
+        }
+        const e = entry as Record<string, unknown>;
+
+        if (typeof e.job_id !== "string" || e.job_id.length === 0) {
+            return { error: `Entry ${i}: job_id must be a non-empty string.` };
+        }
+        if (typeof e.status !== "string" || !(BACKFILL_FINAL_STATUSES as readonly string[]).includes(e.status)) {
+            return { error: `Entry ${i}: status must be one of ${BACKFILL_FINAL_STATUSES.join(", ")}.` };
+        }
+
+        input.push({ job_id: e.job_id, status: e.status as iBackfillCompletion["status"] });
     }
 
     return { input };

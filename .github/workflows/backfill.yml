@@ -1,0 +1,124 @@
+name: Backfill
+
+# Paints purchased past-year designs: claims every ready backfill job, makes
+# one commit per painted day (backdated, authored as the buyer), pushes once,
+# then reports each job done/failed. A job left in "painting" (the run died
+# before reporting) is retried by setting it back to "ready" by hand.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# one writer to the canvas at a time - shared with paint.yml
+concurrency:
+  group: canvas-${{ vars.PAINT_TARGET_REPO || github.repository }}
+  cancel-in-progress: false
+
+env:
+  API_URL: ${{ vars.API_URL || 'https://api.commitsforgood.com' }}
+  # Defaults to this same repo - see paint.yml.
+  TARGET_REPO: ${{ vars.PAINT_TARGET_REPO || github.repository }}
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout canvas repo
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          token: ${{ secrets.PAINT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      # the commit script lives in this repo, which may not be the canvas
+      - name: Checkout commit scripts
+        uses: actions/checkout@v7
+        with:
+          path: .cfg-tools
+          sparse-checkout: actions/scripts
+
+      - name: Claim ready jobs
+        id: claim
+        env:
+          SCHEDULER_API_KEY: ${{ secrets.SCHEDULER_API_KEY }}
+        run: |
+          set -euo pipefail
+          curl -sf -X POST -H "X-API-Key: $SCHEDULER_API_KEY" "$API_URL/scheduler/backfill/claim" -o claim.json
+          jq '.data' claim.json > entries.json
+          count=$(jq 'length' entries.json)
+          jobs=$(jq '[.[].job_id] | unique | length' entries.json)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Claimed $jobs job(s), $count day(s) to paint"
+
+      - name: Build commits
+        if: steps.claim.outputs.count != '0'
+        run: .cfg-tools/actions/scripts/build-commits.sh entries.json results.json
+
+      - name: Push
+        id: push
+        if: steps.claim.outputs.count != '0'
+        run: |
+          set -euo pipefail
+          # the canvas may have moved on since checkout; our commits only
+          # append, so replay them on top - keeping each committer date at its
+          # backdated author date rather than resetting it to now
+          branch=$(git rev-parse --abbrev-ref HEAD)
+          git fetch --quiet origin "$branch"
+          git rebase --quiet --committer-date-is-author-date "origin/$branch"
+          git push origin "HEAD:$branch"
+
+      # A job is done only if every one of its days committed and the push
+      # landed; anything else reports it failed.
+      - name: Report completion
+        if: always() && steps.claim.outputs.count != '0' && steps.claim.outputs.count != ''
+        env:
+          SCHEDULER_API_KEY: ${{ secrets.SCHEDULER_API_KEY }}
+          PUSHED: ${{ steps.push.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          if [ -f results.json ]; then source=results.json; else source=entries.json; fi
+          jq --argjson pushed "$PUSHED" '
+            group_by(.job_id) | map({
+              job_id: .[0].job_id,
+              status: (if $pushed and all(.status == "committed") then "done" else "failed" end)
+            })' "$source" > completions.json
+          cat completions.json
+          curl -sf -X POST \
+            -H "X-API-Key: $SCHEDULER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @completions.json \
+            "$API_URL/scheduler/backfill/complete"
+
+      - name: Run summary
+        if: always()
+        run: |
+          set -euo pipefail
+
+          if [ -f completions.json ]; then
+            done_jobs=$(jq '[.[] | select(.status == "done")] | length' completions.json)
+            failed_ids=$(jq -r '[.[] | select(.status == "failed") | .job_id] | join(", ")' completions.json)
+            failed_jobs=$(jq '[.[] | select(.status == "failed")] | length' completions.json)
+          else
+            done_jobs=0
+            failed_ids=""
+            failed_jobs=0
+          fi
+          days="${{ steps.claim.outputs.count || 0 }}"
+
+          {
+            echo "## Backfill run summary"
+            echo "| days | jobs done | jobs failed |"
+            echo "|---|---|---|"
+            echo "| $days | $done_jobs | $failed_jobs |"
+            if [ -n "$failed_ids" ]; then echo; echo "Failed jobs: $failed_ids"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # fail loudly on any failed job, so GitHub's failed-run email goes out
+          if [ "$failed_jobs" -gt 0 ]; then
+            echo "::error::$failed_jobs backfill job(s) failed: $failed_ids"
+            exit 1
+          fi

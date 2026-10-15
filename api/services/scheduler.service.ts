@@ -10,6 +10,29 @@ import { logger } from "../config/logger";
 // at module load since DEFAULT_Q never changes at runtime.
 const FALLBACK_COMMIT_COUNTS = deriveCommitCounts(DEFAULT_Q);
 
+/** The user fields commit authorship is decided from. */
+export interface iAuthorFields {
+    email?: string | null;
+    use_real_email: boolean;
+    github_email?: string | null;
+    github_id: number;
+    github_username: string;
+}
+
+/**
+ * The email to author a user's commits as: the synced "effective" address
+ * (see UserService.updateProfile) when present; otherwise recomputed from
+ * the noreply-vs-real preference as a defensive fallback - a NULL author
+ * email reaching a real `git commit` is a worse failure mode than this
+ * extra branch.
+ */
+export function resolveAuthorEmail(user: iAuthorFields): string {
+    return user.email
+        ?? (user.use_real_email && user.github_email
+            ? user.github_email
+            : computeNoreplyEmail(user.github_id, user.github_username));
+}
+
 export interface iScheduledCommit {
     userId: string;
     githubId: number;
@@ -72,15 +95,7 @@ export class SchedulerService {
                 const commitCounts = candidate.commit_counts ?? candidate.previous_year_commit_counts ?? FALLBACK_COMMIT_COUNTS;
                 const commitCount = commitCounts[intensity - 1];
 
-                // candidate.email (the synced "effective" address, see
-                // UserService.updateProfile) is preferred when present;
-                // recomputing here is a defensive fallback, not the primary
-                // path - a NULL author email reaching a real `git commit` is
-                // a worse failure mode than this extra branch.
-                const authorEmail = candidate.email
-                    ?? (candidate.use_real_email && candidate.github_email
-                        ? candidate.github_email
-                        : computeNoreplyEmail(candidate.github_id, candidate.github_username));
+                const authorEmail = resolveAuthorEmail(candidate);
 
                 commits.push({
                     userId: candidate.user_id,

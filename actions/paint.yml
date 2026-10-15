@@ -1,12 +1,20 @@
 name: Paint
 
 on:
-  schedule:
-    - cron: "0 * * * *"
+  # Schedule paused: designs now paint a past year in one go (backfill.yml).
+  # Forward painting is also gated on user_billing.paid_until, which
+  # purchases no longer set - restore both together before re-enabling.
+  # schedule:
+  #   - cron: "0 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
+
+# one writer to the canvas at a time - shared with backfill.yml
+concurrency:
+  group: canvas-${{ vars.PAINT_TARGET_REPO || github.repository }}
+  cancel-in-progress: false
 
 env:
   API_URL: ${{ vars.API_URL || 'https://api.commitsforgood.com' }}
@@ -31,6 +39,13 @@ jobs:
           token: ${{ secrets.PAINT_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
           fetch-depth: 1
 
+      # the commit script lives in this repo, which may not be the canvas
+      - name: Checkout commit scripts
+        uses: actions/checkout@v7
+        with:
+          path: .cfg-tools
+          sparse-checkout: actions/scripts
+
       - name: Fetch due commits
         id: due
         env:
@@ -46,50 +61,20 @@ jobs:
         if: steps.due.outputs.count != '0'
         run: |
           set -euo pipefail
-
-          git config user.name "commitsforgood-bot"
-          git config user.email "actions@users.noreply.github.com"
-
-          # lightly varied wording rather than identical text on every commit
-          MESSAGES=("Automated action" "painting" "contribution" "keeping the streak" "🎨")
-
-          echo "[]" > results.json
-          count=$(jq 'length' due.json)
-
-          for i in $(seq 0 $((count - 1))); do
-            entry=$(jq -c ".[$i]" due.json)
-            user_id=$(echo "$entry" | jq -r '.user_id')
-            target_date=$(echo "$entry" | jq -r '.target_date')
-            username=$(echo "$entry" | jq -r '.github_username')
-            email=$(echo "$entry" | jq -r '.commit_author_email')
-            timestamp=$(echo "$entry" | jq -r '.commit_timestamp')
-            commit_count=$(echo "$entry" | jq -r '.commit_count')
-
-            status="committed"
-            for c in $(seq 1 "$commit_count"); do
-              msg="${MESSAGES[$((RANDOM % ${#MESSAGES[@]}))]}"
-              echo "$timestamp $username $c" >> log.txt
-              git add log.txt
-              if ! GIT_AUTHOR_DATE="$timestamp" GIT_COMMITTER_DATE="$timestamp" \
-                  git commit --author="$username <$email>" -m "$msg" --quiet; then
-                status="failed"
-                break
-              fi
-            done
-
-            results=$(jq -c \
-              --arg user_id "$user_id" \
-              --arg target_date "$target_date" \
-              --argjson commit_count "$commit_count" \
-              --arg status "$status" \
-              '. + [{user_id: $user_id, target_date: $target_date, commit_count: $commit_count, status: $status}]' \
-              results.json)
-            echo "$results" > results.json
-          done
+          .cfg-tools/actions/scripts/build-commits.sh due.json built.json
+          # /scheduler/due/complete's shape: one outcome per due user
+          jq '[.[] | {user_id, target_date, commit_count, status}]' built.json > results.json
 
       - name: Push
         if: steps.due.outputs.count != '0'
-        run: git push
+        run: |
+          set -euo pipefail
+          # replay on top of anything pushed since checkout, keeping each
+          # committer date at its stamped author date
+          branch=$(git rev-parse --abbrev-ref HEAD)
+          git fetch --quiet origin "$branch"
+          git rebase --quiet --committer-date-is-author-date "origin/$branch"
+          git push origin "HEAD:$branch"
 
       - name: Report completion
         if: steps.due.outputs.count != '0'

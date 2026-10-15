@@ -10,6 +10,9 @@ const schedulerRepoMock = createMockRepoProxy<iSchedulerRepo>();
 mockRepo("repository/scheduler.repo", schedulerRepoMock);
 const runLogRepoMock = createMockRepoProxy<iRunLogRepo>();
 mockRepo("repository/runLog.repo", runLogRepoMock);
+import type { iBackfillJobsRepo } from "../../repository/backfillJobs.repo";
+const backfillJobsRepoMock = createMockRepoProxy<iBackfillJobsRepo>();
+mockRepo("repository/backfillJobs.repo", backfillJobsRepoMock);
 
 import server from "../server";
 
@@ -43,6 +46,79 @@ describe("Scheduler routes", () => {
     beforeEach(() => {
         schedulerRepoMock.__reset();
         runLogRepoMock.__reset();
+        backfillJobsRepoMock.__reset();
+    });
+
+    describe("POST /scheduler/backfill/claim", () => {
+        it("rejects a request with no API key, claiming nothing", async () => {
+            const res = await request(server).post("/scheduler/backfill/claim");
+            expect(res.status).toBe(401);
+            expect(backfillJobsRepoMock.claimReady).not.toHaveBeenCalled();
+        });
+
+        it("returns the claimed jobs' commits with the correct API key", async () => {
+            backfillJobsRepoMock.claimReady.mockResolvedValue([{ id: "j1" }]);
+            backfillJobsRepoMock.getPaintDetails.mockResolvedValue([
+                {
+                    job_id: "j1",
+                    year: 2025,
+                    user_id: "u1",
+                    github_id: 583231,
+                    github_username: "octocat",
+                    github_email: "octocat@example.com",
+                    email: null,
+                    use_real_email: false,
+                    timezone: "UTC",
+                    design_id: "d1",
+                    start_date: "2025-01-05",
+                    repeat_indefinitely: false,
+                    recurrence_end_date: null,
+                    pattern: [0, 1, 0, 0, 0, 0, 0],
+                },
+            ]);
+
+            const res = await request(server).post("/scheduler/backfill/claim").set(apiKeyHeader);
+
+            expect(res.status).toBe(200);
+            const body: iResponse = JSON.parse(res.text);
+            expect(body.data).toEqual([
+                expect.objectContaining({ job_id: "j1", target_date: "2025-01-06", commit_count: 1 }),
+            ]);
+        });
+
+        it("is not reachable as a GET (claiming changes job state)", async () => {
+            const res = await request(server).get("/scheduler/backfill/claim").set(apiKeyHeader);
+            expect(res.status).toBe(404);
+            expect(backfillJobsRepoMock.claimReady).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("POST /scheduler/backfill/complete", () => {
+        it("rejects a request with no API key", async () => {
+            const res = await request(server).post("/scheduler/backfill/complete").send([]);
+            expect(res.status).toBe(401);
+        });
+
+        it("400s a malformed body", async () => {
+            const res = await request(server)
+                .post("/scheduler/backfill/complete")
+                .set(apiKeyHeader)
+                .send([{ job_id: "j1", status: "painting" }]);
+            expect(res.status).toBe(400);
+            expect(backfillJobsRepoMock.setStatus).not.toHaveBeenCalled();
+        });
+
+        it("records each job's outcome", async () => {
+            backfillJobsRepoMock.setStatus.mockImplementation(async (id: string, status: string) => ({ id, status }));
+
+            const res = await request(server)
+                .post("/scheduler/backfill/complete")
+                .set(apiKeyHeader)
+                .send([{ job_id: "j1", status: "done" }]);
+
+            expect(res.status).toBe(200);
+            expect(backfillJobsRepoMock.setStatus).toHaveBeenCalledWith("j1", "done");
+        });
     });
 
     describe("GET /scheduler/due", () => {
