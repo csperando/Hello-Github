@@ -2,9 +2,11 @@
 # Builds local commits in the current git repo (the canvas) from an array of
 # entries as returned by GET /scheduler/due or POST /scheduler/backfill/claim:
 #   { github_username, commit_author_email, commit_timestamp, commit_count, ... }
-# Each commit appends a line to log.txt, authored as the entry's user and
-# dated (author + committer) at its commit_timestamp - GitHub credits a
-# contribution to the author date, not the order in history.
+# Each commit appends a line to that user's own commits/<username>.txt,
+# authored as the user and dated (author + committer) at its commit_timestamp
+# - GitHub credits a contribution to the author date, not the order in
+# history. One file per user keeps each commit's rewritten file small and
+# keeps different users' commits from touching the same file.
 #
 # Writes every entry back to <results.json> with a "status" of committed or
 # failed, keeping all of its other fields, so each workflow can build its own
@@ -22,6 +24,9 @@ git config user.email "actions@users.noreply.github.com"
 # lightly varied wording rather than identical text on every commit
 MESSAGES=("Automated action" "painting" "contribution" "keeping the streak" "🎨")
 
+COMMITS_DIR="commits"
+mkdir -p "$COMMITS_DIR"
+
 results_lines=$(mktemp)
 count=$(jq 'length' "$entries_file")
 
@@ -35,8 +40,9 @@ for i in $(seq 0 $((count - 1))); do
   status="committed"
   for c in $(seq 1 "$commit_count"); do
     msg="${MESSAGES[$((RANDOM % ${#MESSAGES[@]}))]}"
-    echo "$timestamp $username $c" >> log.txt
-    git add log.txt
+    user_file="$COMMITS_DIR/$username.txt"
+    echo "$timestamp $c" >> "$user_file"
+    git add "$user_file"
     if ! GIT_AUTHOR_DATE="$timestamp" GIT_COMMITTER_DATE="$timestamp" \
         git commit --author="$username <$email>" -m "$msg" --quiet; then
       status="failed"

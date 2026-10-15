@@ -16,7 +16,7 @@ export function mostRecentSunday(date: Date): Date {
 }
 
 /** How many past years the editor offers - kept short for now; may grow (e.g. back to the user's GitHub join year). */
-export const PAST_YEAR_COUNT = 3
+export const PAST_YEAR_COUNT = 10
 
 /** Grid anchor for a year: the most recent Sunday on/before Jan 1, matching GitHub's own year layout. */
 export function yearAnchor(year: number): Date {

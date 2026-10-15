@@ -181,11 +181,14 @@ describe('Editor.vue', () => {
     expect(payload.recurrence_end_date).toBe('2025-12-31')
   })
 
-  it('offers the last 3 full years, defaulting to the most recent, with no Today tab', async () => {
+  it('offers the last 10 full years, defaulting to the most recent, with no Today tab', async () => {
     const { wrapper } = await mountEditor('/editor')
 
     const select = wrapper.get('select#editor-year')
-    expect(select.findAll('option').map((o) => o.text())).toEqual(['2025', '2024', '2023'])
+    const options = select.findAll('option').map((o) => o.text())
+    expect(options).toHaveLength(10)
+    expect(options[0]).toBe('2025')
+    expect(options[9]).toBe('2016')
     expect((select.element as HTMLSelectElement).value).toBe('2025')
     expect(wrapper.findAll('button').some((b) => b.text() === 'Today')).toBe(false)
     expect(wrapper.text()).toContain('starts Dec 29, 2024')

@@ -27,12 +27,12 @@ describe('yearAnchor', () => {
 })
 
 describe('pastYears', () => {
-  it('returns the last 3 full years, most recent first', () => {
-    expect(pastYears(new Date('2026-01-07T12:00:00Z'))).toEqual([2025, 2024, 2023])
+  it('returns the last 10 full years, most recent first', () => {
+    expect(pastYears(new Date('2026-01-07T12:00:00Z'))).toEqual([2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016])
   })
 
   it('never includes the current year, even on Dec 31', () => {
-    expect(pastYears(new Date('2026-12-31T23:00:00Z'))).toEqual([2025, 2024, 2023])
+    expect(pastYears(new Date('2026-12-31T23:00:00Z'))[0]).toBe(2025)
   })
 })
 
