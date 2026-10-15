@@ -12,6 +12,7 @@
     import SelectedCharitySummary from "@/components/ui/SelectedCharitySummary.vue"
     import { LEVEL_COLORS } from "@/helpers/grid"
     import { getOrgById, githubPaintUrl } from "@/services/api"
+    import { errorMessage } from "@/services/errors"
     import type { iOrg } from "@/services/api"
     import { getDesign, type iDesign } from "@/services/designs"
     import { createCheckout, getBackfillJob, type iBackfillJob } from "@/services/payments"
@@ -131,7 +132,7 @@
             const body = await res.json().catch(() => ({}))
 
             if (!res.ok) {
-                payError.value = body.error ?? "Could not start checkout. Please try again."
+                payError.value = errorMessage(body, "Could not start checkout. Please try again.")
                 return
             }
 

@@ -15,6 +15,7 @@ import {
   type iDesignSelectionUpdatePayload,
   type iDesignRunStatus,
 } from '@/services/designs'
+import { errorMessage } from '@/services/errors'
 
 function toJoinedRow(design: iDesign, selection: iDesignSelection): iDesignSelectionWithDesign {
   return {
@@ -93,7 +94,7 @@ export const useDesignsStore = defineStore('designs', () => {
     const body = await res.json()
 
     if (!res.ok) {
-      return { ok: false, error: body.error ?? 'Could not update this design.' }
+      return { ok: false, error: errorMessage(body, 'Could not update this design.') }
     }
 
     const updated = body.data?.[0] ?? null

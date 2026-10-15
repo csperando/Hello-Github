@@ -10,6 +10,7 @@
     import SelectedCharitySummary from "@/components/ui/SelectedCharitySummary.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import { getOrgById, updateProfile } from "@/services/api"
+    import { errorMessage } from "@/services/errors"
     import type { iOrg } from "@/services/api"
     import { listPayments, setAutoRenew, type iPayment } from "@/services/payments"
     import { useAuthStore } from "@/stores/auth"
@@ -91,7 +92,7 @@
             const res = await setAutoRenew(next)
             const body = await res.json().catch(() => ({}))
             if (!res.ok) {
-                billingError.value = body.error ?? "Couldn't update auto-renew. Please try again."
+                billingError.value = errorMessage(body, "Couldn't update auto-renew. Please try again.")
                 return
             }
             if (authStore.user) authStore.user.auto_renew = next
