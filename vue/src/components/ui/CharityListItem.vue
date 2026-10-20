@@ -74,5 +74,8 @@
             <div v-if="focus" :style="focusStyle">{{ focus }}</div>
         </div>
         <span v-else style="font-family:var(--font-mono);font-size:13px;">{{ name }}</span>
+        <div v-if="$slots.trailing" style="margin-left:auto;flex:none;align-self:center;">
+            <slot name="trailing" />
+        </div>
     </component>
 </template>

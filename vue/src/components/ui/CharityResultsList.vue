@@ -23,7 +23,7 @@
 </script>
 
 <template>
-    <div class="charity-results">
+    <div v-if="loading || error || query || results.length" class="charity-results">
         <p v-if="loading" class="status-text">searching…</p>
         <p v-else-if="error" class="status-text error-text">couldn't load results, try again.</p>
         <p v-else-if="results.length === 0 && query" class="status-text">no charities found for "{{ query }}"</p>
@@ -46,10 +46,9 @@
 <style scoped>
     .charity-results {
         padding: 10px;
-        margin-bottom: 18px;
         background-color: var(--color-bg-inset);
         max-height: 500px;
-        overflow-y: scroll;
+        overflow-y: auto;
     }
 
     .results-list {

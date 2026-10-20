@@ -4,10 +4,9 @@ import { searchOrgs } from "@/services/api"
 import type { iOrg } from "@/services/api"
 
 /**
- * Shared search-request handling for CharitySearchInput/CharityResultsList
- * consumers (signUp/profile.vue, Settings.vue): tracks results/loading/error
- * state and guards against an older in-flight request overwriting a newer
- * one's results.
+ * Search-request handling behind CharityPicker's search input/results
+ * dropdown: tracks results/loading/error state and guards against an older
+ * in-flight request overwriting a newer one's results.
  */
 export function useCharitySearch() {
     const searchResults = ref<iOrg[]>([])

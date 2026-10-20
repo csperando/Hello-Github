@@ -199,6 +199,22 @@ describe('Settings.vue', () => {
       await findButton(wrapper, 'GiveDirectly').trigger('click')
 
       expect(findButton(wrapper, 'GiveDirectly').attributes('aria-pressed')).toBe('true')
+      expect(wrapper.find('.selected-tag').exists()).toBe(true)
+    })
+
+    it('closes the results dropdown and clears the search field once a charity is picked', async () => {
+      searchOrgsMock.mockResolvedValue(jsonResponse({ data: [giveDirectlyOrg] }))
+      const { wrapper } = await mountSettings(buildUser())
+
+      await wrapper.get('input[placeholder="search for a charity"]').setValue('give')
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+      expect(wrapper.find('.charity-picker__dropdown').exists()).toBe(true)
+
+      await findButton(wrapper, 'GiveDirectly').trigger('click')
+
+      expect(wrapper.find('.charity-picker__dropdown').exists()).toBe(false)
+      expect((wrapper.get('input[placeholder="search for a charity"]').element as HTMLInputElement).value).toBe('')
     })
   })
 

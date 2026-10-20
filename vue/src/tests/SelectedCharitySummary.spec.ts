@@ -34,4 +34,10 @@ describe("SelectedCharitySummary.vue", () => {
 
         expect(wrapper.get("button").attributes("aria-pressed")).toBe("true")
     })
+
+    it("shows a \"selected\" tag so the current pick reads differently from search results", () => {
+        const wrapper = mount(SelectedCharitySummary, { props: { charity: org } })
+
+        expect(wrapper.get(".selected-tag").text()).toBe("selected")
+    })
 })

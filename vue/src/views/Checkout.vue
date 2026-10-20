@@ -7,16 +7,13 @@
     import BaseCard from "@/components/ui/BaseCard.vue"
     import StepProgress from "@/components/ui/StepProgress.vue"
     import ContributionGridPreview from "@/components/ui/ContributionGridPreview.vue"
-    import CharitySearchInput from "@/components/ui/CharitySearchInput.vue"
-    import CharityResultsList from "@/components/ui/CharityResultsList.vue"
-    import SelectedCharitySummary from "@/components/ui/SelectedCharitySummary.vue"
+    import CharityPicker from "@/components/ui/CharityPicker.vue"
     import { LEVEL_COLORS } from "@/helpers/grid"
     import { getOrgById, githubPaintUrl } from "@/services/api"
     import { errorMessage } from "@/services/errors"
     import type { iOrg } from "@/services/api"
     import { getDesign, type iDesign } from "@/services/designs"
     import { createCheckout, getBackfillJob, type iBackfillJob } from "@/services/payments"
-    import { useCharitySearch } from "@/composables/useCharitySearch"
     import { useAuthStore } from "@/stores/auth"
 
     // suggested platform share; the user can slide it down to $0
@@ -52,14 +49,6 @@
 
     // ----- charity -----------------------------------------------------------
     const selectedCharity = ref<iOrg | null>(null)
-    const {
-        searchResults,
-        searchLoading,
-        searchError,
-        searchQuery,
-        handleSearch: handleCharitySearch,
-        handleCleared: handleCharitySearchCleared,
-    } = useCharitySearch()
 
     function selectCharity(org: iOrg) {
         selectedCharity.value = org
@@ -306,26 +295,16 @@
                                 Optional. Whatever you don't send to a charity supports Commits for Good directly.
                             </p>
 
-                            <SelectedCharitySummary v-if="selectedCharity" :charity="selectedCharity" />
-                            <p v-else class="no-charity-note">
-                                No charity selected — your whole contribution will support the platform.
-                            </p>
-
-                            <button v-if="selectedCharity" type="button" class="text-btn" @click="clearCharity">
-                                remove charity
-                            </button>
-
-                            <div class="search-wrap">
-                                <CharitySearchInput @search="handleCharitySearch" @cleared="handleCharitySearchCleared" />
-                                <CharityResultsList
-                                    :results="searchResults"
-                                    :loading="searchLoading"
-                                    :error="searchError"
-                                    :query="searchQuery"
-                                    :selected-id="selectedCharity?.id ?? null"
-                                    @select="selectCharity"
-                                />
-                            </div>
+                            <CharityPicker :selected="selectedCharity" @select="selectCharity">
+                                <div class="charity-actions">
+                                    <p v-if="!selectedCharity" class="no-charity-note">
+                                        No charity selected — your whole contribution will support the platform.
+                                    </p>
+                                    <button v-else type="button" class="text-btn" @click="clearCharity">
+                                        remove charity
+                                    </button>
+                                </div>
+                            </CharityPicker>
 
                             <div class="actions-end">
                                 <BaseButton @click="step = 2" class="continue-btn">continue →</BaseButton>
@@ -582,8 +561,8 @@
         text-decoration: underline;
     }
 
-    .search-wrap {
-        margin: 18px 0 24px;
+    .charity-actions {
+        margin-bottom: 18px;
     }
 
     .charity-name-accent {

@@ -5,16 +5,13 @@
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseSelect from "@/components/ui/BaseSelect.vue"
     import BaseTextInput from "@/components/ui/BaseTextInput.vue"
-    import CharityResultsList from "@/components/ui/CharityResultsList.vue"
-    import CharitySearchInput from "@/components/ui/CharitySearchInput.vue"
+    import CharityPicker from "@/components/ui/CharityPicker.vue"
     import GitConfigPreview from "@/components/ui/GitConfigPreview.vue"
-    import SelectedCharitySummary from "@/components/ui/SelectedCharitySummary.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import { githubLoginUrl, updateProfile } from "@/services/api"
     import type { iOrg } from "@/services/api"
     import { useAuthStore } from "@/stores/auth"
     import { timezoneOptions, detectTimezone } from "@/helpers/timezone"
-    import { useCharitySearch } from "@/composables/useCharitySearch"
 
     // featured-charities section commented out for now (see profile.vue's
     // template) - was a hardcoded, name-keyed list that predates real charity
@@ -45,14 +42,6 @@
     const timezoneOpts = timezoneOptions()
 
     const selectedSearchCharity = ref<iOrg | null>(null)
-    const {
-        searchResults,
-        searchLoading,
-        searchError,
-        searchQuery,
-        handleSearch: handleCharitySearch,
-        handleCleared: handleCharitySearchCleared,
-    } = useCharitySearch()
 
     function handleCharitySearchSelect(org: iOrg) {
         selectedSearchCharity.value = org
@@ -164,17 +153,7 @@
         <!-- todo - add filter inputs here for orgs' state, etc. -->
         <label class="field-label">select a charity</label>
 
-        <SelectedCharitySummary :charity="selectedSearchCharity" />
-        <CharitySearchInput @search="handleCharitySearch" @cleared="handleCharitySearchCleared" />
-        <CharityResultsList
-            :results="searchResults"
-            :loading="searchLoading"
-            :error="searchError"
-            :query="searchQuery"
-            :selected-id="selectedSearchCharity?.id ?? null"
-            @select="handleCharitySearchSelect"
-            v-show="searchResults.length"
-        />
+        <CharityPicker :selected="selectedSearchCharity" @select="handleCharitySearchSelect" />
 
         <!--
         featured charities - commented out for now, see the matching note in

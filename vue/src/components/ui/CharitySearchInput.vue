@@ -31,6 +31,13 @@
     onUnmounted(() => {
         debouncedSearch.cancel()
     })
+
+    /** Empties the field from outside, e.g. after a result is picked; the watch above emits `cleared`. */
+    function clear() {
+        query.value = ""
+    }
+
+    defineExpose({ clear })
 </script>
 
 <template>

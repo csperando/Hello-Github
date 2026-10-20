@@ -5,9 +5,7 @@
     import BaseCard from "@/components/ui/BaseCard.vue"
     import BaseSelect from "@/components/ui/BaseSelect.vue"
     import BaseTextInput from "@/components/ui/BaseTextInput.vue"
-    import CharityResultsList from "@/components/ui/CharityResultsList.vue"
-    import CharitySearchInput from "@/components/ui/CharitySearchInput.vue"
-    import SelectedCharitySummary from "@/components/ui/SelectedCharitySummary.vue"
+    import CharityPicker from "@/components/ui/CharityPicker.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import { getOrgById, updateProfile } from "@/services/api"
     import { errorMessage } from "@/services/errors"
@@ -15,7 +13,6 @@
     import { listPayments, setAutoRenew, type iPayment } from "@/services/payments"
     import { useAuthStore } from "@/stores/auth"
     import { timezoneOptions } from "@/helpers/timezone"
-    import { useCharitySearch } from "@/composables/useCharitySearch"
 
     // authStore.user is already populated here: the router's requiresAuth guard
     // (vue/src/router/index.ts) awaits fetchMe() before this route resolves.
@@ -31,15 +28,6 @@
     const saving = ref(false)
     const saveError = ref("")
     const saved = ref(false)
-
-    const {
-        searchResults,
-        searchLoading,
-        searchError,
-        searchQuery,
-        handleSearch: handleCharitySearch,
-        handleCleared: handleCharitySearchCleared,
-    } = useCharitySearch()
 
     // ----- billing --------------------------------------------------------
     const payments = ref<iPayment[]>([])
@@ -195,16 +183,7 @@
                     />
 
                     <label class="field-label">default charity</label>
-                    <SelectedCharitySummary :charity="selectedCharity" />
-                    <CharitySearchInput @search="handleCharitySearch" @cleared="handleCharitySearchCleared" />
-                    <CharityResultsList
-                        :results="searchResults"
-                        :loading="searchLoading"
-                        :error="searchError"
-                        :query="searchQuery"
-                        :selected-id="selectedCharity?.id ?? null"
-                        @select="selectCharity"
-                    />
+                    <CharityPicker :selected="selectedCharity" @select="selectCharity" />
 
                     <div class="toggle-row toggle-row-tall">
                         <div>

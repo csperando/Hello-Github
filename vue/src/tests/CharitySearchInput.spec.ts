@@ -86,4 +86,15 @@ describe("CharitySearchInput.vue", () => {
 
         expect(wrapper.emitted("search")).toBeUndefined()
     })
+
+    it("clear() empties the field and emits cleared", async () => {
+        const wrapper = mount(CharitySearchInput)
+
+        await wrapper.get("input").setValue("give")
+        ;(wrapper.vm as unknown as { clear: () => void }).clear()
+        await wrapper.vm.$nextTick()
+
+        expect((wrapper.get("input").element as HTMLInputElement).value).toBe("")
+        expect(wrapper.emitted("cleared")).toHaveLength(1)
+    })
 })
