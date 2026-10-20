@@ -4,6 +4,7 @@ import {
     iDesignSelectionCreateInput,
     iDesignSelectionUpdateInput,
 } from "../models/designs";
+import { yearGridStart, yearGridWeeks } from "./designs.schedule";
 
 // 10 years worth of weeks (520 weeks * 7 days) - a generous ceiling that still
 // blocks a pathologically large array from being persisted.
@@ -33,6 +34,47 @@ export function computeEndDate(startDate: string, patternLength: number): string
     const end = new Date(`${startDate}T00:00:00Z`);
     end.setUTCDate(end.getUTCDate() + weeks * 7 - 1);
     return end.toISOString().slice(0, 10);
+}
+
+/** A whole past calendar year - designs paint years that are already over. */
+export function isValidPastYear(value: unknown, now: Date = new Date()): value is number {
+    return Number.isInteger(value) && (value as number) < now.getUTCFullYear();
+}
+
+/**
+ * The pattern must sit entirely inside `year`'s grid: start_date's column no
+ * earlier than the Sunday on/before Jan 1 (the
+ * design_selections_start_date_in_year DB CHECK), and its last column no later
+ * than the week holding Dec 31.
+ */
+export function validateYearPlacement(year: number, startDate: string, patternLength: number): string | undefined {
+    const gridStart = yearGridStart(year);
+    if (startDate < gridStart || startDate > `${year}-12-31`) {
+        return `start_date must fall within ${year}'s grid (${gridStart} to ${year}-12-31).`;
+    }
+    const startWeek = Math.round(
+        (new Date(`${startDate}T00:00:00Z`).getTime() - new Date(`${gridStart}T00:00:00Z`).getTime()) / (7 * 86400000),
+    );
+    if (startWeek + patternLength / 7 > yearGridWeeks(year)) {
+        return `pattern runs past the end of ${year}'s grid.`;
+    }
+    return undefined;
+}
+
+/**
+ * custom_range is its own repeat mode - tiling through Dec 31 of the year -
+ * so it can't be combined with the (separate, unimplemented) recurrence
+ * fields.
+ */
+export function validateCustomRangePairing(
+    customRange: boolean,
+    repeatIndefinitely: boolean,
+    recurrenceEndDate: string | null | undefined,
+): string | undefined {
+    if (customRange && (repeatIndefinitely || recurrenceEndDate != null)) {
+        return "custom_range cannot be combined with repeat_indefinitely or recurrence_end_date.";
+    }
+    return undefined;
 }
 
 /**
@@ -95,12 +137,26 @@ export function extractDesignCreateInput(
     ) {
         return { error: "recurrence_end_date must be a valid date or null." };
     }
+    if (!isValidPastYear(body.year)) {
+        return { error: "year is required and must be a past calendar year." };
+    }
+    if (body.custom_range !== undefined && typeof body.custom_range !== "boolean") {
+        return { error: "custom_range must be a boolean." };
+    }
 
     const startDate = body.start_date;
     const pattern = body.pattern;
+    const year = body.year;
+    const customRange = (body.custom_range as boolean | undefined) ?? false;
     const repeatIndefinitely = (body.repeat_indefinitely as boolean | undefined) ?? false;
     const recurrenceEndDate = body.recurrence_end_date as string | null | undefined;
     const endDate = computeEndDate(startDate, pattern.length);
+
+    const placementError = validateYearPlacement(year, startDate, pattern.length);
+    if (placementError) return { error: placementError };
+
+    const customRangeError = validateCustomRangePairing(customRange, repeatIndefinitely, recurrenceEndDate);
+    if (customRangeError) return { error: customRangeError };
 
     const recurrenceError = validateRecurrencePairing(repeatIndefinitely, recurrenceEndDate, endDate);
     if (recurrenceError) return { error: recurrenceError };
@@ -108,6 +164,8 @@ export function extractDesignCreateInput(
     const input: any = {
         start_date: startDate,
         pattern,
+        year,
+        custom_range: customRange,
     };
     if (body.name !== undefined) input.name = body.name;
     if (body.is_public !== undefined) input.is_public = body.is_public;
@@ -182,16 +240,30 @@ export function extractDesignSelectionCreateInput(
     if (body.is_active !== undefined && typeof body.is_active !== "boolean") {
         return { error: "is_active must be a boolean." };
     }
+    if (!isValidPastYear(body.year)) {
+        return { error: "year is required and must be a past calendar year." };
+    }
+    if (body.custom_range !== undefined && typeof body.custom_range !== "boolean") {
+        return { error: "custom_range must be a boolean." };
+    }
 
     const startDate = body.start_date;
+    const year = body.year;
+    const customRange = (body.custom_range as boolean | undefined) ?? false;
     const repeatIndefinitely = (body.repeat_indefinitely as boolean | undefined) ?? false;
     const recurrenceEndDate = body.recurrence_end_date as string | null | undefined;
     const endDate = computeEndDate(startDate, patternLength);
 
+    const placementError = validateYearPlacement(year, startDate, patternLength);
+    if (placementError) return { error: placementError };
+
+    const customRangeError = validateCustomRangePairing(customRange, repeatIndefinitely, recurrenceEndDate);
+    if (customRangeError) return { error: customRangeError };
+
     const recurrenceError = validateRecurrencePairing(repeatIndefinitely, recurrenceEndDate, endDate);
     if (recurrenceError) return { error: recurrenceError };
 
-    const input: any = { start_date: startDate };
+    const input: any = { start_date: startDate, year, custom_range: customRange };
     if (body.repeat_indefinitely !== undefined) input.repeat_indefinitely = repeatIndefinitely;
     if (body.recurrence_end_date !== undefined) input.recurrence_end_date = recurrenceEndDate;
     if (body.is_active !== undefined) input.is_active = body.is_active;
@@ -208,7 +280,13 @@ export function extractDesignSelectionCreateInput(
  */
 export function extractDesignSelectionUpdateInput(
     body: Record<string, unknown>,
-    current: { start_date: string; repeat_indefinitely: boolean; recurrence_end_date?: string | null },
+    current: {
+        start_date: string;
+        year: number;
+        custom_range: boolean;
+        repeat_indefinitely: boolean;
+        recurrence_end_date?: string | null;
+    },
     patternLength: number,
 ): { input?: iDesignSelectionUpdateInput; error?: string } {
     const input: any = {};
@@ -244,17 +322,41 @@ export function extractDesignSelectionUpdateInput(
         input.is_active = body.is_active;
     }
 
+    if ("year" in body) {
+        if (!isValidPastYear(body.year)) {
+            return { error: "year must be a past calendar year." };
+        }
+        input.year = body.year;
+    }
+
+    if ("custom_range" in body) {
+        if (typeof body.custom_range !== "boolean") {
+            return { error: "custom_range must be a boolean." };
+        }
+        input.custom_range = body.custom_range;
+    }
+
+    // Placement is re-checked whenever where/which year it paints changes -
+    // against the *effective* year + start_date, since a year change moves
+    // the grid out from under an unchanged start_date.
+    if ("year" in input || "start_date" in input) {
+        const placementError = validateYearPlacement(input.year ?? current.year, input.start_date ?? current.start_date, patternLength);
+        if (placementError) return { error: placementError };
+    }
+
     const startDateChanged = "start_date" in input;
     const nextStartDate: string = input.start_date ?? current.start_date;
     const endDate = computeEndDate(nextStartDate, patternLength);
+    const nextCustomRange: boolean = input.custom_range ?? current.custom_range;
+    const nextRepeatIndefinitely: boolean = input.repeat_indefinitely ?? current.repeat_indefinitely;
+    const nextRecurrenceEndDate: string | null | undefined =
+        "recurrence_end_date" in input ? input.recurrence_end_date : current.recurrence_end_date;
+
+    const customRangeError = validateCustomRangePairing(nextCustomRange, nextRepeatIndefinitely, nextRecurrenceEndDate);
+    if (customRangeError) return { error: customRangeError };
 
     const recurrenceTouched = "repeat_indefinitely" in input || "recurrence_end_date" in input || startDateChanged;
     if (recurrenceTouched) {
-        const nextRepeatIndefinitely: boolean =
-            input.repeat_indefinitely !== undefined ? input.repeat_indefinitely : current.repeat_indefinitely;
-        const nextRecurrenceEndDate: string | null | undefined =
-            "recurrence_end_date" in input ? input.recurrence_end_date : current.recurrence_end_date;
-
         const recurrenceError = validateRecurrencePairing(nextRepeatIndefinitely, nextRecurrenceEndDate ?? null, endDate);
         if (recurrenceError) return { error: recurrenceError };
     }

@@ -87,7 +87,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         const tz = offsetTimezone(offsetForTargetLocalHour(2));
         await profilesRepo.upsert(user.id, { timezone: tz as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
         await makeCovered(user.id);
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
@@ -104,7 +104,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         const user = await makeUser(notDueGitHubId, "octocat-scheduler-notdue");
         await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(12)) as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
 
@@ -116,7 +116,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         await pool.query("UPDATE users SET is_active = FALSE WHERE id = $1;", [user.id]);
         await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
 
@@ -127,7 +127,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         const user = await makeUser(noActiveSelectionGitHubId, "octocat-scheduler-noselection");
         await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: false });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: false });
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
 
@@ -139,7 +139,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         const tz = offsetTimezone(offsetForTargetLocalHour(2));
         await profilesRepo.upsert(user.id, { timezone: tz as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
 
         const todayForUser = await pool.query(
             `SELECT (NOW() AT TIME ZONE $1)::date AS today;`,
@@ -165,7 +165,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
             use_real_email: true,
         });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
         await makeCovered(user.id);
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
@@ -178,7 +178,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         const user = await makeUser(dueGitHubId, "octocat-scheduler-due");
         await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
         await makeCovered(user.id);
         await contributionsRepo.upsert({
             user_id: user.id,
@@ -199,7 +199,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         const user = await makeUser(dueGitHubId, "octocat-scheduler-due");
         await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
         await makeCovered(user.id);
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
@@ -214,7 +214,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         const user = await makeUser(dueGitHubId, "octocat-scheduler-due");
         await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
         // no makeCovered
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
@@ -225,7 +225,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         const user = await makeUser(dueGitHubId, "octocat-scheduler-due");
         await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
         await makeCovered(user.id, "NOW() - INTERVAL '2 days'");
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);
@@ -237,7 +237,7 @@ describe("SchedulerRepository.findDueCandidates", () => {
         // window is the 2am local hour, so "an hour ago" is still today for them
         await profilesRepo.upsert(user.id, { timezone: offsetTimezone(offsetForTargetLocalHour(2)) as any });
         const design = await designsRepo.create(user.id, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", is_active: true });
+        await selectionsRepo.create(user.id, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
         await makeCovered(user.id, "NOW() - INTERVAL '1 hour'");
 
         const candidates = await schedulerRepo.findDueCandidates(0, 4);

@@ -167,7 +167,7 @@ describe("UsersContributionsRepository", () => {
 
         it("includes a user with an active design selection and a current paid period", async () => {
             const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-            await designSelectionsRepo.create(userId, design.id, { start_date: "2026-01-04", is_active: true });
+            await designSelectionsRepo.create(userId, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
             await makeCovered();
 
             const active = await contributionsRepo.findActiveUsers();
@@ -180,7 +180,7 @@ describe("UsersContributionsRepository", () => {
 
         it("excludes an active-selection user with no current paid period", async () => {
             const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-            await designSelectionsRepo.create(userId, design.id, { start_date: "2026-01-04", is_active: true });
+            await designSelectionsRepo.create(userId, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
             // no makeCovered()
 
             const active = await contributionsRepo.findActiveUsers();
@@ -193,7 +193,7 @@ describe("UsersContributionsRepository", () => {
 
         it("excludes a user with no active design selection", async () => {
             const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-            await designSelectionsRepo.create(userId, design.id, { start_date: "2026-01-04", is_active: false });
+            await designSelectionsRepo.create(userId, design.id, { start_date: "2026-01-04", year: 2026, is_active: false });
 
             const active = await contributionsRepo.findActiveUsers();
 

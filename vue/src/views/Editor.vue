@@ -7,21 +7,36 @@
     import BaseTextInput from "@/components/ui/BaseTextInput.vue"
     import BaseSelect from "@/components/ui/BaseSelect.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
+    import ConfirmDialog from "@/components/ui/ConfirmDialog.vue"
     import CustomRangeSlider from "@/components/ui/CustomRangeSlider.vue"
     import GridLegend from "@/components/ui/GridLegend.vue"
-    import { LEVEL_COLORS, yearAnchor, pastYears, toDateString } from "@/helpers/grid"
-    import { getDesign, getSelectionCount, type iDesign, type iDesignCreatePayload } from "@/services/designs"
+    import {
+        LEVEL_COLORS,
+        yearAnchor,
+        pastYears,
+        toDateString,
+        weeksInYear,
+        gridCellDate,
+        monthLabelWeeks,
+        remapGridToYear,
+    } from "@/helpers/grid"
+    import {
+        getDesign,
+        getSelectionCount,
+        type iDesign,
+        type iDesignCreatePayload,
+        type iDesignSelection,
+    } from "@/services/designs"
     import { useDesignsStore } from "@/stores/designs"
     import { useAuthStore } from "@/stores/auth"
 
-    const WEEKS = 53
     const DAYS = 7 // row 0 = Sunday, matching stampPattern's idx = week * DAYS + row and GitHub's own week layout
     const MONTH_LABELS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 
     type Pattern = number[][]
 
-    function emptyGrid(): number[] {
-        return new Array(WEEKS * DAYS).fill(0)
+    function emptyGrid(weeks = weeksInYear(selectedYear.value)): number[] {
+        return new Array(weeks * DAYS).fill(0)
     }
 
     function stampPattern(pattern: Pattern, startWeek: number, level: number): number[] {
@@ -78,13 +93,15 @@
     // the editor offers the last few full years, most recent first.
     const YEARS = pastYears()
 
+    const selectedYear = ref<number>(YEARS[0]!)
+    // Week columns in the selected year's grid - 53, or 54 for a leap year starting on a Saturday.
+    const weeks = computed(() => weeksInYear(selectedYear.value))
     const grid = ref<number[]>(emptyGrid())
     // const selectedTemplate = ref("heart")
     // Brush intensity is fixed for now - the intensity picker is commented out.
     const BRUSH_LEVEL = 1
     // const brush = ref(4)
     // const painting = ref(false)
-    const selectedYear = ref<number>(YEARS[0]!)
     const publicOptIn = ref(true)
     const designName = ref("my first design")
 
@@ -192,6 +209,7 @@
     // }
 
     function toggleCell(idx: number) {
+        if (!inYear.value[idx]) return
         grid.value[idx] = (grid.value[idx] ?? 0) > 0 ? 0 : BRUSH_LEVEL
     }
 
@@ -201,7 +219,7 @@
     }
 
     function onRandomize() {
-        grid.value = emptyGrid().map(() => (Math.random() < 0.35 ? BRUSH_LEVEL : 0))
+        grid.value = emptyGrid().map((_, idx) => (inYear.value[idx] && Math.random() < 0.35 ? BRUSH_LEVEL : 0))
         // selectedTemplate.value = "blank"
     }
 
@@ -216,27 +234,24 @@
     // onMounted below. While set, it overrides the tab-based anchor with the
     // selection's own saved start_date, so the grid re-anchors to exactly where
     // it was when saved rather than to "today"/"this year" as of right now.
-    // Content (name/is_public/pattern) and scheduling (start_date/repeat_
-    // indefinitely/recurrence_end_date) come from two different resources now -
-    // loadedDesign is content-only, loadedSelection carries the schedule.
+    // Content (name/is_public/pattern) and scheduling (year/start_date/
+    // custom_range) come from two different resources now - loadedDesign is
+    // content-only, loadedSelection carries the schedule.
+    type LoadedSchedule = Pick<iDesignSelection, "year" | "start_date" | "custom_range">
     const loadedDesign = ref<iDesign | null>(null)
-    const loadedSelection = ref<{
-        start_date: string
-        repeat_indefinitely: boolean
-        recurrence_end_date?: string | null
-    } | null>(null)
+    const loadedSelection = ref<LoadedSchedule | null>(null)
 
     // The grid's first column is always the most recent Sunday on/before Jan 1
-    // of the selected year, matching GitHub's own year layout. The fixed 53-week
-    // width means a few cells at either end fall in the neighbouring years -
-    // the backfill only paints days inside the selected year.
-    const anchorDate = computed(() => {
-        if (loadedSelection.value) return new Date(`${loadedSelection.value.start_date}T00:00:00Z`)
-        return yearAnchor(selectedYear.value)
-    })
-    const anchorDateLabel = computed(() =>
-        anchorDate.value.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }),
-    )
+    // of the selected year, matching GitHub's own year layout - including for a
+    // loaded design, whose pattern is placed at its start_date's column. Cells
+    // at either end that fall in the neighbouring years are shown but can't be
+    // painted, since the backfill only paints days inside the selected year.
+    const anchorDate = computed(() => yearAnchor(selectedYear.value))
+
+    // Per cell index: its date, and whether that date is inside the selected year.
+    const cellDates = computed(() => grid.value.map((_, idx) => gridCellDate(selectedYear.value, Math.floor(idx / DAYS), idx % DAYS)))
+    const inYear = computed(() => cellDates.value.map((date) => date.getUTCFullYear() === selectedYear.value))
+    const paintableCount = computed(() => inYear.value.filter(Boolean).length)
 
     // Custom-range tiling always stops at the end of the selected year.
     const yearEndDate = computed(() => `${selectedYear.value}-12-31`)
@@ -249,59 +264,69 @@
         }),
     )
 
+    // A year picked while the design has paint waits here for the user to
+    // confirm - the copy onto the new year's grid can drop squares at its edges.
+    const pendingYear = ref<number | null>(null)
+
     function selectYear(value: string) {
         const year = Number(value)
         if (year === selectedYear.value) return
+        if (painted.value > 0) {
+            pendingYear.value = year
+            return
+        }
+        changeYear(year)
+    }
+
+    function confirmYearChange() {
+        if (pendingYear.value !== null) changeYear(pendingYear.value)
+        pendingYear.value = null
+    }
+
+    function cancelYearChange() {
+        pendingYear.value = null
+    }
+
+    // Copies the design onto the new year's grid column by column, keeping its
+    // position on screen (see remapGridToYear). A loaded design stays loaded -
+    // saving moves it to the new year rather than creating a copy.
+    function changeYear(year: number) {
+        grid.value = remapGridToYear(grid.value, year)
         selectedYear.value = year
-        // Switching years re-bases the grid onto a different real-world date range,
-        // so painted cells can't be meaningfully remapped onto new columns - reset
-        // the canvas rather than leaving stale art anchored to the wrong dates.
-        // This also detaches from any loaded design: further edits become a new
-        // design rather than continuing to edit the one that was loaded.
-        loadedDesign.value = null
-        loadedSelection.value = null
-        grid.value = emptyGrid()
-        // selectedTemplate.value = "blank"
+        rangeEnd.value = Math.min(rangeEnd.value, weeks.value - 1)
+        rangeStart.value = Math.min(rangeStart.value, rangeEnd.value - 1)
     }
 
     /**
-     * Reconstructs editor state from a saved design + the caller's own
-     * selection of it. The schema doesn't record which UI mode ("repeat every
-     * year" vs "custom range") produced a given repeat_indefinitely/
-     * recurrence_end_date pairing, so this is a best-effort reconstruction: a
-     * pattern narrower than the full grid is treated as a custom range; a
-     * full-width pattern's repeat_indefinitely maps back to "repeat every year".
+     * Restores editor state from a saved design + the caller's own selection
+     * of it - only from fields that state each thing directly: the year, the
+     * pattern's start column (start_date), and whether it's a custom range.
+     * Nothing is inferred from the pattern's shape.
      */
-    function applyLoadedDesign(
-        design: iDesign,
-        selection: { start_date: string; repeat_indefinitely: boolean; recurrence_end_date?: string | null },
-    ) {
+    function applyLoadedDesign(design: iDesign, selection: LoadedSchedule) {
         loadedDesign.value = design
         loadedSelection.value = selection
-        // start_date may fall in the last days of the previous year (the
-        // Sunday on/before Jan 1), so its year is read a week later.
-        const startWeekEnd = new Date(`${selection.start_date}T00:00:00Z`)
-        startWeekEnd.setUTCDate(startWeekEnd.getUTCDate() + 6)
-        selectedYear.value = startWeekEnd.getUTCFullYear()
+        selectedYear.value = selection.year
 
         designName.value = design.name
         publicOptIn.value = design.is_public
-        repeatIndefinitely.value = selection.repeat_indefinitely
-        recurrenceEndDate.value = selection.recurrence_end_date ?? ""
 
+        // The saved pattern starts at start_date's column, not column 0.
+        const startWeek = Math.round(
+            (new Date(`${selection.start_date}T00:00:00Z`).getTime() - yearAnchor(selectedYear.value).getTime()) / (7 * 86400000),
+        )
         const patternWeeks = design.pattern.length / DAYS
-        const isFullWidth = patternWeeks >= WEEKS
 
-        customRangeEnabled.value = !isFullWidth
-        repeatEveryYear.value = isFullWidth && selection.repeat_indefinitely
-        if (!isFullWidth) {
-            rangeStart.value = 0
-            rangeEnd.value = patternWeeks - 1
+        customRangeEnabled.value = selection.custom_range
+        if (selection.custom_range) {
+            rangeStart.value = startWeek
+            rangeEnd.value = startWeek + patternWeeks - 1
         }
 
         const newGrid = emptyGrid()
         design.pattern.forEach((level, i) => {
-            if (i < newGrid.length) newGrid[i] = level
+            const idx = startWeek * DAYS + i
+            if (idx >= 0 && idx < newGrid.length) newGrid[idx] = level
         })
         grid.value = newGrid
         // selectedTemplate.value = "blank"
@@ -328,9 +353,7 @@
         if (selection) applyLoadedDesign(design, selection)
     })
 
-    function cellDateLabel(week: number, day: number): string {
-        const date = new Date(anchorDate.value)
-        date.setUTCDate(date.getUTCDate() + week * 7 + day)
+    function cellDateLabel(date: Date): string {
         return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
     }
 
@@ -341,41 +364,41 @@
             const day = idx % DAYS
             let paintIdx = idx
             let ghost = false
+            // A custom range only tiles forward from its start - like the
+            // backfill - so columns before it stay empty and unpaintable.
+            const beforeRange = customRangeEnabled.value && week < rangeStart.value
 
-            if (customRangeEnabled.value && (week < rangeStart.value || week > rangeEnd.value)) {
+            if (customRangeEnabled.value && week > rangeEnd.value) {
                 ghost = true
-                const relWeek = ((week - rangeStart.value) % rangeWidth + rangeWidth) % rangeWidth
+                const relWeek = (week - rangeStart.value) % rangeWidth
                 paintIdx = (rangeStart.value + relWeek) * DAYS + day
             }
 
-            const displayLevel = customRangeEnabled.value ? (grid.value[paintIdx] ?? 0) : level
+            const date = cellDates.value[idx]!
+            // Paintable only if both this cell and the cell it writes through to
+            // (itself, or its in-range source for a ghost cell) are in the year.
+            const outside = !inYear.value[idx]
+            const paintable = !outside && !beforeRange && !!inYear.value[paintIdx]
+            const displayLevel = paintable ? (customRangeEnabled.value ? (grid.value[paintIdx] ?? 0) : level) : 0
             return {
                 idx,
                 paintIdx,
-                bg: LEVEL_COLORS[displayLevel] ?? LEVEL_COLORS[0]!,
-                opacity: ghost ? 0.38 : 1,
-                title: cellDateLabel(week, day),
+                date: toDateString(date),
+                level: displayLevel,
+                outside,
+                paintable,
+                bg: outside ? "transparent" : (LEVEL_COLORS[displayLevel] ?? LEVEL_COLORS[0]!),
+                // dimmed outside the range on both sides - this is what shows where the range is
+                opacity: ghost || beforeRange ? 0.38 : 1,
+                title: outside ? undefined : cellDateLabel(date),
             }
         })
     })
 
-    // One label per real month transition, positioned at the column where that
-    // month actually starts relative to the anchor - not evenly spaced Jan-Dec,
-    // since the grid always starts at anchorDate (which is rarely Jan 1).
-    const months = computed(() => {
-        const labels: { label: string; col: number }[] = []
-        let lastMonth = -1
-        for (let week = 0; week < WEEKS; week++) {
-            const date = new Date(anchorDate.value)
-            date.setUTCDate(date.getUTCDate() + week * 7)
-            const month = date.getUTCMonth()
-            if (month !== lastMonth) {
-                labels.push({ label: MONTH_LABELS[month]!, col: week + 1 })
-                lastMonth = month
-            }
-        }
-        return labels
-    })
+    // Jan-Dec, each over the column holding that month's 1st (see monthLabelWeeks).
+    const months = computed(() =>
+        monthLabelWeeks(selectedYear.value).map(({ month, week }) => ({ label: MONTH_LABELS[month]!, col: week + 1 })),
+    )
 
     // const templates = computed(() =>
     //     TEMPLATES.map((t) => ({
@@ -432,7 +455,7 @@
         } else {
             firstCol = -1
             lastCol = -1
-            for (let week = 0; week < WEEKS; week++) {
+            for (let week = 0; week < weeks.value; week++) {
                 let hasPaint = false
                 for (let day = 0; day < DAYS; day++) {
                     if ((grid.value[week * DAYS + day] ?? 0) > 0) {
@@ -469,11 +492,17 @@
             return false
         }
 
-        // Past-year designs never repeat indefinitely: a custom range tiles
-        // through the end of the selected year, anything else is a one-off.
-        // ("repeat every year" and the duration control are hidden for now.)
-        const finalRepeatIndefinitely = false
-        const finalRecurrenceEndDate = customRangeEnabled.value ? yearEndDate.value : null
+        // A custom range tiles through the end of the selected year (the API
+        // derives that from year + custom_range); anything else is a one-off.
+        // repeat_indefinitely/recurrence_end_date belong to a separate,
+        // unimplemented feature and are always left unset.
+        const schedule = {
+            year: selectedYear.value,
+            start_date: extracted.start_date,
+            custom_range: customRangeEnabled.value,
+            repeat_indefinitely: false,
+            recurrence_end_date: null,
+        }
 
         isSaving.value = true
         try {
@@ -488,11 +517,7 @@
                     return false
                 }
 
-                const updatedSelection = await designsStore.updateSelectionSchedule(loadedDesign.value.id, {
-                    start_date: extracted.start_date,
-                    repeat_indefinitely: finalRepeatIndefinitely,
-                    recurrence_end_date: finalRecurrenceEndDate,
-                })
+                const updatedSelection = await designsStore.updateSelectionSchedule(loadedDesign.value.id, schedule)
                 if (!updatedSelection) {
                     saveError.value = "Could not save changes."
                     return false
@@ -506,10 +531,8 @@
             const payload: iDesignCreatePayload = {
                 name: designName.value,
                 is_public: publicOptIn.value,
-                start_date: extracted.start_date,
                 pattern: extracted.pattern,
-                repeat_indefinitely: finalRepeatIndefinitely,
-                recurrence_end_date: finalRecurrenceEndDate,
+                ...schedule,
             }
 
             const created = await designsStore.createDesign(payload)
@@ -557,7 +580,7 @@
                 <span class="year-picker-label">year</span>
                 <BaseSelect
                     id="editor-year"
-                    :model-value="String(selectedYear)"
+                    :model-value="String(pendingYear ?? selectedYear)"
                     :options="yearOptions"
                     @update:model-value="selectYear"
                 />
@@ -624,12 +647,12 @@
             <main class="canvas-main order-1 md:order-2">
                 <div class="canvas-wrap">
                     <div class="canvas-header">
-                        <div class="canvas-title">{{ selectedYear }} contribution graph · starts {{ anchorDateLabel }}</div>
+                        <div class="canvas-title">{{ selectedYear }} contribution graph · starts Jan 1, {{ selectedYear }}</div>
                         <!-- <div class="canvas-hint">drag to paint · click to cycle intensity</div> -->
                     </div>
                     <BaseCard padding="28px 26px 24px">
                         <div class="grid-scroll-wrap">
-                            <div class="grid-inner">
+                            <div class="grid-inner" :style="{ '--weeks': weeks }">
                                 <div class="month-labels">
                                     <span
                                         v-for="m in months"
@@ -651,16 +674,20 @@
                                     </div>
                                     <div
                                         role="group"
-                                        :aria-label="'contribution graph editor, ' + painted + ' of ' + grid.length + ' squares painted'"
+                                        :aria-label="'contribution graph editor, ' + painted + ' of ' + paintableCount + ' squares painted'"
                                         class="grid-cells-wrap"
                                     >
                                         <div
                                             v-for="cell in cells"
                                             :key="cell.idx"
                                             data-testid="grid-cell"
+                                            :data-date="cell.date"
+                                            :data-level="cell.level"
+                                            :data-outside-year="cell.outside || undefined"
                                             :title="cell.title"
-                                            @mousedown="toggleCell(cell.paintIdx)"
+                                            @mousedown="cell.paintable && toggleCell(cell.paintIdx)"
                                             class="grid-cell"
+                                            :class="{ 'grid-cell--disabled': !cell.paintable }"
                                             :style="{ background: cell.bg, opacity: cell.opacity }"
                                         ></div>
                                     </div>
@@ -668,8 +695,8 @@
                             </div>
                         </div>
                         <div v-if="customRangeEnabled" class="range-note-wrap">
-                            <CustomRangeSlider v-model:start="rangeStart" v-model:end="rangeEnd" :max="WEEKS - 1" />
-                            <div class="range-hint">columns outside the range show a dimmed preview of the repeated pattern — paint anywhere and it maps back into your selection.</div>
+                            <CustomRangeSlider v-model:start="rangeStart" v-model:end="rangeEnd" :max="weeks - 1" />
+                            <div class="range-hint">columns after the range show a dimmed preview of the pattern repeating through the end of the year — paint there and it maps back into your selection. columns before the range stay empty.</div>
                         </div>
                         <GridLegend :swatch-size="11" />
                     </BaseCard>
@@ -683,7 +710,7 @@
 
                 <div class="panel-label panel-label--stats">design stats</div>
                 <div class="stats-box">
-                    <div class="stats-row"><span class="stats-label">squares painted</span><span class="stats-value">{{ painted }} / {{ grid.length }}</span></div>
+                    <div class="stats-row"><span class="stats-label">squares painted</span><span class="stats-value">{{ painted }} / {{ paintableCount }}</span></div>
                     <!-- <div class="stats-row"><span class="stats-label">estimated commits</span><span class="stats-value">{{ commitCount }}</span></div> -->
                 </div>
 
@@ -753,6 +780,18 @@
                 </div>
             </aside>
         </div>
+
+        <ConfirmDialog
+            :open="pendingYear !== null"
+            :title="`switch to ${pendingYear}?`"
+            :confirm-label="`switch to ${pendingYear}`"
+            cancel-label="keep editing"
+            @confirm="confirmYearChange"
+            @cancel="cancelYearChange"
+        >
+            Your design keeps its place on the grid, but the days under each square change - some of it may shift
+            slightly, and any squares that land outside {{ pendingYear }} are removed.
+        </ConfirmDialog>
     </div>
 </template>
 
@@ -982,7 +1021,7 @@
 
     .month-labels {
         display: grid;
-        grid-template-columns: repeat(53, 1fr);
+        grid-template-columns: repeat(var(--weeks), 1fr);
         gap: clamp(2px, 0.35vw, 4px);
         margin-bottom: 8px;
         padding-left: 32px;
@@ -1029,17 +1068,21 @@
         flex: 1;
         min-width: 0;
         display: grid;
-        grid-template-columns: repeat(53, 1fr);
+        grid-template-columns: repeat(var(--weeks), 1fr);
         grid-template-rows: repeat(7, 1fr);
         grid-auto-flow: column;
         gap: clamp(2px, 0.35vw, 4px);
-        aspect-ratio: 53 / 7.6;
+        aspect-ratio: var(--weeks) / 7.6;
         user-select: none;
     }
 
     .grid-cell {
         border-radius: 2px;
         cursor: pointer;
+    }
+
+    .grid-cell--disabled {
+        cursor: default;
     }
 
     .range-note-wrap {

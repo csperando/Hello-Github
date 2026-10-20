@@ -104,10 +104,13 @@ export const useDesignsStore = defineStore('designs', () => {
     return { ok: true }
   }
 
-  /** Updates the caller's own selection's schedule (start_date/repeat_indefinitely/recurrence_end_date). */
+  /** Updates the caller's own selection's schedule (year/start_date/custom_range, plus the reserved recurrence fields). */
   async function updateSelectionSchedule(
     designId: string,
-    payload: Pick<iDesignSelectionUpdatePayload, 'start_date' | 'repeat_indefinitely' | 'recurrence_end_date'>,
+    payload: Pick<
+      iDesignSelectionUpdatePayload,
+      'year' | 'start_date' | 'custom_range' | 'repeat_indefinitely' | 'recurrence_end_date'
+    >,
   ): Promise<iDesignSelection | null> {
     const res = await apiUpdateSelection(designId, payload)
     if (!res.ok) return null
@@ -120,6 +123,8 @@ export const useDesignsStore = defineStore('designs', () => {
           ? {
               ...s,
               start_date: updated.start_date,
+              year: updated.year,
+              custom_range: updated.custom_range,
               repeat_indefinitely: updated.repeat_indefinitely,
               recurrence_end_date: updated.recurrence_end_date,
             }

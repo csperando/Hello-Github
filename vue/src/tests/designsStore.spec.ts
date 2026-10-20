@@ -35,7 +35,9 @@ const selection1 = {
   user_id: 'u1',
   design_id: 'd1',
   is_active: true,
-  start_date: '2026-01-04',
+  start_date: '2025-01-05',
+  year: 2025,
+  custom_range: false,
   repeat_indefinitely: false,
   recurrence_end_date: null,
 }
@@ -86,7 +88,7 @@ describe('designs store', () => {
     createDesignMock.mockResolvedValue(jsonResponse({ data: [{ design: design1, selection: selection1 }] }))
 
     const store = useDesignsStore()
-    const result = await store.createDesign({ start_date: '2026-01-04', pattern: design1.pattern })
+    const result = await store.createDesign({ start_date: '2025-01-05', year: 2025, pattern: design1.pattern })
 
     expect(result).toEqual({ design: design1, selection: selection1 })
     expect(store.selections).toEqual([joinedRow1])
@@ -96,7 +98,7 @@ describe('designs store', () => {
     createDesignMock.mockResolvedValue(jsonResponse({}, false))
 
     const store = useDesignsStore()
-    const result = await store.createDesign({ start_date: '2026-01-04', pattern: design1.pattern })
+    const result = await store.createDesign({ start_date: '2025-01-05', year: 2025, pattern: design1.pattern })
 
     expect(result).toBeNull()
     expect(store.selections).toEqual([])
@@ -141,16 +143,17 @@ describe('designs store', () => {
   })
 
   it('updateSelectionSchedule updates schedule fields on the matching row without touching content fields', async () => {
-    const updatedSelection = { ...selection1, start_date: '2026-02-01', repeat_indefinitely: true, recurrence_end_date: null }
+    const updatedSelection = { ...selection1, year: 2024, start_date: '2024-02-04', custom_range: true }
     updateSelectionMock.mockResolvedValue(jsonResponse({ data: [updatedSelection] }))
 
     const store = useDesignsStore()
     store.selections = [joinedRow1]
-    const result = await store.updateSelectionSchedule('d1', { start_date: '2026-02-01', repeat_indefinitely: true })
+    const result = await store.updateSelectionSchedule('d1', { year: 2024, start_date: '2024-02-04', custom_range: true })
 
     expect(result).toEqual(updatedSelection)
-    expect(store.selections[0]!.start_date).toBe('2026-02-01')
-    expect(store.selections[0]!.repeat_indefinitely).toBe(true)
+    expect(store.selections[0]!.year).toBe(2024)
+    expect(store.selections[0]!.start_date).toBe('2024-02-04')
+    expect(store.selections[0]!.custom_range).toBe(true)
     expect(store.selections[0]!.name).toBe(joinedRow1.name) // content untouched
   })
 
@@ -159,7 +162,7 @@ describe('designs store', () => {
 
     const store = useDesignsStore()
     store.selections = [joinedRow1]
-    const result = await store.updateSelectionSchedule('d1', { start_date: '2026-02-01' })
+    const result = await store.updateSelectionSchedule('d1', { start_date: '2025-02-02' })
 
     expect(result).toBeNull()
     expect(store.selections).toEqual([joinedRow1])

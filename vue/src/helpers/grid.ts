@@ -33,19 +33,75 @@ export function toDateString(date: Date): string {
   return date.toISOString().slice(0, 10)
 }
 
+const DAY_MS = 86400000
+
+/**
+ * Week columns a year's grid needs: from its anchor through the week holding
+ * Dec 31. Usually 53, but 54 when a leap year starts on a Saturday (e.g. 2028).
+ */
+export function weeksInYear(year: number): number {
+  const anchor = yearAnchor(year).getTime()
+  return Math.floor((Date.UTC(year, 11, 31) - anchor) / (7 * DAY_MS)) + 1
+}
+
+/** The date of the cell at (week column, day row - 0 = Sunday) in `year`'s grid. */
+export function gridCellDate(year: number, week: number, day: number): Date {
+  const date = yearAnchor(year)
+  date.setUTCDate(date.getUTCDate() + week * 7 + day)
+  return date
+}
+
+/**
+ * One label per month of `year`, on the week column holding that month's 1st -
+ * always exactly 12, Jan-Dec. (Labelling by each column's Sunday instead gives
+ * a stray leading "dec" whenever Jan 1 isn't a Sunday.)
+ */
+export function monthLabelWeeks(year: number): { month: number; week: number }[] {
+  const anchor = yearAnchor(year).getTime()
+  return Array.from({ length: 12 }, (_, month) => ({
+    month,
+    week: Math.floor((Date.UTC(year, month, 1) - anchor) / (7 * DAY_MS)),
+  }))
+}
+
+/**
+ * Copies a grid (week-major: idx = week * 7 + day) onto `toYear`'s grid
+ * column by column, so the design keeps its position on screen. Each column
+ * now covers different dates, so any cell landing on a day outside `toYear`
+ * - at either end, or a 54th column moving into a 53-column year - is dropped.
+ */
+export function remapGridToYear(grid: number[], toYear: number): number[] {
+  const weeks = weeksInYear(toYear)
+  return Array.from({ length: weeks * 7 }, (_, idx) => {
+    const inYear = gridCellDate(toYear, Math.floor(idx / 7), idx % 7).getUTCFullYear() === toYear
+    return inYear ? (grid[idx] ?? 0) : 0
+  })
+}
+
+/** The schedule fields of a selection that place its pattern on the calendar - mirrors the API's iScheduleFields. */
+export interface iScheduleFields {
+  start_date: string
+  repeat_indefinitely: boolean
+  recurrence_end_date?: string | null
+  /** Tile forward from start_date through Dec 31 of `year`. */
+  custom_range?: boolean
+  year?: number
+}
+
 /**
  * Mirrors api/services/designs.schedule.ts's getPatternIndexForDate exactly -
  * same modulo-tiling formula, kept in sync by hand since there's no shared
  * package between api/ and vue/. Returns the index into `pattern` for
  * targetDate, or null if the design contributes nothing that day.
  */
-export function getPatternIndexForDate(
-  pattern: number[],
-  startDate: string,
-  repeatIndefinitely: boolean,
-  recurrenceEndDate: string | null | undefined,
-  targetDate: string,
-): number | null {
+export function getPatternIndexForDate(pattern: number[], schedule: iScheduleFields, targetDate: string): number | null {
+  const {
+    start_date: startDate,
+    repeat_indefinitely: repeatIndefinitely,
+    recurrence_end_date: recurrenceEndDate,
+    custom_range: customRange,
+    year,
+  } = schedule
   const daysSinceStart = Math.round(
     (new Date(`${targetDate}T00:00:00Z`).getTime() - new Date(`${startDate}T00:00:00Z`).getTime()) / 86400000,
   )
@@ -59,7 +115,10 @@ export function getPatternIndexForDate(
     return week * 7 + dayOfWeek
   }
 
-  const isRepeating = repeatIndefinitely || (recurrenceEndDate != null && targetDate <= recurrenceEndDate)
+  const isRepeating =
+    repeatIndefinitely ||
+    (customRange === true && year != null && targetDate <= `${year}-12-31`) ||
+    (recurrenceEndDate != null && targetDate <= recurrenceEndDate)
   if (!isRepeating) return null
 
   const tiledWeek = week % patternWeeks

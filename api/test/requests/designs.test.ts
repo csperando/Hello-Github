@@ -69,7 +69,8 @@ afterAll(() => {
 });
 
 const validCreateBody = {
-    start_date: "2026-01-04", // Sunday
+    start_date: "2025-01-05", // Sunday
+    year: 2025,
     pattern: [0, 1, 2, 3, 4, 0, 0],
 };
 
@@ -90,7 +91,9 @@ function mockSelectionRow(overrides: Record<string, unknown> = {}) {
         user_id: owner.id,
         design_id: "d1",
         is_active: false,
-        start_date: "2026-01-04",
+        start_date: "2025-01-05",
+        year: 2025,
+        custom_range: false,
         repeat_indefinitely: false,
         recurrence_end_date: null,
         ...overrides,
@@ -133,7 +136,7 @@ describe("Design routes", () => {
             expect(selectionsRepoMock.create).toHaveBeenCalledWith(
                 owner.id,
                 "d1",
-                expect.objectContaining({ start_date: "2026-01-04" }),
+                expect.objectContaining({ start_date: "2025-01-05" }),
                 expect.anything(),
             );
             expect((body.data![0] as any).design).toEqual(mockDesignRow());
@@ -191,7 +194,7 @@ describe("Design routes", () => {
     describe("GET /design/last-run", () => {
         it("returns the authenticated user's latest run status per design", async () => {
             runLogRepoMock.getLatestPerDesignForUser.mockResolvedValue([
-                { design_id: "d1", target_date: "2026-01-04", commit_count: 5, status: "committed" },
+                { design_id: "d1", target_date: "2025-01-05", commit_count: 5, status: "committed" },
             ]);
 
             const res = await request(server).get("/design/last-run").set("Cookie", ownerCookie);
@@ -200,7 +203,7 @@ describe("Design routes", () => {
             expect(res.status).toBe(200);
             expect(runLogRepoMock.getLatestPerDesignForUser).toHaveBeenCalledWith(owner.id);
             expect(body.data).toEqual([
-                { design_id: "d1", target_date: "2026-01-04", commit_count: 5, status: "committed" },
+                { design_id: "d1", target_date: "2025-01-05", commit_count: 5, status: "committed" },
             ]);
         });
 
@@ -323,7 +326,7 @@ describe("Design routes", () => {
             await request(server)
                 .patch("/design/d1")
                 .set("Cookie", ownerCookie)
-                .send({ name: "ok", start_date: "2026-01-05", repeat_indefinitely: true });
+                .send({ name: "ok", start_date: "2025-01-06", repeat_indefinitely: true });
 
             expect(designsRepoMock.update).toHaveBeenCalledWith("d1", { name: "ok" });
         });
@@ -409,13 +412,13 @@ describe("Design routes", () => {
             const res = await request(server)
                 .post("/design/d1/select")
                 .set("Cookie", ownerCookie)
-                .send({ start_date: "2026-01-04" });
+                .send({ year: 2025, start_date: "2025-01-05" });
 
             expect(res.status).toBe(200);
             expect(selectionsRepoMock.create).toHaveBeenCalledWith(
                 owner.id,
                 "d1",
-                expect.objectContaining({ start_date: "2026-01-04" }),
+                expect.objectContaining({ start_date: "2025-01-05" }),
             );
         });
 
@@ -426,7 +429,7 @@ describe("Design routes", () => {
             const res = await request(server)
                 .post("/design/d1/select")
                 .set("Cookie", otherUserCookie)
-                .send({ start_date: "2026-01-04" });
+                .send({ year: 2025, start_date: "2025-01-05" });
 
             expect(res.status).toBe(200);
         });
@@ -437,7 +440,7 @@ describe("Design routes", () => {
             const res = await request(server)
                 .post("/design/d1/select")
                 .set("Cookie", otherUserCookie)
-                .send({ start_date: "2026-01-04" });
+                .send({ year: 2025, start_date: "2025-01-05" });
 
             expect(res.status).toBe(403);
             expect(selectionsRepoMock.create).not.toHaveBeenCalled();
@@ -449,7 +452,7 @@ describe("Design routes", () => {
             const res = await request(server)
                 .post("/design/missing/select")
                 .set("Cookie", ownerCookie)
-                .send({ start_date: "2026-01-04" });
+                .send({ year: 2025, start_date: "2025-01-05" });
 
             expect(res.status).toBe(404);
         });
@@ -460,7 +463,7 @@ describe("Design routes", () => {
             const res = await request(server)
                 .post("/design/d1/select")
                 .set("Cookie", ownerCookie)
-                .send({ start_date: "2026-01-05" });
+                .send({ year: 2025, start_date: "2025-01-06" });
 
             expect(res.status).toBe(400);
             expect(selectionsRepoMock.create).not.toHaveBeenCalled();
@@ -476,7 +479,7 @@ describe("Design routes", () => {
             const res = await request(server)
                 .post("/design/d1/select")
                 .set("Cookie", ownerCookie)
-                .send({ start_date: "2026-01-04", is_active: true });
+                .send({ year: 2025, start_date: "2025-01-05", is_active: true });
             const body: iResponse = JSON.parse(res.text);
 
             expect(res.status).toBe(400);
@@ -484,7 +487,7 @@ describe("Design routes", () => {
         });
 
         it("rejects an unauthenticated request with 401", async () => {
-            const res = await request(server).post("/design/d1/select").send({ start_date: "2026-01-04" });
+            const res = await request(server).post("/design/d1/select").send({ year: 2025, start_date: "2025-01-05" });
             expect(res.status).toBe(401);
             expect(selectionsRepoMock.create).not.toHaveBeenCalled();
         });
@@ -551,13 +554,13 @@ describe("Design routes", () => {
         it("still lets an uncovered user change non-activation fields", async () => {
             designsRepoMock.getById.mockResolvedValue(mockDesignRow());
             selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow());
-            selectionsRepoMock.update.mockResolvedValue(mockSelectionRow({ start_date: "2026-02-01" }));
+            selectionsRepoMock.update.mockResolvedValue(mockSelectionRow({ start_date: "2025-02-02" }));
             billingRepoMock.getByUserId.mockResolvedValue(null);
 
             const res = await request(server)
                 .patch("/design/d1/select")
                 .set("Cookie", ownerCookie)
-                .send({ start_date: "2026-02-01" });
+                .send({ year: 2025, start_date: "2025-02-02" });
 
             expect(res.status).toBe(200);
         });

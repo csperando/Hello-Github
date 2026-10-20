@@ -67,6 +67,7 @@ describe("PaymentsService.handleWebhookEvent (concurrent duplicate delivery, rea
         const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
         await selectionsRepo.create(userId, design.id, {
             start_date: "2024-12-29",
+            year: 2025,
             repeat_indefinitely: false,
         });
 

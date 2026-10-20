@@ -36,7 +36,10 @@ export interface iDesignSelection {
 
     is_active: Boolean;
 
-    start_date: String; // date
+    start_date: String; // date - Sunday of the pattern's first column, inside `year`'s grid
+    year: Number; // the past calendar year being painted
+    custom_range: Boolean; // tile the pattern forward from start_date through Dec 31 of `year`
+    // reserved for a separate, unimplemented recurrence feature - unused by the editor/backfill
     repeat_indefinitely: Boolean;
     recurrence_end_date?: String; // date; null unless repeat_indefinitely is false
 
@@ -53,12 +56,16 @@ export interface iDesignCreateInput {
     is_public?: Boolean;
     pattern: Number[];
     start_date: String;
+    year: Number;
+    custom_range?: Boolean;
     repeat_indefinitely?: Boolean;
     recurrence_end_date?: String;
 }
 
 export interface iDesignSelectionCreateInput {
     start_date: String;
+    year: Number;
+    custom_range?: Boolean;
     repeat_indefinitely?: Boolean;
     recurrence_end_date?: String;
     is_active?: Boolean;
@@ -67,6 +74,8 @@ export interface iDesignSelectionCreateInput {
 export interface iDesignSelectionUpdateInput {
     is_active?: Boolean;
     start_date?: String;
+    year?: Number;
+    custom_range?: Boolean;
     repeat_indefinitely?: Boolean;
     recurrence_end_date?: String;
 }
@@ -104,6 +113,8 @@ export interface iPublicSelection {
     design_id: String;
     is_active: Boolean;
     start_date: String;
+    year: Number;
+    custom_range: Boolean;
     repeat_indefinitely: Boolean;
     recurrence_end_date: String | null;
     created_at: String;
@@ -117,6 +128,8 @@ export function toPublicSelection(selection: iPublicSelection): iPublicSelection
         design_id: selection.design_id,
         is_active: selection.is_active,
         start_date: selection.start_date,
+        year: selection.year,
+        custom_range: selection.custom_range,
         repeat_indefinitely: selection.repeat_indefinitely,
         recurrence_end_date: selection.recurrence_end_date,
         created_at: selection.created_at,

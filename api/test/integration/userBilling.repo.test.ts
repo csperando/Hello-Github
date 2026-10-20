@@ -161,7 +161,7 @@ describe("UserBillingRepository", () => {
     describe("listLapsedActiveUsers", () => {
         const activeSelection = async () => {
             const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-            await selectionsRepo.create(userId, design.id, { start_date: "2026-01-04", is_active: true });
+            await selectionsRepo.create(userId, design.id, { start_date: "2026-01-04", year: 2026, is_active: true });
             return design.id;
         };
 
@@ -187,7 +187,7 @@ describe("UserBillingRepository", () => {
 
         it("excludes a user with no active selection even when lapsed", async () => {
             const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-            await selectionsRepo.create(userId, design.id, { start_date: "2026-01-04", is_active: false });
+            await selectionsRepo.create(userId, design.id, { start_date: "2026-01-04", year: 2026, is_active: false });
             const lapsed = await billingRepo.listLapsedActiveUsers();
             expect(lapsed).not.toContainEqual(expect.objectContaining({ user_id: userId }));
         });

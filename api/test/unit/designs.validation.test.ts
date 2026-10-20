@@ -9,7 +9,19 @@ import {
     extractDesignUpdateInput,
     extractDesignSelectionCreateInput,
     extractDesignSelectionUpdateInput,
+    isValidPastYear,
+    validateYearPlacement,
+    validateCustomRangePairing,
 } from "../../services/designs.validation";
+
+// Designs paint a *past* year - pin "now" to 2027 so the 2026 fixtures below are past.
+beforeAll(() => {
+    jest.useFakeTimers({ now: new Date("2027-06-01T12:00:00Z") });
+});
+
+afterAll(() => {
+    jest.useRealTimers();
+});
 
 describe("isValidPattern", () => {
     it("accepts a non-empty array of integers 0-4 whose length is a multiple of 7", () => {
@@ -99,6 +111,7 @@ describe("validateRecurrencePairing", () => {
 describe("extractDesignCreateInput", () => {
     const validBody = {
         start_date: "2026-01-04",
+        year: 2026,
         pattern: [0, 1, 2, 3, 4, 0, 0],
     };
 
@@ -209,51 +222,59 @@ describe("extractDesignUpdateInput", () => {
 
 describe("extractDesignSelectionCreateInput", () => {
     it("accepts a minimal valid body", () => {
-        const { input, error } = extractDesignSelectionCreateInput({ start_date: "2026-01-04" }, 7);
+        const { input, error } = extractDesignSelectionCreateInput({ year: 2026, start_date: "2026-01-04" }, 7);
 
         expect(error).toBeUndefined();
         expect(input?.start_date).toBe("2026-01-04");
     });
 
     it("rejects a missing start_date", () => {
-        const { error } = extractDesignSelectionCreateInput({}, 7);
+        const { error } = extractDesignSelectionCreateInput({ year: 2026 }, 7);
         expect(error).toBeDefined();
     });
 
     it("rejects a non-Sunday start_date", () => {
-        const { error } = extractDesignSelectionCreateInput({ start_date: "2026-01-05" }, 7);
+        const { error } = extractDesignSelectionCreateInput({ year: 2026, start_date: "2026-01-05" }, 7);
         expect(error).toBeDefined();
     });
 
     it("validates recurrence_end_date against the given pattern length's derived end_date", () => {
         const { error: tooEarly } = extractDesignSelectionCreateInput(
-            { start_date: "2026-01-04", recurrence_end_date: "2026-01-10" },
+            { year: 2026, start_date: "2026-01-04", recurrence_end_date: "2026-01-10" },
             7,
         );
         expect(tooEarly).toBeDefined(); // not after end_date (2026-01-10 for a 1-week pattern)
 
         const { error: ok } = extractDesignSelectionCreateInput(
-            { start_date: "2026-01-04", recurrence_end_date: "2027-01-01" },
+            { year: 2026, start_date: "2026-01-04", recurrence_end_date: "2027-01-01" },
             7,
         );
         expect(ok).toBeUndefined();
     });
 
     it("passes through is_active when provided and valid", () => {
-        const { input, error } = extractDesignSelectionCreateInput({ start_date: "2026-01-04", is_active: true }, 7);
+        const { input, error } = extractDesignSelectionCreateInput({ year: 2026, start_date: "2026-01-04", is_active: true }, 7);
         expect(error).toBeUndefined();
         expect(input?.is_active).toBe(true);
     });
 
     it("rejects a non-boolean is_active", () => {
-        const { error } = extractDesignSelectionCreateInput({ start_date: "2026-01-04", is_active: "yes" } as any, 7);
+        const { error } = extractDesignSelectionCreateInput({ year: 2026, start_date: "2026-01-04", is_active: "yes" } as any, 7);
         expect(error).toBeDefined();
     });
 });
 
 describe("extractDesignSelectionUpdateInput", () => {
-    const current: { start_date: string; repeat_indefinitely: boolean; recurrence_end_date?: string | null } = {
+    const current: {
+        start_date: string;
+        year: number;
+        custom_range: boolean;
+        repeat_indefinitely: boolean;
+        recurrence_end_date?: string | null;
+    } = {
         start_date: "2026-01-04",
+        year: 2026,
+        custom_range: false,
         repeat_indefinitely: false,
     };
 
@@ -310,5 +331,115 @@ describe("extractDesignSelectionUpdateInput", () => {
             7,
         );
         expect(error).toBeUndefined();
+    });
+});
+
+describe("isValidPastYear", () => {
+    const now = new Date("2026-03-01T00:00:00Z");
+
+    it("accepts a year that is already over", () => {
+        expect(isValidPastYear(2025, now)).toBe(true);
+    });
+
+    it("rejects the current year, future years, and non-integers", () => {
+        expect(isValidPastYear(2026, now)).toBe(false);
+        expect(isValidPastYear(2030, now)).toBe(false);
+        expect(isValidPastYear(2025.5, now)).toBe(false);
+        expect(isValidPastYear("2025", now)).toBe(false);
+    });
+});
+
+describe("validateYearPlacement", () => {
+    it("accepts a start in the year's first column, even when that Sunday is in December of the year before", () => {
+        // Jan 1 2025 is a Wednesday - 2025's grid starts Sun 2024-12-29
+        expect(validateYearPlacement(2025, "2024-12-29", 7)).toBeUndefined();
+    });
+
+    it("accepts the same shared Sunday as the *previous* year's last column", () => {
+        // Sun 2025-12-28 starts both 2025's last column and 2026's first column -
+        // the stored year, not the date, says which is meant
+        expect(validateYearPlacement(2025, "2025-12-28", 7)).toBeUndefined();
+        expect(validateYearPlacement(2026, "2025-12-28", 7)).toBeUndefined();
+    });
+
+    it("rejects a start before the year's grid or after Dec 31", () => {
+        expect(validateYearPlacement(2025, "2024-12-22", 7)).toBeDefined();
+        expect(validateYearPlacement(2025, "2026-01-04", 7)).toBeDefined();
+    });
+
+    it("rejects a pattern that runs past the year's last column", () => {
+        // 2025 has 53 columns; a 2-week pattern starting in the last one overflows
+        expect(validateYearPlacement(2025, "2025-12-28", 14)).toBeDefined();
+        // the full 53 columns from the first one fits exactly
+        expect(validateYearPlacement(2025, "2024-12-29", 53 * 7)).toBeUndefined();
+        expect(validateYearPlacement(2025, "2024-12-29", 54 * 7)).toBeDefined();
+    });
+
+    it("allows the 54th column in a leap year starting on a Saturday", () => {
+        // 2028 starts on a Saturday - its grid needs 54 columns to reach Dec 31
+        expect(validateYearPlacement(2028, "2027-12-26", 54 * 7)).toBeUndefined();
+        expect(validateYearPlacement(2028, "2028-12-31", 7)).toBeUndefined();
+    });
+});
+
+describe("validateCustomRangePairing", () => {
+    it("allows custom_range on its own", () => {
+        expect(validateCustomRangePairing(true, false, null)).toBeUndefined();
+    });
+
+    it("rejects custom_range combined with either reserved recurrence field", () => {
+        expect(validateCustomRangePairing(true, true, null)).toBeDefined();
+        expect(validateCustomRangePairing(true, false, "2026-12-31")).toBeDefined();
+    });
+});
+
+describe("year + custom_range on create/select/update", () => {
+    const body = { start_date: "2026-03-01", year: 2026, pattern: new Array(14).fill(1) };
+
+    it("requires a year on create", () => {
+        const { year, ...withoutYear } = body;
+        expect(year).toBe(2026);
+        expect(extractDesignCreateInput(withoutYear).error).toMatch(/year/);
+        expect(extractDesignSelectionCreateInput({ start_date: body.start_date }, 14).error).toMatch(/year/);
+    });
+
+    it("rejects a year that isn't over yet", () => {
+        expect(extractDesignCreateInput({ ...body, year: 2027, start_date: "2027-03-07" }).error).toMatch(/year/);
+    });
+
+    it("defaults custom_range to false and passes it through when set", () => {
+        expect(extractDesignCreateInput(body).input?.custom_range).toBe(false);
+        expect(extractDesignCreateInput({ ...body, custom_range: true }).input?.custom_range).toBe(true);
+        expect(extractDesignSelectionCreateInput({ start_date: body.start_date, year: 2026 }, 14).input?.custom_range).toBe(false);
+    });
+
+    it("rejects a non-boolean custom_range", () => {
+        expect(extractDesignCreateInput({ ...body, custom_range: "yes" }).error).toMatch(/custom_range/);
+    });
+
+    it("rejects a start_date outside the given year's grid", () => {
+        expect(extractDesignCreateInput({ ...body, start_date: "2025-06-01" }).error).toMatch(/grid/);
+    });
+
+    it("accepts a custom range ending in the year's last column", () => {
+        // 2026's grid: Sun 2025-12-28 .. 53 columns; a 2-week range in the last two
+        const { error, input } = extractDesignCreateInput({ ...body, start_date: "2026-12-20", custom_range: true });
+        expect(error).toBeUndefined();
+        expect(input?.custom_range).toBe(true);
+    });
+
+    it("re-checks placement against the effective year when only the year changes on update", () => {
+        const current = { start_date: "2026-03-01", year: 2026, custom_range: false, repeat_indefinitely: false };
+        // start_date stays in 2026, so moving the year alone leaves it outside 2025's grid
+        expect(extractDesignSelectionUpdateInput({ year: 2025 }, current, 14).error).toMatch(/grid/);
+        expect(extractDesignSelectionUpdateInput({ year: 2025, start_date: "2025-03-02" }, current, 14).error).toBeUndefined();
+    });
+
+    it("lets update toggle custom_range, but not alongside a reserved recurrence field", () => {
+        const current = { start_date: "2026-03-01", year: 2026, custom_range: false, repeat_indefinitely: false };
+        expect(extractDesignSelectionUpdateInput({ custom_range: true }, current, 14).input?.custom_range).toBe(true);
+        expect(
+            extractDesignSelectionUpdateInput({ custom_range: true, recurrence_end_date: "2026-12-31" }, current, 14).error,
+        ).toMatch(/custom_range/);
     });
 });

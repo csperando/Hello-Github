@@ -30,9 +30,11 @@ const repo = (): iDesignSelectionsRepo => {
                     , design_id
                     , is_active
                     , start_date
+                    , year
+                    , custom_range
                     , repeat_indefinitely
                     , recurrence_end_date
-                ) VALUES ($1, $2, COALESCE($3, FALSE), $4, COALESCE($5, FALSE), $6)
+                ) VALUES ($1, $2, COALESCE($3, FALSE), $4, $5, COALESCE($6, FALSE), COALESCE($7, FALSE), $8)
                 RETURNING *;
             `;
 
@@ -41,6 +43,8 @@ const repo = (): iDesignSelectionsRepo => {
                 designId,
                 input.is_active ?? null,
                 input.start_date,
+                input.year,
+                input.custom_range ?? null,
                 input.repeat_indefinitely ?? null,
                 input.recurrence_end_date ?? null,
             ]);
@@ -72,6 +76,8 @@ const repo = (): iDesignSelectionsRepo => {
                     , s.design_id
                     , s.is_active
                     , s.start_date
+                    , s.year
+                    , s.custom_range
                     , s.repeat_indefinitely
                     , s.recurrence_end_date
                     , s.created_at
@@ -108,6 +114,8 @@ const repo = (): iDesignSelectionsRepo => {
                     , start_date = COALESCE($4, start_date)
                     , repeat_indefinitely = COALESCE($5, repeat_indefinitely)
                     , recurrence_end_date = CASE WHEN $6::boolean THEN $7::date ELSE recurrence_end_date END
+                    , year = COALESCE($8, year)
+                    , custom_range = COALESCE($9, custom_range)
                     , updated_at = NOW()
                 WHERE user_id = $1 AND design_id = $2
                 RETURNING *;
@@ -121,6 +129,8 @@ const repo = (): iDesignSelectionsRepo => {
                 input.repeat_indefinitely ?? null,
                 recurrenceEndDateProvided,
                 input.recurrence_end_date ?? null,
+                input.year ?? null,
+                input.custom_range ?? null,
             ]);
             return result.rows[0];
 

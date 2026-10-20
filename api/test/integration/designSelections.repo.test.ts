@@ -56,7 +56,7 @@ describe("DesignSelectionsRepository", () => {
 
     describe("create", () => {
         it("defaults is_active to false and repeat_indefinitely to false when omitted", async () => {
-            const selection = await selectionsRepo.create(userId, designId, { start_date: "2026-01-04" });
+            const selection = await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026 });
 
             expect(selection.user_id).toBe(userId);
             expect(selection.design_id).toBe(designId);
@@ -68,6 +68,7 @@ describe("DesignSelectionsRepository", () => {
         it("persists is_active=true and recurrence fields when specified", async () => {
             const selection = await selectionsRepo.create(userId, designId, {
                 start_date: "2026-01-04",
+                year: 2026,
                 is_active: true,
                 repeat_indefinitely: false,
                 recurrence_end_date: "2027-01-01",
@@ -79,16 +80,16 @@ describe("DesignSelectionsRepository", () => {
 
         it("rejects a second active selection for the same user on a different design", async () => {
             const secondDesign = await designsRepo.create(userId, { pattern: [0, 0, 0, 0, 0, 0, 0] });
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026, is_active: true });
 
             await expect(
-                selectionsRepo.create(userId, secondDesign.id, { start_date: "2026-01-04", is_active: true }),
+                selectionsRepo.create(userId, secondDesign.id, { start_date: "2026-01-04", year: 2026, is_active: true }),
             ).rejects.toThrow();
         });
 
         it("allows two different users to each independently select the same design", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04" });
-            const otherSelection = await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-11" });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026 });
+            const otherSelection = await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-11", year: 2026 });
 
             expect(otherSelection.user_id).toBe(otherUserId);
             expect(otherSelection.design_id).toBe(designId);
@@ -103,7 +104,7 @@ describe("DesignSelectionsRepository", () => {
         });
 
         it("getAllForUser returns selections joined with the design's content", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026, is_active: true });
 
             const all = await selectionsRepo.getAllForUser(userId);
 
@@ -114,8 +115,8 @@ describe("DesignSelectionsRepository", () => {
         });
 
         it("getAllForUser only returns the requesting user's own selections", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04" });
-            await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04" });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026 });
+            await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04", year: 2026 });
 
             const mine = await selectionsRepo.getAllForUser(userId);
             expect(mine).toHaveLength(1);
@@ -125,7 +126,7 @@ describe("DesignSelectionsRepository", () => {
 
     describe("update", () => {
         it("only overwrites fields provided, leaving others as-is", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04" });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026 });
 
             const updated = await selectionsRepo.update(userId, designId, { is_active: true });
 
@@ -136,6 +137,7 @@ describe("DesignSelectionsRepository", () => {
         it("can explicitly clear recurrence_end_date back to null when switching to indefinite", async () => {
             await selectionsRepo.create(userId, designId, {
                 start_date: "2026-01-04",
+                year: 2026,
                 repeat_indefinitely: false,
                 recurrence_end_date: "2027-01-01",
             });
@@ -152,10 +154,11 @@ describe("DesignSelectionsRepository", () => {
         it("leaves recurrence_end_date untouched when the key is absent from the patch", async () => {
             await selectionsRepo.create(userId, designId, {
                 start_date: "2026-01-04",
+                year: 2026,
                 recurrence_end_date: "2027-01-01",
             });
 
-            const updated = await selectionsRepo.update(userId, designId, { start_date: "2026-01-11" });
+            const updated = await selectionsRepo.update(userId, designId, { start_date: "2026-01-11", year: 2026 });
 
             expect(updated.start_date).toBe("2026-01-11");
             expect(updated.recurrence_end_date).toBe("2027-01-01");
@@ -163,8 +166,8 @@ describe("DesignSelectionsRepository", () => {
 
         it("rejects activating a selection while another one is already active for the same user", async () => {
             const secondDesign = await designsRepo.create(userId, { pattern: [0, 0, 0, 0, 0, 0, 0] });
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
-            await selectionsRepo.create(userId, secondDesign.id, { start_date: "2026-01-04", is_active: false });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026, is_active: true });
+            await selectionsRepo.create(userId, secondDesign.id, { start_date: "2026-01-04", year: 2026, is_active: false });
 
             await expect(
                 selectionsRepo.update(userId, secondDesign.id, { is_active: true }),
@@ -174,7 +177,7 @@ describe("DesignSelectionsRepository", () => {
 
     describe("delete / countForDesign", () => {
         it("removes the selection", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04" });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026 });
 
             await selectionsRepo.delete(userId, designId);
 
@@ -183,8 +186,8 @@ describe("DesignSelectionsRepository", () => {
         });
 
         it("countActiveExcludingUser counts only other users' active selections", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
-            await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04", is_active: false });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026, is_active: true });
+            await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04", year: 2026, is_active: false });
 
             // otherUser's selection is inactive - doesn't count yet, and never counts the requester's own
             expect(await selectionsRepo.countActiveExcludingUser(designId, userId)).toBe(0);
@@ -197,8 +200,8 @@ describe("DesignSelectionsRepository", () => {
         });
 
         it("countForDesign reflects the number of remaining selections across all users", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04" });
-            await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04" });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026 });
+            await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04", year: 2026 });
 
             expect(await selectionsRepo.countForDesign(designId)).toBe(2);
 
@@ -213,8 +216,8 @@ describe("DesignSelectionsRepository", () => {
     describe("setActiveExclusive / deactivateActiveForUser", () => {
         it("setActiveExclusive activates the target and deactivates any other active selection the user has", async () => {
             const otherDesign = await designsRepo.create(userId, { pattern: [1, 1, 1, 1, 1, 1, 1] });
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
-            await selectionsRepo.create(userId, otherDesign.id, { start_date: "2026-01-04", is_active: false });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026, is_active: true });
+            await selectionsRepo.create(userId, otherDesign.id, { start_date: "2026-01-04", year: 2026, is_active: false });
 
             const activated = await selectionsRepo.setActiveExclusive(userId, otherDesign.id);
 
@@ -227,13 +230,13 @@ describe("DesignSelectionsRepository", () => {
         });
 
         it("setActiveExclusive is a no-op-safe way to (re)assert an already-active selection", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026, is_active: true });
             const row = await selectionsRepo.setActiveExclusive(userId, designId);
             expect(row.is_active).toBe(true);
         });
 
         it("deactivateActiveForUser clears the user's active selection and returns the affected design ids", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: true });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026, is_active: true });
 
             const affected = await selectionsRepo.deactivateActiveForUser(userId);
 
@@ -242,7 +245,7 @@ describe("DesignSelectionsRepository", () => {
         });
 
         it("deactivateActiveForUser is a no-op when the user has nothing active", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", is_active: false });
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026, is_active: false });
             expect(await selectionsRepo.deactivateActiveForUser(userId)).toEqual([]);
         });
     });

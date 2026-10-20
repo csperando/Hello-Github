@@ -129,6 +129,8 @@ export class BackfillService {
                     start_date: details.start_date,
                     repeat_indefinitely: details.repeat_indefinitely,
                     recurrence_end_date: details.recurrence_end_date,
+                    custom_range: details.custom_range,
+                    year: details.year,
                 };
                 const authorEmail = resolveAuthorEmail(details);
                 let painted = 0;

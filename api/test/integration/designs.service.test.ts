@@ -53,6 +53,7 @@ describe("DesignService (transactional methods, real DB)", () => {
             const { design, selection } = await service.createDesign(userId, {
                 pattern: [0, 1, 2, 3, 4, 0, 0],
                 start_date: "2026-01-04",
+                year: 2026,
             } as any);
 
             expect(design.user_id).toBe(userId);
@@ -74,6 +75,7 @@ describe("DesignService (transactional methods, real DB)", () => {
                 service.createDesign(bogusUserId, {
                     pattern: [0, 1, 2, 3, 4, 0, 0],
                     start_date: "2026-01-04",
+                    year: 2026,
                 } as any),
             ).rejects.toThrow();
 
@@ -87,6 +89,7 @@ describe("DesignService (transactional methods, real DB)", () => {
             const { design } = await service.createDesign(userId, {
                 pattern: [0, 1, 2, 3, 4, 0, 0],
                 start_date: "2026-01-04",
+                year: 2026,
             } as any);
 
             const result = await service.deleteSelection(userId, design.id);
@@ -99,8 +102,9 @@ describe("DesignService (transactional methods, real DB)", () => {
             const { design } = await service.createDesign(userId, {
                 pattern: [0, 1, 2, 3, 4, 0, 0],
                 start_date: "2026-01-04",
+                year: 2026,
             } as any);
-            await service.selectDesign(otherUserId, design.id, { start_date: "2026-01-11" } as any);
+            await service.selectDesign(otherUserId, design.id, { start_date: "2026-01-11", year: 2026 } as any);
 
             const result = await service.deleteSelection(userId, design.id);
 

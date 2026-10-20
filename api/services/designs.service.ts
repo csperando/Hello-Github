@@ -66,6 +66,8 @@ export class DesignService {
                 design.id,
                 {
                     start_date: input.start_date,
+                    year: input.year,
+                    custom_range: input.custom_range,
                     repeat_indefinitely: input.repeat_indefinitely,
                     recurrence_end_date: input.recurrence_end_date,
                 },

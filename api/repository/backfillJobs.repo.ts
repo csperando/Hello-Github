@@ -127,6 +127,7 @@ const repo = (): iBackfillJobsRepo => {
                     , ds.start_date
                     , ds.repeat_indefinitely
                     , ds.recurrence_end_date
+                    , ds.custom_range
                     , d.pattern
                 FROM backfill_jobs bj
                 JOIN users u ON u.id = bj.user_id

@@ -1,4 +1,4 @@
-import { getPatternIndexForDate, getIntensityForDate, computeQ, deriveCommitCounts, DEFAULT_Q, assessDesignFeasibility, designYear, iScheduleFields } from "../../services/designs.schedule";
+import { getPatternIndexForDate, getIntensityForDate, computeQ, deriveCommitCounts, DEFAULT_Q, assessDesignFeasibility, yearGridStart, yearGridWeeks, iScheduleFields } from "../../services/designs.schedule";
 
 function selection(overrides: Partial<iScheduleFields>): iScheduleFields {
     return {
@@ -230,13 +230,69 @@ describe("assessDesignFeasibility", () => {
     });
 });
 
-describe("designYear", () => {
-    it("reads the year a week after start_date, since a year's grid starts on the Sunday on/before Jan 1", () => {
-        expect(designYear("2024-12-29")).toBe(2025);
+// 2000-2031 spans a full 28-year weekday cycle plus margin: every (Jan 1
+// weekday x leap/non-leap) combination, including 54-column years (2000, 2028).
+const ALL_YEARS = Array.from({ length: 32 }, (_, i) => 2000 + i);
+
+function datesOfYear(year: number): string[] {
+    const dates: string[] = [];
+    for (let d = new Date(Date.UTC(year, 0, 1)); d.getUTCFullYear() === year; d.setUTCDate(d.getUTCDate() + 1)) {
+        dates.push(d.toISOString().slice(0, 10));
+    }
+    return dates;
+}
+
+function addDays(date: string, days: number): string {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+}
+
+describe.each(ALL_YEARS)("year grid for %i", (year) => {
+    it("starts on a Sunday no later than Jan 1 and within its first week", () => {
+        const start = yearGridStart(year);
+        expect(new Date(`${start}T00:00:00Z`).getUTCDay()).toBe(0);
+        expect(start <= `${year}-01-01`).toBe(true);
+        expect(addDays(start, 6) >= `${year}-01-01`).toBe(true);
     });
 
-    it("returns start_date's own year when it falls inside the year", () => {
-        expect(designYear("2023-01-01")).toBe(2023);
-        expect(designYear("2025-06-15")).toBe(2025);
+    it("has exactly enough columns to hold Dec 31 - no more, no fewer", () => {
+        const lastColumnStart = addDays(yearGridStart(year), (yearGridWeeks(year) - 1) * 7);
+        expect(lastColumnStart <= `${year}-12-31`).toBe(true);
+        expect(addDays(lastColumnStart, 6) >= `${year}-12-31`).toBe(true);
+    });
+});
+
+describe("custom_range tiling", () => {
+    // a 2-week tile: Mon of week 0 and Wed of week 1
+    const tile = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0];
+
+    function painted(fields: Partial<iScheduleFields>, year: number): string[] {
+        const s = selection({ repeat_indefinitely: false, ...fields });
+        return datesOfYear(year).filter((date) => (getIntensityForDate(tile, s, date) ?? 0) > 0);
+    }
+
+    it("tiles forward from start_date through Dec 31 of its year, and nothing before start_date", () => {
+        const dates = painted({ start_date: "2025-03-02", custom_range: true, year: 2025 }, 2025);
+
+        expect(dates[0]).toBe("2025-03-03"); // first Monday of the tile
+        expect(dates.every((d) => d >= "2025-03-02")).toBe(true);
+        // every 2 weeks from the start, through the end of the year
+        expect(dates).toContain("2025-12-22"); // Mon, 42 weeks after 2025-03-03
+        expect(dates).toContain("2025-12-31"); // Wed, 43 weeks after 2025-03-05
+    });
+
+    it("stops at Dec 31 - nothing in the following year", () => {
+        expect(painted({ start_date: "2025-03-02", custom_range: true, year: 2025 }, 2026)).toEqual([]);
+    });
+
+    it("paints the tile once without custom_range", () => {
+        expect(painted({ start_date: "2025-03-02", custom_range: false, year: 2025 }, 2025)).toEqual(["2025-03-03", "2025-03-12"]);
+    });
+
+    it("tiles from the shared Sunday into the stored year only", () => {
+        // Sun 2025-12-28 is 2025's last column and 2026's first - the year decides
+        expect(painted({ start_date: "2025-12-28", custom_range: true, year: 2025 }, 2025)).toEqual(["2025-12-29"]);
+        expect(painted({ start_date: "2025-12-28", custom_range: true, year: 2026 }, 2026)).toContain("2026-12-28");
     });
 });

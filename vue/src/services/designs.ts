@@ -17,7 +17,13 @@ export interface iDesignSelection {
   user_id: string
   design_id: string
   is_active: boolean
+  /** Sunday of the pattern's first column, inside `year`'s grid. */
   start_date: string
+  /** The past calendar year being painted. */
+  year: number
+  /** Tile the pattern forward from start_date through Dec 31 of `year`. */
+  custom_range: boolean
+  /** Reserved for a separate, unimplemented recurrence feature - unused by the editor. */
   repeat_indefinitely: boolean
   recurrence_end_date?: string | null
   created_at?: string
@@ -37,6 +43,8 @@ export interface iDesignCreatePayload {
   is_public?: boolean
   pattern: number[]
   start_date: string
+  year: number
+  custom_range?: boolean
   repeat_indefinitely?: boolean
   recurrence_end_date?: string | null
 }
@@ -49,6 +57,8 @@ export interface iDesignUpdatePayload {
 
 export interface iDesignSelectionCreatePayload {
   start_date: string
+  year: number
+  custom_range?: boolean
   repeat_indefinitely?: boolean
   recurrence_end_date?: string | null
   is_active?: boolean
@@ -57,6 +67,8 @@ export interface iDesignSelectionCreatePayload {
 export interface iDesignSelectionUpdatePayload {
   is_active?: boolean
   start_date?: string
+  year?: number
+  custom_range?: boolean
   repeat_indefinitely?: boolean
   recurrence_end_date?: string | null
 }

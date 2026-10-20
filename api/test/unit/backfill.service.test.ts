@@ -24,6 +24,7 @@ function details(overrides: Record<string, unknown> = {}) {
         design_id: "d1",
         // the 2025 grid starts on Sunday 2024-12-29
         start_date: "2024-12-29",
+        custom_range: false,
         repeat_indefinitely: false,
         recurrence_end_date: null,
         // two weeks, Monday painted in each: 2024-12-30 and 2025-01-06
@@ -71,7 +72,7 @@ describe("BackfillService", () => {
 
         it("tiles a repeating custom range through Dec 31 of the year", async () => {
             backfillJobsRepoMock.getPaintDetails.mockResolvedValue([
-                details({ pattern: [0, 1, 0, 0, 0, 0, 0], recurrence_end_date: "2025-12-31" }),
+                details({ pattern: [0, 1, 0, 0, 0, 0, 0], custom_range: true }),
             ]);
 
             const dates = (await new BackfillService().claimPaintCommits()).map((c) => c.target_date);
@@ -80,6 +81,18 @@ describe("BackfillService", () => {
             expect(dates).toHaveLength(52);
             expect(dates[0]).toBe("2025-01-06");
             expect(dates[dates.length - 1]).toBe("2025-12-29");
+        });
+
+        it("tiles a mid-year custom range forward only - nothing before its start", async () => {
+            backfillJobsRepoMock.getPaintDetails.mockResolvedValue([
+                details({ start_date: "2025-03-02", pattern: [0, 1, 0, 0, 0, 0, 0], custom_range: true }),
+            ]);
+
+            const dates = (await new BackfillService().claimPaintCommits()).map((c) => c.target_date);
+
+            expect(dates[0]).toBe("2025-03-03");
+            expect(dates[dates.length - 1]).toBe("2025-12-29");
+            expect(dates).toHaveLength(44); // Mondays from Mar 3 through Dec 29
         });
 
         it("authors as the user's real email when they chose it", async () => {

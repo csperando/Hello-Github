@@ -119,7 +119,7 @@ describe("0002_create_designs / 0004_create_design_selections migrations", () =>
 
             expect(Object.keys(byName).sort()).toEqual(
                 [
-                    "id", "user_id", "design_id", "is_active", "start_date",
+                    "id", "user_id", "design_id", "is_active", "start_date", "year", "custom_range",
                     "repeat_indefinitely", "recurrence_end_date", "created_at", "updated_at",
                 ].sort(),
             );
@@ -127,11 +127,14 @@ describe("0002_create_designs / 0004_create_design_selections migrations", () =>
             expect(byName.is_active?.column_default).toContain("false");
             expect(byName.repeat_indefinitely?.is_nullable).toBe("NO");
             expect(byName.recurrence_end_date?.is_nullable).toBe("YES");
+            expect(byName.year?.is_nullable).toBe("NO");
+            expect(byName.custom_range?.is_nullable).toBe("NO");
+            expect(byName.custom_range?.column_default).toContain("false");
         });
 
         it("does not restrict deleting a design when it has no selections, but restricts when it does", async () => {
             await pool.query(
-                `INSERT INTO design_selections (user_id, design_id, start_date) VALUES ($1, $2, '2026-01-04');`,
+                `INSERT INTO design_selections (user_id, design_id, start_date, year) VALUES ($1, $2, '2026-01-04', 2026);`,
                 [userId, designId],
             );
 
@@ -140,13 +143,13 @@ describe("0002_create_designs / 0004_create_design_selections migrations", () =>
 
         it("enforces at most one row per (user_id, design_id) pair", async () => {
             await pool.query(
-                `INSERT INTO design_selections (user_id, design_id, start_date) VALUES ($1, $2, '2026-01-04');`,
+                `INSERT INTO design_selections (user_id, design_id, start_date, year) VALUES ($1, $2, '2026-01-04', 2026);`,
                 [userId, designId],
             );
 
             await expect(
                 pool.query(
-                    `INSERT INTO design_selections (user_id, design_id, start_date) VALUES ($1, $2, '2026-01-11');`,
+                    `INSERT INTO design_selections (user_id, design_id, start_date, year) VALUES ($1, $2, '2026-01-11', 2026);`,
                     [userId, designId],
                 ),
             ).rejects.toThrow();
@@ -159,13 +162,13 @@ describe("0002_create_designs / 0004_create_design_selections migrations", () =>
             );
 
             await pool.query(
-                `INSERT INTO design_selections (user_id, design_id, is_active, start_date) VALUES ($1, $2, TRUE, '2026-01-04');`,
+                `INSERT INTO design_selections (user_id, design_id, is_active, start_date, year) VALUES ($1, $2, TRUE, '2026-01-04', 2026);`,
                 [userId, designId],
             );
 
             await expect(
                 pool.query(
-                    `INSERT INTO design_selections (user_id, design_id, is_active, start_date) VALUES ($1, $2, TRUE, '2026-01-04');`,
+                    `INSERT INTO design_selections (user_id, design_id, is_active, start_date, year) VALUES ($1, $2, TRUE, '2026-01-04', 2026);`,
                     [userId, secondDesign.rows[0].id],
                 ),
             ).rejects.toThrow();
@@ -173,7 +176,7 @@ describe("0002_create_designs / 0004_create_design_selections migrations", () =>
             // but a second *inactive* selection for the same user is fine
             await expect(
                 pool.query(
-                    `INSERT INTO design_selections (user_id, design_id, is_active, start_date) VALUES ($1, $2, FALSE, '2026-01-04');`,
+                    `INSERT INTO design_selections (user_id, design_id, is_active, start_date, year) VALUES ($1, $2, FALSE, '2026-01-04', 2026);`,
                     [userId, secondDesign.rows[0].id],
                 ),
             ).resolves.toBeDefined();
@@ -182,8 +185,8 @@ describe("0002_create_designs / 0004_create_design_selections migrations", () =>
         it("rejects repeat_indefinitely=TRUE together with a non-null recurrence_end_date", async () => {
             await expect(
                 pool.query(
-                    `INSERT INTO design_selections (user_id, design_id, start_date, repeat_indefinitely, recurrence_end_date)
-                     VALUES ($1, $2, '2026-01-04', TRUE, '2027-01-01');`,
+                    `INSERT INTO design_selections (user_id, design_id, start_date, year, repeat_indefinitely, recurrence_end_date)
+                     VALUES ($1, $2, '2026-01-04', 2026, TRUE, '2027-01-01');`,
                     [userId, designId],
                 ),
             ).rejects.toThrow();
@@ -191,11 +194,51 @@ describe("0002_create_designs / 0004_create_design_selections migrations", () =>
 
         it("allows repeat_indefinitely=FALSE with a recurrence_end_date set", async () => {
             const result = await pool.query(
-                `INSERT INTO design_selections (user_id, design_id, start_date, repeat_indefinitely, recurrence_end_date)
-                 VALUES ($1, $2, '2026-01-04', FALSE, '2027-01-01') RETURNING recurrence_end_date;`,
+                `INSERT INTO design_selections (user_id, design_id, start_date, year, repeat_indefinitely, recurrence_end_date)
+                 VALUES ($1, $2, '2026-01-04', 2026, FALSE, '2027-01-01') RETURNING recurrence_end_date;`,
                 [userId, designId],
             );
             expect(result.rows[0].recurrence_end_date).not.toBeNull();
+        });
+
+        it("requires a year", async () => {
+            await expect(
+                pool.query(
+                    `INSERT INTO design_selections (user_id, design_id, start_date) VALUES ($1, $2, '2025-03-02');`,
+                    [userId, designId],
+                ),
+            ).rejects.toThrow();
+        });
+
+        it("defaults custom_range to false", async () => {
+            const result = await pool.query(
+                `INSERT INTO design_selections (user_id, design_id, start_date, year) VALUES ($1, $2, '2025-03-02', 2025) RETURNING custom_range;`,
+                [userId, designId],
+            );
+            expect(result.rows[0].custom_range).toBe(false);
+        });
+
+        it("accepts a start_date anywhere in the year's grid, including a Sunday shared with the neighbouring year", async () => {
+            for (const [startDate, year] of [["2024-12-29", 2025], ["2025-12-28", 2025], ["2025-12-28", 2026]] as const) {
+                await pool.query("DELETE FROM design_selections WHERE user_id = $1;", [userId]);
+                await expect(
+                    pool.query(
+                        `INSERT INTO design_selections (user_id, design_id, start_date, year) VALUES ($1, $2, $3, $4);`,
+                        [userId, designId, startDate, year],
+                    ),
+                ).resolves.toBeDefined();
+            }
+        });
+
+        it("rejects a start_date outside the year's grid", async () => {
+            for (const [startDate, year] of [["2024-12-22", 2025], ["2026-01-04", 2025]] as const) {
+                await expect(
+                    pool.query(
+                        `INSERT INTO design_selections (user_id, design_id, start_date, year) VALUES ($1, $2, $3, $4);`,
+                        [userId, designId, startDate, year],
+                    ),
+                ).rejects.toThrow();
+            }
         });
     });
 });

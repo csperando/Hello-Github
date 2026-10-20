@@ -98,8 +98,8 @@ describe("BackfillJobsRepository", () => {
     it("getPaintDetails joins each job with what painting it needs", async () => {
         await selectionsRepo.create(userId, designId, {
             start_date: "2024-12-29",
-            repeat_indefinitely: false,
-            recurrence_end_date: "2025-12-31",
+            year: 2025,
+            custom_range: true,
         });
         await profilesRepo.upsert(userId, { timezone: "America/Chicago" });
         const job = await backfillRepo.create(userId, designId, 2025);
@@ -117,8 +117,7 @@ describe("BackfillJobsRepository", () => {
             use_real_email: false,
             pattern: [0, 1, 2, 3, 4, 0, 0],
             start_date: "2024-12-29",
-            repeat_indefinitely: false,
-            recurrence_end_date: "2025-12-31",
+            custom_range: true,
         });
     });
 
@@ -126,7 +125,7 @@ describe("BackfillJobsRepository", () => {
         const orphan = await backfillRepo.create(userId, designId, 2025);
         expect(await backfillRepo.getPaintDetails([orphan.id])).toEqual([]);
 
-        await selectionsRepo.create(userId, designId, { start_date: "2024-12-29" });
+        await selectionsRepo.create(userId, designId, { start_date: "2024-12-29", year: 2025 });
         const [details] = await backfillRepo.getPaintDetails([orphan.id]);
         expect(details).toMatchObject({ timezone: "UTC" });
     });

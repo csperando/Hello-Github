@@ -69,6 +69,10 @@ export interface iScheduleFields {
     start_date: string;
     repeat_indefinitely: boolean;
     recurrence_end_date?: string | null;
+    /** Tile the pattern forward from start_date through Dec 31 of `year` (the editor's custom range). */
+    custom_range?: boolean;
+    /** The past calendar year a design paints - bounds custom_range tiling. */
+    year?: number;
 }
 
 function daysSince(from: string, to: string): number {
@@ -83,13 +87,20 @@ function daysSince(from: string, to: string): number {
  * it (start_date/repeat_indefinitely/recurrence_end_date), and a target
  * date, returns the index into pattern for that day, or null if it
  * contributes nothing that day (before start_date, or finished - a one-off
- * selection past its end, or a bounded repeat past its recurrence_end_date).
+ * selection past its end, a custom range past Dec 31 of its year, or a
+ * bounded repeat past its recurrence_end_date).
  * Tiles past the pattern's natural end using the same modulo formula as the
  * editor's custom-range ghost-cell preview, applied along the calendar
  * timeline instead of visual grid columns.
  */
 export function getPatternIndexForDate(pattern: number[], selection: iScheduleFields, targetDate: string): number | null {
-    const { start_date: startDate, repeat_indefinitely: repeatIndefinitely, recurrence_end_date: recurrenceEndDate } = selection;
+    const {
+        start_date: startDate,
+        repeat_indefinitely: repeatIndefinitely,
+        recurrence_end_date: recurrenceEndDate,
+        custom_range: customRange,
+        year,
+    } = selection;
 
     const daysSinceStart = daysSince(startDate, targetDate);
     if (daysSinceStart < 0) return null;
@@ -102,7 +113,10 @@ export function getPatternIndexForDate(pattern: number[], selection: iScheduleFi
         return week * 7 + dayOfWeek;
     }
 
-    const isRepeating = repeatIndefinitely || (recurrenceEndDate != null && targetDate <= recurrenceEndDate);
+    const isRepeating =
+        repeatIndefinitely ||
+        (customRange === true && year != null && targetDate <= `${year}-12-31`) ||
+        (recurrenceEndDate != null && targetDate <= recurrenceEndDate);
     if (!isRepeating) return null;
 
     const tiledWeek = week % patternWeeks;
@@ -110,15 +124,23 @@ export function getPatternIndexForDate(pattern: number[], selection: iScheduleFi
 }
 
 /**
- * The calendar year a past-year design paints. Mirrors the editor's rule
- * (vue/src/views/Editor.vue): a year's grid starts on the Sunday on/before
- * Jan 1, so start_date may sit in the last days of the previous year - its
- * year is read a week later instead.
+ * First day of a year's grid: the Sunday on/before Jan 1, matching GitHub's
+ * own year layout. Mirrors vue/src/helpers/grid.ts's yearAnchor - kept in
+ * sync by hand, like getPatternIndexForDate.
  */
-export function designYear(startDate: string): number {
-    const startWeekEnd = new Date(`${startDate}T00:00:00Z`);
-    startWeekEnd.setUTCDate(startWeekEnd.getUTCDate() + 6);
-    return startWeekEnd.getUTCFullYear();
+export function yearGridStart(year: number): string {
+    const date = new Date(Date.UTC(year, 0, 1));
+    date.setUTCDate(date.getUTCDate() - date.getUTCDay());
+    return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Week columns in a year's grid: through the week holding Dec 31 - 53, or 54
+ * for a leap year starting on a Saturday. Mirrors vue/src/helpers/grid.ts's
+ * weeksInYear.
+ */
+export function yearGridWeeks(year: number): number {
+    return Math.floor(daysSince(yearGridStart(year), `${year}-12-31`) / 7) + 1;
 }
 
 /** Convenience wrapper: the pattern's intensity (0-4) for a given day, or null if none. */

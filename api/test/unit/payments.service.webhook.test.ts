@@ -68,8 +68,7 @@ describe("PaymentsService.handleWebhookEvent", () => {
         billingRepoMock.updateSubscription.mockResolvedValue({});
         paymentsRepoMock.existsByStripeEventId.mockResolvedValue(false);
         paymentsRepoMock.create.mockResolvedValue({ id: "p1" });
-        // anchored on the Sunday before Jan 1 2025 - a 2025 design
-        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: "u1", design_id: "d1", start_date: "2024-12-29" });
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: "u1", design_id: "d1", start_date: "2024-12-29", year: 2025 });
         backfillJobsRepoMock.create.mockResolvedValue({ id: "j1", status: "awaiting_issue" });
         selectionsRepoMock.setActiveExclusive.mockResolvedValue({ is_active: true });
         selectionsRepoMock.deactivateActiveForUser.mockResolvedValue([{ design_id: "d1" }]);
@@ -95,6 +94,16 @@ describe("PaymentsService.handleWebhookEvent", () => {
                 }),
                 fakeClient,
             );
+            expect(backfillJobsRepoMock.create).toHaveBeenCalledWith("u1", "d1", 2025, fakeClient);
+        });
+
+        it("paints the selection's stored year, even from a Sunday shared by two years' grids", async () => {
+            // Sun 2025-12-28 starts both 2025's last column and 2026's first -
+            // the old start_date + 6 days guess would have painted 2026
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: "u1", design_id: "d1", start_date: "2025-12-28", year: 2025 });
+
+            await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
+
             expect(backfillJobsRepoMock.create).toHaveBeenCalledWith("u1", "d1", 2025, fakeClient);
         });
 

@@ -6,7 +6,6 @@ import PaymentsRepository from "../repository/payments.repo";
 import DesignSelectionsRepository from "../repository/designSelections.repo";
 import UserRepository from "../repository/users.repo";
 import BackfillJobsRepository from "../repository/backfillJobs.repo";
-import { designYear } from "./designs.schedule";
 import { isUniqueViolationOn } from "../repository/dbErrors";
 import { logger } from "../config/logger";
 
@@ -428,7 +427,7 @@ export class PaymentsService {
                     period_end: null,
                 }, client);
                 if (selection) {
-                    await this.backfillJobsRepo.create(userId, designId, designYear(selection.start_date), client);
+                    await this.backfillJobsRepo.create(userId, designId, selection.year, client);
                 }
             });
         } catch (err: any) {
