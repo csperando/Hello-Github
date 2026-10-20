@@ -62,6 +62,7 @@
         { n: "01", title: "Design", body: "Paint your pattern on a real contribution grid — click a square to cycle through intensity levels." },
         { n: "02", title: "Commit", body: "We generate the exact backdated commits, or a PR you review, so the art lands on your real GitHub profile." },
         { n: "03", title: "Give", body: "Pay a small flat fee to cover the infra. Everything else goes straight to the charity you picked." },
+        { n: "04", title: "Interact", body: "In order for commits to be made public, permission will need to be granted to create an issue on the public repo for CommitsForGood." },
     ]
 
     const grid = ref<number[]>(buildDefaultGrid())
@@ -102,7 +103,7 @@
                 <div>
                     <div class="eyebrow eyebrow-hero">// a nonprofit sa[a]s for developers</div>
                     <h1 class="hero-title">Paint pixel art<br>on your <span class="accent-text">GitHub graph</span>.<br>Fund something real.</h1>
-                    <p class="hero-sub">Design a pattern on your contribution grid, we turn it into real commits on your profile — a flat fee covers our costs, everything else goes to the charity you pick.</p>
+                    <p class="hero-sub">Design a pattern on your contribution grid, we turn it into real commits on your profile — everything else goes to funding something meaningful.</p>
                     <div class="cta-row">
                         <RouterLink to="/signup"><BaseButton class="cta-primary">start designing — it's free to try</BaseButton></RouterLink>
                         <RouterLink to="/#how"><BaseButton variant="secondary" class="cta-secondary">see how it works ↓</BaseButton></RouterLink>
@@ -161,7 +162,7 @@
         <section id="how" class="section-how">
             <div class="section-inner">
                 <div class="eyebrow">// how it works</div>
-                <h2 class="section-title title-how">Three steps between an idea and a good deed.</h2>
+                <h2 class="section-title title-how">Four steps between an idea and a good deed.</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-9">
                     <div v-for="step in steps" :key="step.n" class="step-card">
                         <div class="step-number">{{ step.n }}</div>
@@ -176,8 +177,8 @@
         <section id="give" class="section-give">
             <div class="section-inner">
                 <div class="eyebrow">// where the money goes</div>
-                <h2 class="section-title title-give">One flat fee. Everything else is a donation.</h2>
-                <p class="section-copy">A $3 flat fee covers hosting and the commits we push on your behalf. Pick any amount above that, and pick where it goes — we cut the check, you keep the receipt.</p>
+                <h2 class="section-title title-give">An optional, suggested fee. Everything else is a donation.</h2>
+                <p class="section-copy">We ask for a $1 portion of your donation that covers hosting and the commits we push on your behalf. Pick any amount above or below that, and pick where it goes — we cut the check, you keep the receipt.</p>
 
                 <div class="fee-example">
                     <div class="fee-example-row"><span>example: $10 contribution</span><span>$3 fee · $7 to charity</span></div>
