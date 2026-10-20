@@ -257,6 +257,33 @@ describe('Settings.vue', () => {
       expect(history).toContain('$0.99 platform')
       expect(history).toContain('$24.01 to EFF')
       expect(history).toContain('one-time')
+      expect(history).not.toContain('refunded')
+    })
+
+    it('marks a payment that was refunded', async () => {
+      listPaymentsMock.mockResolvedValue(
+        jsonResponse({
+          data: [
+            {
+              id: 'p1',
+              kind: 'one_time',
+              status: 'succeeded',
+              amount_total_cents: 2500,
+              amount_platform_cents: 500,
+              amount_charity_cents: 2000,
+              amount_refunded_cents: 1000,
+              refunded_at: '2026-09-05T00:00:00Z',
+              charity_ein_id: null,
+              created_at: '2026-09-01T00:00:00Z',
+            },
+          ],
+        }),
+      )
+
+      const { wrapper } = await mountSettings(buildUser())
+      await flushPromises()
+
+      expect(wrapper.get('.history-list').text()).toContain('refunded $10.00')
     })
 
   })

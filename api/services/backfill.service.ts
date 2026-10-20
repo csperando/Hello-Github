@@ -33,6 +33,8 @@ export interface iBackfillCommit {
 export interface iBackfillCompletion {
     job_id: string;
     status: "done" | "failed";
+    // what went wrong, for a failed job - shown to admins
+    error?: string;
 }
 
 /** Every calendar date (YYYY-MM-DD, UTC) of `year`. */
@@ -186,7 +188,7 @@ export class BackfillService {
         try {
             const recorded = [];
             for (const completion of completions) {
-                recorded.push(await this.backfillJobsRepo.setStatus(completion.job_id, completion.status));
+                recorded.push(await this.backfillJobsRepo.setStatus(completion.job_id, completion.status, completion.error ?? null));
             }
             return recorded;
 

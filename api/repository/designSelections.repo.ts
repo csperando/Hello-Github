@@ -41,6 +41,8 @@ export interface iDesignSelectionsRepo {
     create: (userId: string, designId: string, input: iDesignSelectionCreateInput, client?: any) => Promise<any>;
     getByUserAndDesign: (userId: string, designId: string) => Promise<any>;
     softDelete: (userId: string, designId: string, client?: any) => Promise<any>;
+    adminListForUser: (userId: string) => Promise<any[]>;
+    restore: (userId: string, designId: string, client?: any) => Promise<any>;
     getAllForUser: (userId: string) => Promise<any>;
     update: (userId: string, designId: string, input: iDesignSelectionUpdateInput) => Promise<any>;
     countActiveExcludingUser: (designId: string, excludingUserId: string) => Promise<number>;
@@ -201,6 +203,55 @@ const repo = (): iDesignSelectionsRepo => {
         }
     }
 
+    // admin-only: every selection the user has, deleted ones included, each
+    // with its design and worked-out paint_status
+    const adminListForUser = async (userId: string) => {
+        try {
+            const sqlString = `
+                SELECT s.id
+                    , s.design_id
+                    , s.year
+                    , s.start_date
+                    , s.custom_range
+                    , s.deleted_at
+                    , s.created_at
+                    , d.name
+                    , d.user_id AS design_owner_id
+                    , d.deleted_at AS design_deleted_at
+                    , ${PAINT_STATUS_SELECT}
+                FROM design_selections s
+                JOIN designs d ON d.id = s.design_id
+                ${PAINT_STATUS_JOINS}
+                WHERE s.user_id = $2
+                ORDER BY s.created_at DESC;
+            `;
+            const result = await pool.query(sqlString, [LOCKING_JOB_STATUSES, userId]);
+            return result.rows;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    // admin-only: undo a soft delete. Stays inactive - activation is its own step.
+    const restore = async (userId: string, designId: string, client: any = pool) => {
+        try {
+            const sqlString = `
+                UPDATE design_selections
+                SET deleted_at = NULL, updated_at = NOW()
+                WHERE user_id = $1 AND design_id = $2 AND deleted_at IS NOT NULL
+                RETURNING id;
+            `;
+            const result = await client.query(sqlString, [userId, designId]);
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     const countActiveExcludingUser = async (designId: string, excludingUserId: string) => {
         try {
             const sqlString = `
@@ -269,6 +320,8 @@ const repo = (): iDesignSelectionsRepo => {
         create,
         getByUserAndDesign,
         softDelete,
+        adminListForUser,
+        restore,
         getAllForUser,
         update,
         countActiveExcludingUser,

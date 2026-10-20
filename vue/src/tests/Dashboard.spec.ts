@@ -53,7 +53,7 @@ function buildUser(overrides: Partial<iAuthUser> = {}): iAuthUser {
 }
 
 /** A GET /payments row. */
-function payment(amountTotalCents: number, status = 'succeeded') {
+function payment(amountTotalCents: number, status = 'succeeded', amountRefundedCents = 0) {
   return {
     id: `p${amountTotalCents}`,
     kind: 'one_time',
@@ -61,6 +61,8 @@ function payment(amountTotalCents: number, status = 'succeeded') {
     amount_total_cents: amountTotalCents,
     amount_platform_cents: 100,
     amount_charity_cents: amountTotalCents - 100,
+    amount_refunded_cents: amountRefundedCents,
+    refunded_at: amountRefundedCents ? '2026-10-02T00:00:00.000Z' : null,
     charity_ein_id: 42,
     created_at: '2026-10-01T00:00:00.000Z',
   }
@@ -206,6 +208,14 @@ describe('Dashboard.vue', () => {
       const { wrapper } = await mountDashboard(buildUser())
 
       expect(statCard(wrapper, 'contributed')).toBe('$35.50')
+    })
+
+    it('takes off anything refunded', async () => {
+      listPaymentsMock.mockResolvedValue(jsonResponse({ data: [payment(2500, 'succeeded', 2500), payment(1000, 'succeeded', 400)] }))
+
+      const { wrapper } = await mountDashboard(buildUser())
+
+      expect(statCard(wrapper, 'contributed')).toBe('$6.00')
     })
 
     it('ignores payments that never went through', async () => {

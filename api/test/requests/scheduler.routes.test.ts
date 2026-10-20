@@ -117,7 +117,24 @@ describe("Scheduler routes", () => {
                 .send([{ job_id: "j1", status: "done" }]);
 
             expect(res.status).toBe(200);
-            expect(backfillJobsRepoMock.setStatus).toHaveBeenCalledWith("j1", "done");
+            expect(backfillJobsRepoMock.setStatus).toHaveBeenCalledWith("j1", "done", null);
+        });
+
+        it("passes a failed job's error through, and rejects one that isn't text", async () => {
+            backfillJobsRepoMock.setStatus.mockImplementation(async (id: string, status: string) => ({ id, status }));
+
+            const ok = await request(server)
+                .post("/scheduler/backfill/complete")
+                .set(apiKeyHeader)
+                .send([{ job_id: "j1", status: "failed", error: "git push rejected" }]);
+            expect(ok.status).toBe(200);
+            expect(backfillJobsRepoMock.setStatus).toHaveBeenCalledWith("j1", "failed", "git push rejected");
+
+            const bad = await request(server)
+                .post("/scheduler/backfill/complete")
+                .set(apiKeyHeader)
+                .send([{ job_id: "j1", status: "failed", error: 42 }]);
+            expect(bad.status).toBe(400);
         });
     });
 

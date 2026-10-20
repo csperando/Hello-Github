@@ -2,7 +2,12 @@ import type { PoolClient } from "pg";
 import pool from "../config/db";
 import { logger } from "../config/logger";
 
-import { iBackfillJobStatus, LOCKING_JOB_STATUSES } from "../models/backfillJobs";
+import {
+    iBackfillJobStatus,
+    LOCKING_JOB_STATUSES,
+    RETRYABLE_JOB_STATUSES,
+    CANCELLABLE_JOB_STATUSES,
+} from "../models/backfillJobs";
 
 /** What a job paints - copied from the selection + design when checkout starts. */
 export interface iPaintSnapshot {
@@ -21,9 +26,30 @@ export interface iBackfillJobsRepo {
     getLockingForUserAndDesign: (userId: string, designId: string) => Promise<any>;
     markIssueOpened: (id: string, issueUrl: string) => Promise<any>;
     claimReady: () => Promise<any[]>;
-    setStatus: (id: string, status: iBackfillJobStatus) => Promise<any>;
+    setStatus: (id: string, status: iBackfillJobStatus, lastError?: string | null) => Promise<any>;
     getPaintDetails: (jobIds: string[]) => Promise<any[]>;
+    adminList: (statuses: readonly iBackfillJobStatus[] | null) => Promise<any[]>;
+    adminCountsByStatus: () => Promise<Record<string, number>>;
+    adminGetById: (jobId: string) => Promise<any | undefined>;
+    retry: (jobId: string, client?: PoolClient) => Promise<any | undefined>;
+    cancel: (jobId: string, client?: PoolClient) => Promise<any | undefined>;
 }
+
+// A job as the admin console shows it: whose, which design, and its
+// status's wording from the backfill_job_statuses definitions.
+const ADMIN_JOB_SELECT = `
+    SELECT bj.*
+        , st.label AS status_label
+        , ds.user_id
+        , ds.design_id
+        , u.github_username
+        , d.name AS design_name
+    FROM backfill_jobs bj
+    JOIN backfill_job_statuses st ON st.code = bj.status
+    JOIN design_selections ds ON ds.id = bj.selection_id
+    JOIN users u ON u.id = ds.user_id
+    JOIN designs d ON d.id = ds.design_id
+`;
 
 // main repo init function to be called in the service factories
 const repo = (): iBackfillJobsRepo => {
@@ -188,19 +214,21 @@ const repo = (): iBackfillJobsRepo => {
         }
     }
 
-    // finished statuses also stamp completed_at
-    const setStatus = async (id: string, status: iBackfillJobStatus) => {
+    // finished statuses also stamp completed_at; lastError is kept only
+    // for a failed job (the backfill Action's message, when it sends one)
+    const setStatus = async (id: string, status: iBackfillJobStatus, lastError: string | null = null) => {
         try {
             const sqlString = `
                 UPDATE backfill_jobs bj
                 SET status = $2
                     , completed_at = CASE WHEN s.is_finished THEN NOW() ELSE NULL END
+                    , last_error = CASE WHEN $2 = 'failed' THEN $3 ELSE NULL END
                     , updated_at = NOW()
                 FROM backfill_job_statuses s
                 WHERE bj.id = $1 AND s.code = $2
                 RETURNING bj.*;
             `;
-            const result = await pool.query(sqlString, [id, status]);
+            const result = await pool.query(sqlString, [id, status, lastError]);
             return result.rows[0];
 
         } catch(err: any) {
@@ -244,7 +272,95 @@ const repo = (): iBackfillJobsRepo => {
         }
     }
 
+    // newest first; `statuses` null = every job
+    const adminList = async (statuses: readonly iBackfillJobStatus[] | null) => {
+        try {
+            const sqlString = `
+                ${ADMIN_JOB_SELECT}
+                WHERE ($1::text[] IS NULL OR bj.status = ANY($1::text[]))
+                ORDER BY bj.updated_at DESC
+                LIMIT 200;
+            `;
+            const result = await pool.query(sqlString, [statuses]);
+            return result.rows;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    const adminCountsByStatus = async () => {
+        try {
+            const result = await pool.query(`SELECT status, COUNT(*)::int AS count FROM backfill_jobs GROUP BY status;`);
+            return Object.fromEntries(result.rows.map((r: { status: string; count: number }) => [r.status, r.count]));
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    const adminGetById = async (jobId: string) => {
+        try {
+            const result = await pool.query(`${ADMIN_JOB_SELECT} WHERE bj.id = $1;`, [jobId]);
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    // failed -> back in the queue to repaint from its same copy: ready, or
+    // awaiting_issue if the canvas issue was never opened. That re-locks the
+    // selection, so another job already locking it trips
+    // idx_backfill_jobs_one_locking_per_selection (the caller turns that
+    // into a 409). Returns undefined if the job isn't retryable.
+    const retry = async (jobId: string, client?: PoolClient) => {
+        try {
+            const sqlString = `
+                UPDATE backfill_jobs
+                SET status = CASE WHEN issue_url IS NULL THEN 'awaiting_issue' ELSE 'ready' END
+                    , completed_at = NULL
+                    , last_error = NULL
+                    , updated_at = NOW()
+                WHERE id = $1 AND status = ANY($2::text[])
+                RETURNING *;
+            `;
+            const result = await (client ?? pool).query(sqlString, [jobId, RETRYABLE_JOB_STATUSES]);
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    // Returns undefined if the job can't be cancelled (painting, or finished).
+    const cancel = async (jobId: string, client?: PoolClient) => {
+        try {
+            const sqlString = `
+                UPDATE backfill_jobs
+                SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
+                WHERE id = $1 AND status = ANY($2::text[])
+                RETURNING *;
+            `;
+            const result = await (client ?? pool).query(sqlString, [jobId, CANCELLABLE_JOB_STATUSES]);
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     return {
+        adminList,
+        adminCountsByStatus,
+        adminGetById,
+        retry,
+        cancel,
         createPending,
         markPaid,
         cancelByPaymentIntent,

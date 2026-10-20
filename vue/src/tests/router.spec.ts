@@ -58,8 +58,17 @@ describe('router /admin guard', () => {
 
     await router.push('/admin')
 
-    expect(router.currentRoute.value.path).toBe('/admin')
-    expect(router.currentRoute.value.name).toBe('Admin')
+    // /admin opens the console's first section
+    expect(router.currentRoute.value.path).toBe('/admin/payments')
+    expect(router.currentRoute.value.name).toBe('AdminPayments')
+  })
+
+  it('guards every admin section, not just /admin itself', async () => {
+    apiFetchMock.mockResolvedValue(meResponse({ id: 'u2', github_username: 'dev', role: 'user' }))
+
+    await router.push('/admin/users/3f1c2b9e-8d4a-4c7e-9b1a-2e5f6a7b8c9d')
+
+    expect(router.currentRoute.value.path).toBe('/dashboard')
   })
 
   it('redirects an authenticated but deactivated admin to /dashboard', async () => {

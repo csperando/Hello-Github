@@ -203,6 +203,9 @@
                                 </template>
                                 · {{ p.kind === "subscription" ? "auto-renew" : "one-time" }}
                                 · {{ p.status }}
+                                <span v-if="p.amount_refunded_cents > 0" class="history-refund">
+                                    · refunded {{ fmtCents(p.amount_refunded_cents) }}
+                                </span>
                             </div>
                         </li>
                     </ul>
@@ -319,6 +322,10 @@
     .billing-title {
         margin-top: 40px;
         scroll-margin-top: 90px;
+    }
+
+    .history-refund {
+        color: var(--color-warning);
     }
 
     .history-list {

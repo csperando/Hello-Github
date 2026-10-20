@@ -135,9 +135,17 @@ describe("BackfillService", () => {
                 { job_id: "j2", status: "failed" },
             ]);
 
-            expect(backfillJobsRepoMock.setStatus).toHaveBeenCalledWith("j1", "done");
-            expect(backfillJobsRepoMock.setStatus).toHaveBeenCalledWith("j2", "failed");
+            expect(backfillJobsRepoMock.setStatus).toHaveBeenCalledWith("j1", "done", null);
+            expect(backfillJobsRepoMock.setStatus).toHaveBeenCalledWith("j2", "failed", null);
             expect(result).toEqual([{ id: "j1", status: "done" }, { id: "j2", status: "failed" }]);
+        });
+
+        it("keeps a failed job's error, for admins to read", async () => {
+            backfillJobsRepoMock.setStatus.mockImplementation(async (id: string, status: string) => ({ id, status }));
+
+            await new BackfillService().completeJobs([{ job_id: "j2", status: "failed", error: "git push rejected" }]);
+
+            expect(backfillJobsRepoMock.setStatus).toHaveBeenCalledWith("j2", "failed", "git push rejected");
         });
     });
 });

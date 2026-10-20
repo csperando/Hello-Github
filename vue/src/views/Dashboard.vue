@@ -56,7 +56,8 @@
 
     // ----- total contributed: everything the user has actually paid ---------
     // The full amount charged (platform + charity), so it matches what they
-    // were billed. succeeded = one-time payment, paid = subscription invoice.
+    // were billed, less anything refunded. succeeded = one-time payment,
+    // paid = subscription invoice.
     const PAID_STATUSES = ["succeeded", "paid"]
     const payments = ref<iPayment[]>([])
 
@@ -72,7 +73,9 @@
     }
 
     const contributedCents = computed(() =>
-        payments.value.filter((p) => PAID_STATUSES.includes(p.status)).reduce((sum, p) => sum + p.amount_total_cents, 0),
+        payments.value
+            .filter((p) => PAID_STATUSES.includes(p.status))
+            .reduce((sum, p) => sum + p.amount_total_cents - (p.amount_refunded_cents ?? 0), 0),
     )
 
     function formatDate(dateStr: string): string {

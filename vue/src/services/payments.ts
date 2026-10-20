@@ -8,6 +8,9 @@ export interface iPayment {
   amount_total_cents: number
   amount_platform_cents: number
   amount_charity_cents: number
+  /** Recorded by an admin when a refund is made in Stripe; 0 if none. */
+  amount_refunded_cents: number
+  refunded_at: string | null
   charity_ein_id: number | null
   period_start: string | null
   period_end: string | null

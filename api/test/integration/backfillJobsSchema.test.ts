@@ -69,7 +69,7 @@ describe("backfill_jobs schema (0011, reshaped by 0013)", () => {
         expect(Object.keys(byName).sort()).toEqual(
             [
                 "id", "selection_id", "year", "status", "issue_url", "pattern", "start_date", "custom_range",
-                "stripe_payment_intent_id", "completed_at", "created_at", "updated_at",
+                "stripe_payment_intent_id", "completed_at", "created_at", "updated_at", "last_error",
             ].sort(),
         );
         for (const required of ["selection_id", "year", "status", "pattern", "start_date", "custom_range"]) {

@@ -85,6 +85,7 @@ describe("0010_create_payments migration", () => {
                 "id", "user_id", "stripe_event_id", "stripe_object_id", "kind", "status",
                 "amount_total_cents", "amount_platform_cents", "amount_charity_cents", "charity_ein_id",
                 "period_start", "period_end", "created_at",
+                "amount_refunded_cents", "refunded_at", "stripe_refund_id", "admin_note",
             ].sort(),
         );
         expect(byName.user_id?.is_nullable).toBe("NO");

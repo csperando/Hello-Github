@@ -9,6 +9,9 @@ export interface iPublicPayment {
     amount_total_cents: number;
     amount_platform_cents: number;
     amount_charity_cents: number;
+    // recorded by an admin when a refund is made in Stripe; 0 if none
+    amount_refunded_cents: number;
+    refunded_at: string | null;
     charity_ein_id: number | null;
     period_start: string | null;
     period_end: string | null;
@@ -23,6 +26,8 @@ export function toPublicPayment(payment: iPublicPayment): iPublicPayment {
         amount_total_cents: payment.amount_total_cents,
         amount_platform_cents: payment.amount_platform_cents,
         amount_charity_cents: payment.amount_charity_cents,
+        amount_refunded_cents: payment.amount_refunded_cents,
+        refunded_at: payment.refunded_at,
         charity_ein_id: payment.charity_ein_id,
         period_start: payment.period_start,
         period_end: payment.period_end,

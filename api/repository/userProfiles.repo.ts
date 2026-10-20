@@ -4,12 +4,13 @@ import { iProfileUpdateInput } from "../models/users";
 
 // define the type of the return object from the repo() method
 export interface iUserProfileRepo {
-    upsert: (userId: string, input: iProfileUpdateInput) => Promise<any>;
+    upsert: (userId: string, input: iProfileUpdateInput, client?: any) => Promise<any>;
 }
 
 // main repo init function to be called in the service factories
 const repo = (): iUserProfileRepo => {
-    const upsert = async (userId: string, input: iProfileUpdateInput) => {
+    // `client`: run inside a caller's transaction (an admin edit + its audit row)
+    const upsert = async (userId: string, input: iProfileUpdateInput, client: any = pool) => {
         try {
             const sqlString = `
                 INSERT INTO user_profiles (
@@ -41,7 +42,7 @@ const repo = (): iUserProfileRepo => {
                     , updated_at;
             `;
 
-            const result = await pool.query(sqlString, [
+            const result = await client.query(sqlString, [
                 userId,
                 input.display_name ?? null,
                 input.default_charity ?? null,

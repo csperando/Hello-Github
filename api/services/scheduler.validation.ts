@@ -76,7 +76,13 @@ export function extractBackfillCompletions(body: unknown): { input?: iBackfillCo
             return { error: `Entry ${i}: status must be one of ${BACKFILL_FINAL_STATUSES.join(", ")}.` };
         }
 
-        input.push({ job_id: e.job_id, status: e.status as iBackfillCompletion["status"] });
+        if (e.error !== undefined && e.error !== null && (typeof e.error !== "string" || e.error.length > 2000)) {
+            return { error: `Entry ${i}: error must be text of 2000 characters or fewer.` };
+        }
+
+        const completion: iBackfillCompletion = { job_id: e.job_id, status: e.status as iBackfillCompletion["status"] };
+        if (typeof e.error === "string" && e.error.trim()) completion.error = e.error.trim();
+        input.push(completion);
     }
 
     return { input };

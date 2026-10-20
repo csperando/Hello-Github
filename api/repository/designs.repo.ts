@@ -15,6 +15,7 @@ export interface iDesignsRepo {
     getAllByUserId: (userId: string) => Promise<any>;
     update: (designId: string, input: iDesignUpdateInput) => Promise<any>;
     softDelete: (designId: string, client?: any) => Promise<any>;
+    restore: (designId: string, client?: any) => Promise<any>;
 }
 
 // main repo init function to be called in the service factories
@@ -113,12 +114,30 @@ const repo = (): iDesignsRepo => {
         }
     }
 
+    // admin-only: undo a soft delete, making the design selectable again
+    const restore = async (designId: string, client: any = pool) => {
+        try {
+            const sqlString = `
+                UPDATE designs SET deleted_at = NULL, updated_at = NOW()
+                WHERE id = $1 AND deleted_at IS NOT NULL
+                RETURNING id;
+            `;
+            const result = await client.query(sqlString, [designId]);
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     return {
         create,
         getById,
         getAllByUserId,
         update,
         softDelete,
+        restore,
     }
 };
 

@@ -1,5 +1,6 @@
 import pool from "../config/db";
 import { logger } from "../config/logger";
+import { toContainsPattern } from "./sqlPatterns";
 import { iUser, iGitHubUpsertInput } from "../models/users";
 
 // define the type of the return object from the repo() method
@@ -11,6 +12,8 @@ export interface iUserRepo {
     upsertFromGitHub: (input: iGitHubUpsertInput) => Promise<any>;
     insertFromGitHub: (input: iGitHubUpsertInput) => Promise<any>;
     updateEmailPreference: (userId: string, email: string) => Promise<any>;
+    adminSearch: (search: string | null) => Promise<any[]>;
+    setRoleAndActive: (userId: string, input: { role?: string; is_active?: boolean }, client?: any) => Promise<any>;
 }
 
 // main repo init function to be called in the service factories
@@ -64,6 +67,7 @@ const repo = (): iUserRepo => {
                     , u.bio
                     , u.role
                     , u.is_active
+                    , u.created_at
                     , p.display_name
                     , p.default_charity
                     , COALESCE(p.public_opt_in, TRUE) AS public_opt_in
@@ -284,6 +288,60 @@ const repo = (): iUserRepo => {
         }
     }
 
+    // newest first, with what each has contributed (refunds taken off);
+    // matches username, display name or email. Capped - the console searches.
+    const adminSearch = async (search: string | null) => {
+        try {
+            const sqlString = `
+                SELECT u.id
+                    , u.github_username
+                    , u.email
+                    , u.role
+                    , u.is_active
+                    , u.created_at
+                    , p.display_name
+                    , COALESCE((
+                        SELECT SUM(pay.amount_total_cents - pay.amount_refunded_cents)
+                        FROM payments pay WHERE pay.user_id = u.id
+                    ), 0)::int AS contributed_cents
+                FROM users u
+                LEFT JOIN user_profiles p ON p.user_id = u.id
+                WHERE $1::text IS NULL
+                    OR u.github_username ILIKE $1
+                    OR p.display_name ILIKE $1
+                    OR u.email ILIKE $1
+                ORDER BY u.created_at DESC
+                LIMIT 200;
+            `;
+            const result = await pool.query(sqlString, [search ? toContainsPattern(search) : null]);
+            return result.rows;
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    // admin-only: role and whether the account can sign in
+    const setRoleAndActive = async (userId: string, input: { role?: string; is_active?: boolean }, client: any = pool) => {
+        try {
+            const sqlString = `
+                UPDATE users
+                SET role = COALESCE($2, role)
+                    , is_active = COALESCE($3, is_active)
+                    , updated_at = NOW()
+                WHERE id = $1
+                RETURNING id, role, is_active;
+            `;
+            const result = await client.query(sqlString, [userId, input.role ?? null, input.is_active ?? null]);
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
     return {
         getAllUsers,
         getUserById,
@@ -292,6 +350,8 @@ const repo = (): iUserRepo => {
         upsertFromGitHub,
         insertFromGitHub,
         updateEmailPreference,
+        adminSearch,
+        setRoleAndActive,
     }
 };
 
