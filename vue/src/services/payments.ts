@@ -68,11 +68,3 @@ export async function getPaintStatus(designId: string): Promise<Response> {
 export async function listPayments(): Promise<Response> {
   return apiFetch('/payments')
 }
-
-/** Turn auto-renew on (true) or off (false) for the authenticated user. */
-export async function setAutoRenew(autoRenew: boolean): Promise<Response> {
-  return apiFetch('/payments/subscription', {
-    method: 'PATCH',
-    body: JSON.stringify({ auto_renew: autoRenew }),
-  })
-}

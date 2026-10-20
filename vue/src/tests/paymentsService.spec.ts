@@ -5,7 +5,7 @@ vi.mock('@/services/api', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }))
 
-import { createCheckout, getPaintStatus, listPayments, setAutoRenew } from '@/services/payments'
+import { createCheckout, getPaintStatus, listPayments } from '@/services/payments'
 
 beforeEach(() => {
   apiFetchMock.mockReset().mockResolvedValue({ ok: true, json: async () => ({}) })
@@ -32,11 +32,4 @@ describe('payments service', () => {
     expect(apiFetchMock).toHaveBeenCalledWith('/payments')
   })
 
-  it('setAutoRenew PATCHes /payments/subscription with the boolean', async () => {
-    await setAutoRenew(false)
-    expect(apiFetchMock).toHaveBeenCalledWith('/payments/subscription', {
-      method: 'PATCH',
-      body: JSON.stringify({ auto_renew: false }),
-    })
-  })
 })

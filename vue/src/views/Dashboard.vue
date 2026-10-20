@@ -2,12 +2,12 @@
     import { computed, onMounted, ref } from "vue"
     import AppNavbar from "@/components/layout/AppNavbar.vue"
     import BaseButton from "@/components/ui/BaseButton.vue"
-    import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import ContributionGridPreview from "@/components/ui/ContributionGridPreview.vue"
     import { LEVEL_COLORS } from "@/helpers/grid"
     import { useDesignsStore } from "@/stores/designs"
     import { useAuthStore } from "@/stores/auth"
-    import { updateProfile } from "@/services/api"
+    import { getOrgById } from "@/services/api"
+    import { listPayments, type iPayment } from "@/services/payments"
 
     const DAYS = 7
 
@@ -18,81 +18,62 @@
 
     onMounted(() => {
         designsStore.fetchSelections()
-        designsStore.fetchRunStatuses()
         designsStore.fetchPaintStatuses()
+        loadPayments()
+        loadDefaultCharity()
     })
-
-    /** "last painted 2 hours ago" / "last painted 3 days ago" / "last attempt failed" - optional/separable display, not required for anything else to work. */
-    function formatRunStatusLabel(designId: string): string | null {
-        const status = designsStore.runStatuses[designId]
-        if (!status) return null
-        if (status.status === "failed") return "last attempt failed"
-
-        const when = new Date(status.created_at)
-        const diffHours = Math.round((Date.now() - when.getTime()) / (1000 * 60 * 60))
-        if (diffHours < 1) return "last painted just now"
-        if (diffHours < 24) return `last painted ${diffHours} hour${diffHours === 1 ? "" : "s"} ago`
-        const diffDays = Math.round(diffHours / 24)
-        return `last painted ${diffDays} day${diffDays === 1 ? "" : "s"} ago`
-    }
-
-    const activeToggleError = ref("")
-
-    /**
-     * Toggles is_active on the caller's own selection - the backend enforces at
-     * most one active selection per user, so this can be rejected (e.g.
-     * activating a second design while another is already active); on that
-     * conflict the optimistic flip is rolled back and the server's message shown.
-     */
-    async function toggleActive(designId: string) {
-        activeToggleError.value = ""
-        const row = designsStore.selections.find((s) => s.design_id === designId)
-        if (!row) return
-        // activation needs a paid plan; deactivation is always allowed
-        if (!row.is_active && !isCovered.value) return
-
-        const next = !row.is_active
-        const previous = row.is_active
-        row.is_active = next
-
-        const result = await designsStore.setActive(designId, next)
-        if (!result.ok) {
-            row.is_active = previous
-            activeToggleError.value = result.error
-        }
-    }
 
     const displayName = computed(
         () => authStore.user?.display_name || authStore.user?.name || authStore.user?.github_username || "",
     )
 
-    const isCovered = computed(() => authStore.isCovered)
-    const paidUntilLabel = computed(() => {
-        const until = authStore.user?.paid_until
-        return until
-            ? new Date(until).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-            : ""
-    })
+    // ----- default charity: its name, looked up by its eo_bmf id -------------
+    const defaultCharityName = ref<string | null>(null)
 
-    // default_charity is now an eo_bmf id, not a name - the auth payload doesn't
-    // carry a display name for it yet (that needs a backend join, tracked
-    // separately alongside migrating this picker to real charity search), so
-    // this can only say whether one is set, not which one.
-    const defaultCharityLabel = computed(() => (authStore.user?.default_charity ? "charity selected" : "no charity selected"))
-    const defaultCharityLetter = computed(() => (authStore.user?.default_charity ? "♥" : "–"))
-
-    async function togglePublicOptIn() {
-        const user = authStore.user
-        if (!user) return
-
-        const next = !user.public_opt_in
-        user.public_opt_in = next
-
-        const res = await updateProfile(user.id, { public_opt_in: next })
-        if (!res.ok) {
-            user.public_opt_in = !next
+    async function loadDefaultCharity(): Promise<void> {
+        const id = authStore.user?.default_charity
+        if (!id) return
+        try {
+            const res = await getOrgById(id)
+            if (!res.ok) return
+            const body = await res.json()
+            // getOrgById returns the org object when found, [] when not
+            const org = Array.isArray(body.data) ? undefined : body.data
+            if (org) defaultCharityName.value = org.name
+        } catch {
+            // non-fatal - the card just says a charity is selected
         }
     }
+
+    const defaultCharityLabel = computed(() => {
+        if (!authStore.user?.default_charity) return "no charity selected"
+        return defaultCharityName.value ?? "charity selected"
+    })
+    const defaultCharityLetter = computed(() => {
+        if (defaultCharityName.value) return defaultCharityName.value.charAt(0).toUpperCase()
+        return authStore.user?.default_charity ? "♥" : "–"
+    })
+
+    // ----- total contributed: everything the user has actually paid ---------
+    // The full amount charged (platform + charity), so it matches what they
+    // were billed. succeeded = one-time payment, paid = subscription invoice.
+    const PAID_STATUSES = ["succeeded", "paid"]
+    const payments = ref<iPayment[]>([])
+
+    async function loadPayments(): Promise<void> {
+        try {
+            const res = await listPayments()
+            if (!res.ok) return
+            const body = await res.json()
+            payments.value = body.data ?? []
+        } catch {
+            // non-fatal - the total just reads $0.00
+        }
+    }
+
+    const contributedCents = computed(() =>
+        payments.value.filter((p) => PAID_STATUSES.includes(p.status)).reduce((sum, p) => sum + p.amount_total_cents, 0),
+    )
 
     function formatDate(dateStr: string): string {
         return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-US", {
@@ -115,30 +96,25 @@
             return {
                 id: s.design_id,
                 name: available ? s.name : "no longer available",
-                isPublic: s.is_public,
-                isActive: s.is_active,
                 available,
                 startDateLabel: formatDate(s.start_date),
                 painted: available ? s.pattern.filter((l) => l > 0).length : 0,
                 weeks: available ? s.pattern.length / DAYS : 0,
                 previewCells: available ? s.pattern.map((level) => ({ bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })) : [],
-                runStatusLabel: formatRunStatusLabel(s.design_id),
                 paintStatus: s.paint_status,
                 paintStatusLabel: designsStore.paintStatusLabel(s.paint_status),
             }
         }),
     )
 
-    // Donation totals, charity counts, and receipts have no backing data model
-    // yet (no donations/receipts table) - only design-derived stats are real.
-    // Scoped to designs the user actually authored, not ones they've adopted
-    // from someone else, matching what these labels mean.
+    // "designs created" counts designs the user actually authored, not ones
+    // they've adopted from someone else.
     const authoredSelections = computed(() =>
         designsStore.selections.filter((s) => s.design_owner_id === authStore.user?.id),
     )
     const statCards = computed(() => [
         { value: String(authoredSelections.value.length), label: "designs created" },
-        { value: authoredSelections.value.filter((s) => s.is_public).length + " public", label: "on your profile now" },
+        { value: `$${(contributedCents.value / 100).toFixed(2)}`, label: "contributed" },
     ])
 </script>
 
@@ -171,7 +147,6 @@
                 <!-- YOUR DESIGNS -->
                 <div>
                     <div class="section-label">your designs</div>
-                    <div v-if="activeToggleError" class="toggle-error">{{ activeToggleError }}</div>
                     <div v-if="designsStore.isLoading" class="empty-state">loading…</div>
                     <div v-else-if="designs.length === 0" class="empty-state">no designs yet - head to the editor to create one.</div>
                     <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -183,41 +158,11 @@
                             <div class="design-body">
                                 <div class="design-header-row">
                                     <span class="design-name">{{ d.name }}</span>
-                                    <!-- unselected badge bg is a fainter alpha (0.06) than --color-border (0.08) - close but
-                                         distinct enough on this chip that snapping it to the token reads visibly different -->
-                                    <span
-                                        v-if="d.available"
-                                        class="design-badge"
-                                        :style="{
-                                            color: d.isPublic ? 'var(--color-accent-brighter)' : 'var(--color-text-muted-4)',
-                                            background: d.isPublic ? 'var(--color-accent-soft)' : 'oklch(100% 0 0 / 0.06)',
-                                        }"
-                                    >{{ d.isPublic ? 'public' : 'private' }}</span>
                                 </div>
                                 <div class="design-meta">
                                     {{ d.startDateLabel }} · {{ d.painted }} squares<template v-if="d.paintStatusLabel">
                                         · <span :class="`paint-status paint-status--${d.paintStatus}`" :data-testid="'paint-status-' + d.id">{{ d.paintStatusLabel }}</span></template>
                                 </div>
-                                <div
-                                    v-if="d.runStatusLabel"
-                                    class="run-status-label"
-                                    :style="{ color: d.runStatusLabel.includes('failed') ? 'var(--color-danger)' : 'var(--color-text-muted-4)' }"
-                                >{{ d.runStatusLabel }}</div>
-                                <div v-else class="run-status-spacer"></div>
-                                <div class="active-row">
-                                    <span class="active-label">active</span>
-                                    <ToggleSwitch
-                                        :data-testid="'active-toggle-' + d.id"
-                                        :checked="d.isActive"
-                                        :disabled="!isCovered && !d.isActive"
-                                        @click="toggleActive(d.id)"
-                                    />
-                                </div>
-                                <RouterLink
-                                    v-if="!isCovered && !d.isActive"
-                                    to="/checkout"
-                                    class="activate-hint"
-                                >start a plan to activate this design →</RouterLink>
                                 <div class="design-actions">
                                     <RouterLink :to="'/editor/' + d.id" class="flex-1"><BaseButton variant="secondary" class="edit-btn">edit</BaseButton></RouterLink>
                                 </div>
@@ -228,31 +173,13 @@
 
                 <!-- SIDEBAR -->
                 <div>
-                    <div class="section-label">plan</div>
-                    <div class="plan-card" :class="{ 'plan-card--inactive': !isCovered }">
-                        <div class="plan-icon">{{ isCovered ? "✓" : "–" }}</div>
-                        <div class="plan-body">
-                            <div class="plan-label">
-                                {{ isCovered ? "painting active until " + paidUntilLabel : "no active plan" }}
-                            </div>
-                            <RouterLink v-if="isCovered" to="/settings#billing" class="plan-link">manage plan</RouterLink>
-                            <RouterLink v-else to="/checkout" class="plan-link">start a plan →</RouterLink>
-                        </div>
-                    </div>
-
-                    <div class="section-label">default preferences</div>
+                    <div class="section-label">default charity</div>
                     <div class="pref-card">
                         <div class="pref-avatar">{{ defaultCharityLetter }}</div>
                         <div>
-                            <div class="pref-name">{{ defaultCharityLabel }}</div>
+                            <div class="pref-name" data-testid="default-charity">{{ defaultCharityLabel }}</div>
                             <RouterLink to="/settings" class="change-default-link">change default</RouterLink>
                         </div>
-                    </div>
-                    <div class="opt-in-card">
-                        <div>
-                            <div class="opt-in-label">share new designs by default</div>
-                        </div>
-                        <ToggleSwitch data-testid="public-opt-in-toggle" :checked="!!authStore.user?.public_opt_in" @click="togglePublicOptIn" />
                     </div>
                 </div>
             </div>
@@ -335,12 +262,6 @@
         margin-bottom: 16px;
     }
 
-    .toggle-error {
-        font-size: 13px;
-        color: var(--color-danger);
-        margin-bottom: 16px;
-    }
-
     .empty-state {
         font-family: var(--font-mono);
         font-size: 13px;
@@ -398,45 +319,11 @@
         font-weight: 600;
     }
 
-    .design-badge {
-        font-family: var(--font-mono);
-        font-size: 10.5px;
-        font-weight: 600;
-        border-radius: 5px;
-        padding: 3px 8px;
-    }
-
     .design-meta {
         font-family: var(--font-mono);
         font-size: 12px;
         color: var(--color-text-muted-4);
         margin-bottom: 4px;
-    }
-
-    .run-status-label {
-        font-family: var(--font-mono);
-        font-size: 11.5px;
-        margin-bottom: 12px;
-    }
-
-    .run-status-spacer {
-        margin-bottom: 12px;
-    }
-
-    .active-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 10px 0;
-        /* fainter alpha (0.06) than --color-border (0.08) - deliberately subtler divider inside the card */
-        border-top: 1px solid oklch(100% 0 0 / 0.06);
-        margin-bottom: 8px;
-    }
-
-    .active-label {
-        font-family: var(--font-mono);
-        font-size: 12px;
-        color: var(--color-text-muted-4);
     }
 
     .design-actions {
@@ -458,56 +345,6 @@
         padding: 8px;
         text-decoration: none;
         text-align: center;
-    }
-
-
-    .plan-card {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        background: var(--color-bg-raised);
-        border: 1px solid var(--color-border);
-        border-radius: 10px;
-        padding: 14px;
-        margin-bottom: 28px;
-    }
-
-    .plan-icon {
-        flex: none;
-        width: 34px;
-        height: 34px;
-        border-radius: 8px;
-        background: var(--color-accent-soft);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--color-accent-brighter);
-        font-weight: 700;
-    }
-
-    .plan-card--inactive .plan-icon {
-        background: var(--color-bg-chip);
-        color: var(--color-text-muted-4);
-    }
-
-    .plan-label {
-        font-family: var(--font-mono);
-        font-size: 13px;
-        font-weight: 600;
-        margin-bottom: 2px;
-    }
-
-    .plan-link {
-        font-family: var(--font-mono);
-        font-size: 11.5px;
-    }
-
-    .activate-hint {
-        display: block;
-        font-family: var(--font-mono);
-        font-size: 11px;
-        color: var(--color-accent-bright);
-        margin: -2px 0 10px;
     }
 
     .pref-card {
@@ -547,21 +384,4 @@
         font-size: 11.5px;
     }
 
-    .opt-in-card {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 14px;
-        border-radius: 10px;
-        background: var(--color-bg-raised);
-        border: 1px solid var(--color-border);
-        margin-bottom: 28px;
-    }
-
-    .opt-in-label {
-        font-family: var(--font-mono);
-        font-size: 12.5px;
-        font-weight: 600;
-        margin-bottom: 2px;
-    }
 </style>

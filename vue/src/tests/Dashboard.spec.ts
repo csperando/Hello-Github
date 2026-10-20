@@ -7,15 +7,18 @@ import DashboardView from '../views/Dashboard.vue'
 import { useAuthStore, type iAuthUser } from '../stores/auth'
 
 const apiFetchMock = vi.fn()
-const updateProfileMock = vi.fn()
+const getOrgByIdMock = vi.fn()
 const listSelectionsMock = vi.fn()
-const updateSelectionMock = vi.fn()
-const getLastRunStatusesMock = vi.fn()
+const listPaymentsMock = vi.fn()
 
 vi.mock('@/services/api', () => ({
   githubLoginUrl: () => 'https://api.test/auth/github/login',
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
-  updateProfile: (...args: unknown[]) => updateProfileMock(...args),
+  getOrgById: (...args: unknown[]) => getOrgByIdMock(...args),
+}))
+
+vi.mock('@/services/payments', () => ({
+  listPayments: (...args: unknown[]) => listPaymentsMock(...args),
 }))
 
 const getPaintStatusesMock = vi.fn()
@@ -25,10 +28,9 @@ vi.mock('@/services/designs', () => ({
   getDesign: vi.fn(),
   updateDesign: vi.fn(),
   selectDesign: vi.fn(),
-  updateSelection: (...args: unknown[]) => updateSelectionMock(...args),
+  updateSelection: vi.fn(),
   deleteSelection: vi.fn(),
   getSelectionCount: vi.fn(),
-  getLastRunStatuses: (...args: unknown[]) => getLastRunStatusesMock(...args),
   getPaintStatuses: (...args: unknown[]) => getPaintStatusesMock(...args),
 }))
 
@@ -50,8 +52,19 @@ function buildUser(overrides: Partial<iAuthUser> = {}): iAuthUser {
   }
 }
 
-const FUTURE = new Date(Date.now() + 30 * 86_400_000).toISOString()
-const coveredUser = (overrides: Partial<iAuthUser> = {}) => buildUser({ paid_until: FUTURE, ...overrides })
+/** A GET /payments row. */
+function payment(amountTotalCents: number, status = 'succeeded') {
+  return {
+    id: `p${amountTotalCents}`,
+    kind: 'one_time',
+    status,
+    amount_total_cents: amountTotalCents,
+    amount_platform_cents: 100,
+    amount_charity_cents: amountTotalCents - 100,
+    charity_ein_id: 42,
+    created_at: '2026-10-01T00:00:00.000Z',
+  }
+}
 
 function buildSelection(overrides: Record<string, unknown> = {}) {
   return {
@@ -99,15 +112,20 @@ async function mountDashboard(user: iAuthUser | null) {
   return { wrapper, authStore }
 }
 
+/** The value shown on the stat card with the given label. */
+function statCard(wrapper: Awaited<ReturnType<typeof mountDashboard>>['wrapper'], label: string): string {
+  const card = wrapper.findAll('.stat-card').find((c) => c.get('.stat-label').text() === label)
+  if (!card) throw new Error(`no stat card labelled "${label}"`)
+  return card.get('.stat-value').text()
+}
+
 describe('Dashboard.vue', () => {
   beforeEach(() => {
     apiFetchMock.mockReset()
-    updateProfileMock.mockReset()
+    getOrgByIdMock.mockReset().mockResolvedValue(jsonResponse({ data: [] }))
+    listPaymentsMock.mockReset().mockResolvedValue(jsonResponse({ data: [] }))
     listSelectionsMock.mockReset()
-    updateSelectionMock.mockReset()
-    getLastRunStatusesMock.mockReset()
     listSelectionsMock.mockResolvedValue(jsonResponse({ data: [] }))
-    getLastRunStatusesMock.mockResolvedValue(jsonResponse({ data: [] }))
     getPaintStatusesMock.mockReset().mockResolvedValue(
       jsonResponse({
         data: [
@@ -155,42 +173,6 @@ describe('Dashboard.vue', () => {
     expect(wrapper.find('h1').text()).toBe('lena')
   })
 
-  it('shows a generic "charity selected" label since default_charity is an id, not a name', async () => {
-    const { wrapper } = await mountDashboard(buildUser({ default_charity: 42, public_opt_in: false }))
-
-    expect(wrapper.text()).toContain('charity selected')
-    expect(wrapper.text()).not.toContain('no charity selected')
-  })
-
-  it('shows an honest placeholder when no default charity is set', async () => {
-    const { wrapper } = await mountDashboard(buildUser({ default_charity: undefined }))
-
-    expect(wrapper.text()).toContain('no charity selected')
-  })
-
-  it('persists the public-opt-in toggle via updateProfile', async () => {
-    updateProfileMock.mockResolvedValue({ ok: true })
-    const { wrapper, authStore } = await mountDashboard(buildUser({ id: 'u1', public_opt_in: true }))
-
-    const toggle = wrapper.find('[data-testid="public-opt-in-toggle"]')
-    await toggle.trigger('click')
-    await flushPromises()
-
-    expect(updateProfileMock).toHaveBeenCalledWith('u1', { public_opt_in: false })
-    expect(authStore.user?.public_opt_in).toBe(false)
-  })
-
-  it('reverts the public-opt-in toggle if the save fails', async () => {
-    updateProfileMock.mockResolvedValue({ ok: false })
-    const { wrapper, authStore } = await mountDashboard(buildUser({ id: 'u1', public_opt_in: true }))
-
-    const toggle = wrapper.find('[data-testid="public-opt-in-toggle"]')
-    await toggle.trigger('click')
-    await flushPromises()
-
-    expect(authStore.user?.public_opt_in).toBe(true)
-  })
-
   it('shows an empty state for designs when there is no real data', async () => {
     const { wrapper } = await mountDashboard(buildUser())
 
@@ -198,41 +180,6 @@ describe('Dashboard.vue', () => {
     expect(wrapper.text()).not.toContain('no receipts yet')
     expect(wrapper.text()).not.toContain('total donated')
     expect(wrapper.text()).not.toContain('charities supported')
-  })
-
-  it('shows an active plan card with the paid-through date when covered', async () => {
-    const { wrapper } = await mountDashboard(coveredUser())
-    expect(wrapper.text()).toContain('painting active until')
-    expect(wrapper.find('a[href="/settings#billing"]').exists()).toBe(true)
-  })
-
-  it('shows a "no active plan" card with a start-a-plan link when not covered', async () => {
-    const { wrapper } = await mountDashboard(buildUser({ paid_until: null }))
-    expect(wrapper.text()).toContain('no active plan')
-    expect(wrapper.find('a[href="/checkout"]').exists()).toBe(true)
-  })
-
-  it('disables the active toggle and shows an activation hint when the user has no plan', async () => {
-    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ is_active: false })] }))
-    const { wrapper } = await mountDashboard(buildUser())
-
-    expect(wrapper.get('[data-testid="active-toggle-d1"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('start a plan to activate this design')
-
-    await wrapper.get('[data-testid="active-toggle-d1"]').trigger('click')
-    await flushPromises()
-    expect(updateSelectionMock).not.toHaveBeenCalled()
-  })
-
-  it('still lets an uncovered user deactivate an already-active design', async () => {
-    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ is_active: true })] }))
-    updateSelectionMock.mockResolvedValue(jsonResponse({ data: [{ is_active: false }] }))
-    const { wrapper } = await mountDashboard(buildUser())
-
-    expect(wrapper.get('[data-testid="active-toggle-d1"]').attributes('disabled')).toBeUndefined()
-    await wrapper.get('[data-testid="active-toggle-d1"]').trigger('click')
-    await flushPromises()
-    expect(updateSelectionMock).toHaveBeenCalledWith('d1', { is_active: false })
   })
 
   it('lists authored and adopted selections together, from the joined GET /design response', async () => {
@@ -251,6 +198,78 @@ describe('Dashboard.vue', () => {
     expect(wrapper.text()).toContain("Someone Else's Smiley")
   })
 
+  describe('contributed total', () => {
+    it('adds up the full amount of every payment, matching what the user was charged', async () => {
+      // succeeded = one-time checkout, paid = subscription invoice
+      listPaymentsMock.mockResolvedValue(jsonResponse({ data: [payment(1000), payment(2550, 'paid')] }))
+
+      const { wrapper } = await mountDashboard(buildUser())
+
+      expect(statCard(wrapper, 'contributed')).toBe('$35.50')
+    })
+
+    it('ignores payments that never went through', async () => {
+      listPaymentsMock.mockResolvedValue(jsonResponse({ data: [payment(1000), payment(5000, 'failed')] }))
+
+      const { wrapper } = await mountDashboard(buildUser())
+
+      expect(statCard(wrapper, 'contributed')).toBe('$10.00')
+    })
+
+    it('reads $0.00 with no payments, or when they fail to load', async () => {
+      const { wrapper } = await mountDashboard(buildUser())
+      expect(statCard(wrapper, 'contributed')).toBe('$0.00')
+
+      listPaymentsMock.mockResolvedValue(jsonResponse({}, false))
+      const { wrapper: failed } = await mountDashboard(buildUser())
+      expect(statCard(failed, 'contributed')).toBe('$0.00')
+    })
+
+    it('replaces the old "public" stat', async () => {
+      const { wrapper } = await mountDashboard(buildUser())
+
+      expect(wrapper.text()).not.toContain('on your profile now')
+    })
+  })
+
+  describe('default charity', () => {
+    it("names the user's selected charity", async () => {
+      getOrgByIdMock.mockResolvedValue(jsonResponse({ data: { id: 42, name: 'GiveDirectly' } }))
+
+      const { wrapper } = await mountDashboard(buildUser({ default_charity: 42 }))
+
+      expect(getOrgByIdMock).toHaveBeenCalledWith(42)
+      expect(wrapper.get('[data-testid="default-charity"]').text()).toBe('GiveDirectly')
+    })
+
+    it('says so when none is selected, without looking anything up', async () => {
+      const { wrapper } = await mountDashboard(buildUser({ default_charity: undefined }))
+
+      expect(getOrgByIdMock).not.toHaveBeenCalled()
+      expect(wrapper.get('[data-testid="default-charity"]').text()).toBe('no charity selected')
+    })
+
+    it('falls back to "charity selected" if the name can\'t be loaded', async () => {
+      getOrgByIdMock.mockResolvedValue(jsonResponse({}, false))
+
+      const { wrapper } = await mountDashboard(buildUser({ default_charity: 42 }))
+
+      expect(wrapper.get('[data-testid="default-charity"]').text()).toBe('charity selected')
+    })
+  })
+
+  it('no longer shows the daily-painting leftovers: active toggle, plans, sharing default, public badge, last painted', async () => {
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ is_active: true, is_public: true })] }))
+
+    const { wrapper } = await mountDashboard(buildUser())
+
+    expect(wrapper.find('[data-testid^="active-toggle-"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="public-opt-in-toggle"]').exists()).toBe(false)
+    for (const gone of ['start a plan', 'no active plan', 'painting active until', 'share new designs by default', 'public', 'last painted']) {
+      expect(wrapper.text()).not.toContain(gone)
+    }
+  })
+
   it('only counts designs the user actually authored in the stat cards, not adopted ones', async () => {
     listSelectionsMock.mockResolvedValue(
       jsonResponse({
@@ -261,10 +280,9 @@ describe('Dashboard.vue', () => {
       }),
     )
 
-    const { wrapper } = await mountDashboard(coveredUser({ id: 'u1' }))
+    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
 
-    expect(wrapper.text()).toContain('1')
-    expect(wrapper.text()).toContain('designs created')
+    expect(statCard(wrapper, 'designs created')).toBe('1')
   })
 
   it('shows "no longer available" for an adopted design that has since gone private', async () => {
@@ -274,7 +292,7 @@ describe('Dashboard.vue', () => {
       }),
     )
 
-    const { wrapper } = await mountDashboard(coveredUser({ id: 'u1' }))
+    const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
 
     expect(wrapper.text()).toContain('no longer available')
     expect(wrapper.text()).not.toContain('Private Now')
@@ -293,97 +311,4 @@ describe('Dashboard.vue', () => {
     expect(wrapper.text()).not.toContain('no longer available')
   })
 
-  it('toggles a design active via the active toggle', async () => {
-    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ is_active: false })] }))
-    updateSelectionMock.mockResolvedValue(jsonResponse({ data: [{ is_active: true }] }))
-
-    const { wrapper } = await mountDashboard(coveredUser({ id: 'u1' }))
-
-    const toggle = wrapper.get('[data-testid="active-toggle-d1"]')
-    expect(toggle.attributes('aria-checked')).toBe('false')
-
-    await toggle.trigger('click')
-    await flushPromises()
-
-    expect(updateSelectionMock).toHaveBeenCalledWith('d1', { is_active: true })
-    expect(wrapper.get('[data-testid="active-toggle-d1"]').attributes('aria-checked')).toBe('true')
-  })
-
-  it('rolls back the active toggle and shows the server error on a one-active-per-user conflict', async () => {
-    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ is_active: false })] }))
-    updateSelectionMock.mockResolvedValue(
-      jsonResponse({ success: false, error: 'You already have another design active.' }, false),
-    )
-
-    const { wrapper } = await mountDashboard(coveredUser({ id: 'u1' }))
-
-    await wrapper.get('[data-testid="active-toggle-d1"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.get('[data-testid="active-toggle-d1"]').attributes('aria-checked')).toBe('false')
-    expect(wrapper.text()).toContain('You already have another design active.')
-  })
-
-  describe('last-run status', () => {
-    beforeEach(() => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date('2026-01-04T12:00:00Z'))
-    })
-
-    afterEach(() => {
-      vi.useRealTimers()
-    })
-
-    it('shows a relative "last painted" label for a committed run', async () => {
-      listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection()] }))
-      getLastRunStatusesMock.mockResolvedValue(
-        jsonResponse({
-          data: [
-            {
-              design_id: 'd1',
-              target_date: '2026-01-04',
-              commit_count: 5,
-              status: 'committed',
-              created_at: '2026-01-04T10:00:00Z',
-            },
-          ],
-        }),
-      )
-
-      const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
-
-      expect(wrapper.text()).toContain('last painted 2 hours ago')
-    })
-
-    it('shows a failed-attempt label instead of a relative time when the last run failed', async () => {
-      listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection()] }))
-      getLastRunStatusesMock.mockResolvedValue(
-        jsonResponse({
-          data: [
-            {
-              design_id: 'd1',
-              target_date: '2026-01-04',
-              commit_count: 0,
-              status: 'failed',
-              created_at: '2026-01-04T10:00:00Z',
-            },
-          ],
-        }),
-      )
-
-      const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
-
-      expect(wrapper.text()).toContain('last attempt failed')
-    })
-
-    it('shows no run-status label for a design that has never run', async () => {
-      listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection()] }))
-      getLastRunStatusesMock.mockResolvedValue(jsonResponse({ data: [] }))
-
-      const { wrapper } = await mountDashboard(buildUser({ id: 'u1' }))
-
-      expect(wrapper.text()).not.toContain('last painted')
-      expect(wrapper.text()).not.toContain('last attempt failed')
-    })
-  })
 })

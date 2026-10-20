@@ -6,7 +6,6 @@ import {
   updateDesign as apiUpdateDesign,
   updateSelection as apiUpdateSelection,
   deleteSelection as apiDeleteSelection,
-  getLastRunStatuses as apiGetLastRunStatuses,
   getPaintStatuses as apiGetPaintStatuses,
   type iDesign,
   type iDesignSelection,
@@ -14,7 +13,6 @@ import {
   type iDesignCreatePayload,
   type iDesignUpdatePayload,
   type iDesignSelectionUpdatePayload,
-  type iDesignRunStatus,
   type iPaintStatusDefinition,
   type PaintStatusCode,
 } from '@/services/designs'
@@ -33,9 +31,6 @@ function toJoinedRow(design: iDesign, selection: iDesignSelection): iDesignSelec
 export const useDesignsStore = defineStore('designs', () => {
   const selections = ref<iDesignSelectionWithDesign[]>([])
   const isLoading = ref(false)
-  // keyed by design_id, for O(1) lookup from a Dashboard card - optional/
-  // separable display data, not required for the rest of the store to work.
-  const runStatuses = ref<Record<string, iDesignRunStatus>>({})
   // the wording for each paint_status code, from the API's definition table
   const paintStatuses = ref<Record<string, iPaintStatusDefinition>>({})
 
@@ -52,17 +47,6 @@ export const useDesignsStore = defineStore('designs', () => {
   function paintStatusLabel(code: PaintStatusCode | undefined): string {
     if (!code) return ''
     return paintStatuses.value[code]?.label ?? code
-  }
-
-  async function fetchRunStatuses(): Promise<void> {
-    const res = await apiGetLastRunStatuses()
-    if (!res.ok) {
-      runStatuses.value = {}
-      return
-    }
-    const body = await res.json()
-    const statuses: iDesignRunStatus[] = body.data ?? []
-    runStatuses.value = Object.fromEntries(statuses.map((s) => [s.design_id, s]))
   }
 
   async function fetchSelections(): Promise<void> {
@@ -106,22 +90,6 @@ export const useDesignsStore = defineStore('designs', () => {
       )
     }
     return design
-  }
-
-  /** Toggles is_active on the caller's own selection. Returns the server's error message on a 400 conflict (e.g. another design already active), so the UI can show it and roll back. */
-  async function setActive(designId: string, isActive: boolean): Promise<{ ok: true } | { ok: false; error: string }> {
-    const res = await apiUpdateSelection(designId, { is_active: isActive })
-    const body = await res.json()
-
-    if (!res.ok) {
-      return { ok: false, error: errorMessage(body, 'Could not update this design.') }
-    }
-
-    const updated = body.data?.[0] ?? null
-    if (updated) {
-      selections.value = selections.value.map((s) => (s.design_id === designId ? { ...s, is_active: updated.is_active } : s))
-    }
-    return { ok: true }
   }
 
   /** Updates the caller's own selection's schedule (year/start_date/custom_range, plus the reserved recurrence fields). */
@@ -170,15 +138,12 @@ export const useDesignsStore = defineStore('designs', () => {
   return {
     selections,
     isLoading,
-    runStatuses,
     paintStatuses,
     fetchPaintStatuses,
     paintStatusLabel,
     fetchSelections,
-    fetchRunStatuses,
     createDesign,
     updateDesignContent,
-    setActive,
     updateSelectionSchedule,
     removeSelection,
   }

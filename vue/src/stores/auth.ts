@@ -28,11 +28,6 @@ export const useAuthStore = defineStore('auth', () => {
     const isAuthenticated = computed(() => user.value !== null)
     const isAdmin = computed(() => user.value?.role === 'admin' && user.value?.is_active !== false)
     // true only while the user has a paid period that hasn't elapsed yet
-    const isCovered = computed(() => {
-        const until = user.value?.paid_until
-        return !!until && new Date(until).getTime() > Date.now()
-    })
-
     let inFlight: Promise<void> | null = null
 
     function fetchMe(): Promise<void> {
@@ -74,5 +69,5 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
-    return { user, isLoading, isAuthenticated, isAdmin, isCovered, fetchMe, refreshMe, logout }
+    return { user, isLoading, isAuthenticated, isAdmin, fetchMe, refreshMe, logout }
 })

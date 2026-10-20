@@ -1,5 +1,5 @@
 <script setup lang="ts">
-    import { computed, onMounted, ref } from "vue"
+    import { onMounted, ref } from "vue"
     import AppNavbar from "@/components/layout/AppNavbar.vue"
     import BaseButton from "@/components/ui/BaseButton.vue"
     import BaseCard from "@/components/ui/BaseCard.vue"
@@ -8,9 +8,8 @@
     import CharityPicker from "@/components/ui/CharityPicker.vue"
     import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
     import { getOrgById, updateProfile } from "@/services/api"
-    import { errorMessage } from "@/services/errors"
     import type { iOrg } from "@/services/api"
-    import { listPayments, setAutoRenew, type iPayment } from "@/services/payments"
+    import { listPayments, type iPayment } from "@/services/payments"
     import { useAuthStore } from "@/stores/auth"
     import { timezoneOptions } from "@/helpers/timezone"
 
@@ -32,18 +31,6 @@
     // ----- billing --------------------------------------------------------
     const payments = ref<iPayment[]>([])
     const charityNames = ref<Record<number, string>>({})
-    const autoRenewSaving = ref(false)
-    const billingError = ref("")
-
-    const isCovered = computed(() => authStore.isCovered)
-    const paidUntilLabel = computed(() => {
-        const until = authStore.user?.paid_until
-        return until
-            ? new Date(until).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-            : ""
-    })
-    const autoRenewOn = computed(() => !!authStore.user?.auto_renew)
-    const subscriptionStatus = computed(() => authStore.user?.subscription_status ?? null)
 
     async function resolveOrgName(id: number): Promise<void> {
         if (charityNames.value[id]) return
@@ -68,24 +55,6 @@
             await Promise.all(ids.map(resolveOrgName))
         } catch {
             // non-fatal - the history list just stays empty
-        }
-    }
-
-    async function toggleAutoRenew(): Promise<void> {
-        if (autoRenewSaving.value) return
-        billingError.value = ""
-        autoRenewSaving.value = true
-        const next = !autoRenewOn.value
-        try {
-            const res = await setAutoRenew(next)
-            const body = await res.json().catch(() => ({}))
-            if (!res.ok) {
-                billingError.value = errorMessage(body, "Couldn't update auto-renew. Please try again.")
-                return
-            }
-            if (authStore.user) authStore.user.auto_renew = next
-        } finally {
-            autoRenewSaving.value = false
         }
     }
 
@@ -218,38 +187,6 @@
 
                 <h2 id="billing" class="title billing-title">Billing</h2>
                 <BaseCard>
-                    <div class="billing-status">
-                        <div>
-                            <div class="billing-status-label">
-                                {{ isCovered ? "painting active until " + paidUntilLabel : "no active plan" }}
-                            </div>
-                            <div v-if="subscriptionStatus" class="billing-status-sub">
-                                subscription: {{ subscriptionStatus }}
-                            </div>
-                        </div>
-                        <RouterLink v-if="!isCovered" to="/checkout">
-                            <BaseButton class="start-plan-btn">start a plan →</BaseButton>
-                        </RouterLink>
-                    </div>
-
-                    <div v-if="isCovered" class="toggle-row toggle-row-tall">
-                        <div>
-                            <div class="toggle-row-title">auto-renew every year</div>
-                            <div class="toggle-row-desc">
-                                {{ autoRenewOn
-                                    ? "we'll charge your saved card each year so your design keeps painting"
-                                    : "your plan ends on the date above unless you renew" }}
-                            </div>
-                        </div>
-                        <ToggleSwitch
-                            data-testid="auto-renew-toggle"
-                            :checked="autoRenewOn"
-                            :disabled="autoRenewSaving"
-                            @click="toggleAutoRenew"
-                        />
-                    </div>
-                    <div v-if="billingError" class="save-error">{{ billingError }}</div>
-
                     <label class="field-label billing-history-label">payment history</label>
                     <p v-if="payments.length === 0" class="hint">no payments yet.</p>
                     <ul v-else class="history-list">
@@ -382,38 +319,6 @@
     .billing-title {
         margin-top: 40px;
         scroll-margin-top: 90px;
-    }
-
-    .billing-status {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 18px;
-    }
-
-    .billing-status-label {
-        font-family: var(--font-mono);
-        font-size: 14px;
-        font-weight: 600;
-    }
-
-    .billing-status-sub {
-        font-family: var(--font-mono);
-        font-size: 12px;
-        color: var(--color-text-muted-4);
-        margin-top: 3px;
-    }
-
-    .start-plan-btn {
-        font-size: 13px;
-        border-radius: 8px;
-        padding: 10px 16px;
-        white-space: nowrap;
-    }
-
-    .billing-history-label {
-        margin-top: 20px;
     }
 
     .history-list {
