@@ -62,7 +62,7 @@
         { n: "01", title: "Design", body: "Paint your pattern on a real contribution grid — click a square to cycle through intensity levels." },
         { n: "02", title: "Commit", body: "We generate the exact backdated commits, or a PR you review, so the art lands on your real GitHub profile." },
         { n: "03", title: "Give", body: "Pay a small flat fee to cover the infra. Everything else goes straight to the charity you picked." },
-        { n: "04", title: "Interact", body: "In order for commits to be made public, permission will need to be granted to create an issue on the public repo for CommitsForGood." },
+        { n: "04", title: "Interact", body: "In order for your commits to be made public, you need to interact with our repo. After checkout we will ask permission to create an issue on the public repo for CommitsForGood." },
     ]
 
     const grid = ref<number[]>(buildDefaultGrid())
