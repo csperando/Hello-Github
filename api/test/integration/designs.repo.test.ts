@@ -131,14 +131,24 @@ describe("DesignsRepository", () => {
         });
     });
 
-    describe("delete", () => {
-        it("removes the design", async () => {
+    describe("softDelete", () => {
+        it("marks the design deleted but keeps it readable by id, for selections that still point at it", async () => {
             const created = await designsRepo.create(userId, minimalInput);
 
-            await designsRepo.delete(created.id);
+            await designsRepo.softDelete(created.id);
 
             const fetched = await designsRepo.getById(created.id);
-            expect(fetched).toBeUndefined();
+            expect(fetched.deleted_at).not.toBeNull();
+            expect(fetched.pattern).toEqual(created.pattern);
+        });
+
+        it("drops it from the owner's design list", async () => {
+            const created = await designsRepo.create(userId, minimalInput);
+
+            await designsRepo.softDelete(created.id);
+
+            const mine = await designsRepo.getAllByUserId(userId);
+            expect(mine.map((d: { id: string }) => d.id)).not.toContain(created.id);
         });
     });
 });

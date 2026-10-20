@@ -2,16 +2,20 @@ import pool from "../../config/db";
 import { runMigrations } from "../../data/migrate";
 import UsersRepository from "../../repository/users.repo";
 import DesignsRepository from "../../repository/designs.repo";
+import DesignSelectionsRepository from "../../repository/designSelections.repo";
+import { LOCKING_JOB_STATUSES } from "../../models/backfillJobs";
 import { iGitHubUpsertInput } from "../../models/users";
 
-describe("0011_create_backfill_jobs migration", () => {
+describe("backfill_jobs schema (0011, reshaped by 0013)", () => {
     const usersRepo = UsersRepository.repo();
     const designsRepo = DesignsRepository.repo();
+    const selectionsRepo = DesignSelectionsRepository.repo();
     // fixed, out-of-range-for-real-GitHub id so this test never collides with real data
     const testGitHubId = -107;
 
     let userId: string;
     let designId: string;
+    let selectionId: string;
 
     beforeAll(async () => {
         await runMigrations();
@@ -31,10 +35,12 @@ describe("0011_create_backfill_jobs migration", () => {
 
         const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
         designId = design.id;
+        selectionId = (await selectionsRepo.create(userId, designId, { start_date: "2024-12-29", year: 2025 })).id;
     });
 
     afterEach(async () => {
-        await pool.query("DELETE FROM backfill_jobs WHERE user_id = $1;", [userId]);
+        await pool.query("DELETE FROM backfill_jobs WHERE selection_id = $1;", [selectionId]);
+        await pool.query("DELETE FROM design_selections WHERE user_id = $1;", [userId]);
         await pool.query("DELETE FROM designs WHERE user_id = $1;", [userId]);
         await pool.query("DELETE FROM users WHERE github_id = $1;", [testGitHubId]);
     });
@@ -43,41 +49,80 @@ describe("0011_create_backfill_jobs migration", () => {
         await pool.end();
     });
 
-    it("has the expected columns and defaults", async () => {
+    const insert = (status: string) =>
+        pool.query(
+            `INSERT INTO backfill_jobs (selection_id, status, year, pattern, start_date, custom_range)
+             VALUES ($1, $2, 2025, '{0,1,0,0,0,0,0}', '2024-12-29', FALSE) RETURNING id;`,
+            [selectionId, status],
+        );
+
+    it("has the expected columns", async () => {
         const columns = await pool.query(`
-            SELECT column_name, is_nullable, column_default
+            SELECT column_name, is_nullable
             FROM information_schema.columns
             WHERE table_name = 'backfill_jobs';
         `);
-        const byName: Record<string, { is_nullable: string; column_default: string | null }> = Object.fromEntries(
-            columns.rows.map((row: { column_name: string; is_nullable: string; column_default: string | null }) => [
-                row.column_name,
-                row,
-            ]),
+        const byName: Record<string, { is_nullable: string }> = Object.fromEntries(
+            columns.rows.map((row: { column_name: string; is_nullable: string }) => [row.column_name, row]),
         );
 
         expect(Object.keys(byName).sort()).toEqual(
-            ["id", "user_id", "design_id", "year", "status", "issue_url", "created_at", "updated_at"].sort(),
+            [
+                "id", "selection_id", "year", "status", "issue_url", "pattern", "start_date", "custom_range",
+                "stripe_payment_intent_id", "completed_at", "created_at", "updated_at",
+            ].sort(),
         );
-        expect(byName.user_id?.is_nullable).toBe("NO");
-        expect(byName.design_id?.is_nullable).toBe("NO");
-        expect(byName.year?.is_nullable).toBe("NO");
-        expect(byName.status?.column_default).toMatch(/awaiting_issue/);
+        for (const required of ["selection_id", "year", "status", "pattern", "start_date", "custom_range"]) {
+            expect(byName[required]?.is_nullable).toBe("NO");
+        }
         expect(byName.issue_url?.is_nullable).toBe("YES");
+        expect(byName.completed_at?.is_nullable).toBe("YES");
     });
 
-    it("rejects an unknown status", async () => {
+    it("belongs to a design selection - a job for a selection that doesn't exist is rejected", async () => {
         await expect(
             pool.query(
-                "INSERT INTO backfill_jobs (user_id, design_id, year, status) VALUES ($1, $2, 2024, 'bogus');",
-                [userId, designId],
+                `INSERT INTO backfill_jobs (selection_id, status, year, pattern, start_date, custom_range)
+                 VALUES (gen_random_uuid(), 'pending_payment', 2025, '{0}', '2024-12-29', FALSE);`,
             ),
-        ).rejects.toThrow(/backfill_jobs_status_valid/);
+        ).rejects.toThrow(/foreign key/);
     });
 
-    it("allows only one job per user and design", async () => {
-        const insert = "INSERT INTO backfill_jobs (user_id, design_id, year) VALUES ($1, $2, 2024);";
-        await pool.query(insert, [userId, designId]);
-        await expect(pool.query(insert, [userId, designId])).rejects.toThrow(/backfill_jobs_user_design_unique/);
+    it("only accepts statuses defined in backfill_job_statuses", async () => {
+        await expect(insert("bogus")).rejects.toThrow(/backfill_jobs_status_fk/);
+    });
+
+    it("defines every status the API knows about", async () => {
+        const defined = await pool.query("SELECT code FROM backfill_job_statuses ORDER BY sort_order;");
+        expect(defined.rows.map((r: { code: string }) => r.code)).toEqual([
+            "pending_payment", "awaiting_issue", "ready", "painting", "done", "failed", "cancelled",
+        ]);
+    });
+
+    // The partial unique index has to list the locking statuses literally -
+    // it must agree with the definition table and the API's constant.
+    it("locks on exactly the statuses marked locks_design - in the table, the index, and the API", async () => {
+        const marked = await pool.query("SELECT code FROM backfill_job_statuses WHERE locks_design ORDER BY code;");
+        const markedCodes = marked.rows.map((r: { code: string }) => r.code);
+        expect([...LOCKING_JOB_STATUSES].sort()).toEqual(markedCodes);
+
+        for (const code of markedCodes) {
+            await pool.query("DELETE FROM backfill_jobs WHERE selection_id = $1;", [selectionId]);
+            await insert(code);
+            await expect(insert(code)).rejects.toThrow(/idx_backfill_jobs_one_locking_per_selection/);
+        }
+
+        const unmarked = await pool.query("SELECT code FROM backfill_job_statuses WHERE NOT locks_design;");
+        for (const { code } of unmarked.rows) {
+            await pool.query("DELETE FROM backfill_jobs WHERE selection_id = $1;", [selectionId]);
+            await insert(code);
+            await expect(insert(code)).resolves.toBeDefined();
+        }
+    });
+
+    it("defines the paint statuses a selection can be in", async () => {
+        const defined = await pool.query("SELECT code, label FROM design_paint_statuses ORDER BY sort_order;");
+        expect(defined.rows.map((r: { code: string }) => r.code)).toEqual(["unpainted", "locked", "painted", "error"]);
+        expect(defined.rows.every((r: { label: string }) => r.label.length > 0)).toBe(true);
     });
 });

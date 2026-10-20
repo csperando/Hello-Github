@@ -6,6 +6,7 @@ import PaymentsRepository from "../repository/payments.repo";
 import DesignSelectionsRepository from "../repository/designSelections.repo";
 import UserRepository from "../repository/users.repo";
 import BackfillJobsRepository from "../repository/backfillJobs.repo";
+import DesignsRepository from "../repository/designs.repo";
 import { isUniqueViolationOn } from "../repository/dbErrors";
 import { logger } from "../config/logger";
 
@@ -81,6 +82,8 @@ export interface iCreateCheckoutResult {
     clientSecret?: string;
     amounts?: iAuthoritativeAmounts;
     error?: string;
+    // the design is being painted - the route answers 409 rather than 400
+    locked?: boolean;
 }
 
 const YEAR_PRODUCT_NAME = "Commits for Good - one year of automated commits";
@@ -137,6 +140,7 @@ export class PaymentsService {
     public selectionsRepo: any;
     public usersRepo: any;
     public backfillJobsRepo: any;
+    public designsRepo: any;
 
     constructor() {
         this.billingRepo = UserBillingRepository.repo();
@@ -144,12 +148,21 @@ export class PaymentsService {
         this.selectionsRepo = DesignSelectionsRepository.repo();
         this.usersRepo = UserRepository.repo();
         this.backfillJobsRepo = BackfillJobsRepository.repo();
+        this.designsRepo = DesignsRepository.repo();
     }
 
-    /** The caller's backfill job for a design they bought, or undefined. */
-    public async getBackfillJob(userId: string, designId: string): Promise<any> {
+    /**
+     * The caller's design's worked-out paint_status plus its latest paint job
+     * (any status), or undefined without a selection. Checkout uses it to warn
+     * about a repeat purchase, refuse a locked design, and wait for the
+     * webhook to move a just-paid job past pending_payment.
+     */
+    public async getPaintStatus(userId: string, designId: string): Promise<{ paint_status: string; latest_job: any } | undefined> {
         try {
-            return await this.backfillJobsRepo.getByUserAndDesign(userId, designId);
+            const selection = await this.selectionsRepo.getByUserAndDesign(userId, designId);
+            if (!selection) return undefined;
+            const latestJob = await this.backfillJobsRepo.getLatestForUserAndDesign(userId, designId);
+            return { paint_status: selection.paint_status, latest_job: latestJob ?? null };
         } catch (err: any) {
             logger.error(err);
             throw err;
@@ -223,10 +236,14 @@ export class PaymentsService {
             });
             if (error || !amounts) return { error: error ?? "Invalid amount." };
 
-            // buying the same design again is allowed (the frontend warns
-            // first) - it's a donation; the webhook leaves the existing job be
+            // Buying an unchanged, already-painted design again is allowed (the
+            // frontend warns first) - it paints the same thing again, so it's
+            // effectively a donation. A design mid-paint can't be bought again.
             const selection = await this.selectionsRepo.getByUserAndDesign(input.userId, input.designId);
             if (!selection) return { error: "That design isn't one of your selections." };
+            if (selection.paint_status === "locked") {
+                return { error: "This design is being painted - check out again once it finishes.", locked: true };
+            }
 
             const customerId = await this.getOrCreateStripeCustomer(input.userId);
 
@@ -302,6 +319,26 @@ export class PaymentsService {
                 logger.error(`createCheckout: payment intent ${paymentIntent.id} has no client secret`);
                 return { error: "Could not start checkout. Please try again." };
             }
+
+            // Copy what this payment paints now, so an edit made while paying
+            // can't change it. Doesn't lock anything until payment succeeds.
+            // An already-painted, unchanged design isn't painted again (that
+            // would double its commits) - paying for it is a donation, so no job.
+            if (selection.paint_status === "painted") {
+                return { amounts, clientSecret: paymentIntent.client_secret };
+            }
+            const design = await this.designsRepo.getById(input.designId);
+            await this.backfillJobsRepo.createPending(
+                selection.id,
+                {
+                    year: selection.year,
+                    pattern: design.pattern,
+                    start_date: selection.start_date,
+                    custom_range: selection.custom_range,
+                },
+                paymentIntent.id,
+            );
+
             return { amounts, clientSecret: paymentIntent.client_secret };
 
         } catch (err: any) {
@@ -321,6 +358,8 @@ export class PaymentsService {
         switch (event.type) {
             case "payment_intent.succeeded":
                 return this.onPaymentIntentSucceeded(event);
+            case "payment_intent.canceled":
+                return this.onPaymentIntentCanceled(event);
             case "invoice.paid":
                 return this.onInvoicePaid(event);
             case "customer.subscription.updated":
@@ -399,19 +438,9 @@ export class PaymentsService {
 
         const split = this.splitFromMetadata(pi.metadata, pi.amount_received ?? pi.amount);
 
-        // The design's selection says which year to paint. Without one the
-        // payment is still recorded (the money arrived), but there is no job
-        // to create - logged for a manual follow-up.
-        const designId = pi.metadata?.design_id;
-        const selection = designId ? await this.selectionsRepo.getByUserAndDesign(userId, designId) : undefined;
-        if (!selection) {
-            logger.error(`payment_intent.succeeded ${pi.id}: user ${userId} has no selection for design ${designId} - no backfill job created`);
-        }
-
-        // The ledger insert and the job commit or roll back together: if a
-        // concurrent duplicate delivery wins the insert first, this one's job
-        // is rolled back with it. A repeat purchase of the same design is a
-        // donation - the job create is a no-op returning the existing row.
+        // The ledger insert and the job's move out of pending_payment commit
+        // or roll back together: if a concurrent duplicate delivery wins the
+        // insert first, this one's job update is rolled back with it.
         try {
             await withTransaction(async (client) => {
                 await this.paymentsRepo.create({
@@ -426,8 +455,15 @@ export class PaymentsService {
                     period_start: null,
                     period_end: null,
                 }, client);
-                if (selection) {
-                    await this.backfillJobsRepo.create(userId, designId, selection.year, client);
+                // pending_payment -> awaiting_issue (locks the design), or
+                // cancelled if another paint already has it locked. No pending
+                // job: a donation for an already-painted design (checkout made
+                // none), or an unexpected miss - the payment is recorded either way.
+                const job = await this.backfillJobsRepo.markPaid(pi.id, client);
+                if (!job) {
+                    logger.info(`payment_intent.succeeded ${pi.id}: no pending paint job for this payment - nothing to paint`);
+                } else if (job.status === "cancelled") {
+                    logger.info(`payment_intent.succeeded ${pi.id}: selection ${job.selection_id} was already being painted - job ${job.id} cancelled`);
                 }
             });
         } catch (err: any) {
@@ -439,6 +475,15 @@ export class PaymentsService {
         }
 
         return { handled: true };
+    }
+
+    // An abandoned checkout's job never locked anything; this just closes it.
+    // (payment_intent.payment_failed is deliberately not handled: the same
+    // payment intent can still succeed on a retry with another card.)
+    private async onPaymentIntentCanceled(event: Stripe.Event): Promise<{ handled: boolean; note?: string }> {
+        const pi = event.data.object as Stripe.PaymentIntent;
+        const job = await this.backfillJobsRepo.cancelByPaymentIntent(pi.id);
+        return { handled: true, note: job ? `cancelled paint job ${job.id}` : "no pending paint job" };
     }
 
     private async onInvoicePaid(event: Stripe.Event): Promise<{ handled: boolean; note?: string }> {

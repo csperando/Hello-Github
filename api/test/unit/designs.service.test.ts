@@ -49,11 +49,19 @@ describe("DesignService (delegation methods)", () => {
 
     it("updateDesign delegates to the repo", async () => {
         designsRepoMock.update.mockResolvedValue({ id: "d1", name: "renamed" });
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ id: "s1", paint_status: "unpainted" });
 
-        const result = await service.updateDesign("d1", { name: "renamed" });
+        const result = await service.updateDesign("d1", "u1", { name: "renamed" });
 
         expect(designsRepoMock.update).toHaveBeenCalledWith("d1", { name: "renamed" });
         expect(result).toEqual({ id: "d1", name: "renamed" });
+    });
+
+    it("updateDesign refuses while the owner's paint is in progress", async () => {
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ id: "s1", paint_status: "locked" });
+
+        await expect(service.updateDesign("d1", "u1", { name: "renamed" })).rejects.toMatchObject({ code: "DESIGN_LOCKED" });
+        expect(designsRepoMock.update).not.toHaveBeenCalled();
     });
 
     it("propagates repo errors without swallowing them", async () => {
@@ -98,14 +106,25 @@ describe("DesignService (delegation methods)", () => {
         expect(result).toEqual({ id: "s1" });
     });
 
-    it("updateSelection delegates to the selections repo", async () => {
-        selectionsRepoMock.update.mockResolvedValue({ id: "s1", is_active: true });
+    it("updateSelection delegates to the selections repo and returns the row with its paint_status", async () => {
+        selectionsRepoMock.update.mockResolvedValue({ id: "s1", is_active: false });
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ id: "s1", is_active: false, paint_status: "unpainted" });
 
-        const result = await service.updateSelection("u1", "d1", { is_active: true });
+        const result = await service.updateSelection("u1", "d1", { is_active: false });
 
-        expect(selectionsRepoMock.update).toHaveBeenCalledWith("u1", "d1", { is_active: true });
-        expect(result).toEqual({ id: "s1", is_active: true });
+        expect(selectionsRepoMock.update).toHaveBeenCalledWith("u1", "d1", { is_active: false });
+        expect(result).toEqual({ id: "s1", is_active: false, paint_status: "unpainted" });
     });
+
+    it.each([["start_date", "2025-03-09"], ["year", 2024], ["custom_range", true]])(
+        "updateSelection refuses a %s change while a paint is in progress",
+        async (field, value) => {
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ id: "s1", paint_status: "locked" });
+
+            await expect(service.updateSelection("u1", "d1", { [field]: value })).rejects.toMatchObject({ code: "DESIGN_LOCKED" });
+            expect(selectionsRepoMock.update).not.toHaveBeenCalled();
+        },
+    );
 
     describe("activation payment gate", () => {
         it("blocks selectDesign with is_active:true when the user has no current paid period", async () => {

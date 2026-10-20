@@ -4,6 +4,7 @@ import type { iUserBillingRepo } from "../../repository/userBilling.repo";
 import type { iPaymentsRepo } from "../../repository/payments.repo";
 import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
 import type { iUserRepo } from "../../repository/users.repo";
+import type { iBackfillJobsRepo } from "../../repository/backfillJobs.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 
 const billingRepoMock = createMockRepoProxy<iUserBillingRepo>();
@@ -14,6 +15,8 @@ const selectionsRepoMock = createMockRepoProxy<iDesignSelectionsRepo>();
 mockRepo("repository/designSelections.repo", selectionsRepoMock);
 const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
+const backfillJobsRepoMock = createMockRepoProxy<iBackfillJobsRepo>();
+mockRepo("repository/backfillJobs.repo", backfillJobsRepoMock);
 
 const mockStripe = {
     webhooks: { constructEvent: jest.fn() },
@@ -62,6 +65,7 @@ beforeEach(() => {
     paymentsRepoMock.__reset();
     selectionsRepoMock.__reset();
     usersRepoMock.__reset();
+    backfillJobsRepoMock.__reset();
     mockStripe.webhooks.constructEvent.mockReset();
 
     billingRepoMock.getByStripeCustomerId.mockResolvedValue({ user_id: "u1" });

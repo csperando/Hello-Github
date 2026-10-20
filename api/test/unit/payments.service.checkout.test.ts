@@ -2,6 +2,8 @@ import type { iUserBillingRepo } from "../../repository/userBilling.repo";
 import type { iPaymentsRepo } from "../../repository/payments.repo";
 import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
 import type { iUserRepo } from "../../repository/users.repo";
+import type { iDesignsRepo } from "../../repository/designs.repo";
+import type { iBackfillJobsRepo } from "../../repository/backfillJobs.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 
 const billingRepoMock = createMockRepoProxy<iUserBillingRepo>();
@@ -12,6 +14,10 @@ const selectionsRepoMock = createMockRepoProxy<iDesignSelectionsRepo>();
 mockRepo("repository/designSelections.repo", selectionsRepoMock);
 const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
+const designsRepoMock = createMockRepoProxy<iDesignsRepo>();
+mockRepo("repository/designs.repo", designsRepoMock);
+const backfillJobsRepoMock = createMockRepoProxy<iBackfillJobsRepo>();
+mockRepo("repository/backfillJobs.repo", backfillJobsRepoMock);
 
 const mockStripe = {
     customers: { create: jest.fn(), retrieve: jest.fn() },
@@ -40,6 +46,8 @@ describe("PaymentsService.createCheckout", () => {
         paymentsRepoMock.__reset();
         selectionsRepoMock.__reset();
         usersRepoMock.__reset();
+        designsRepoMock.__reset();
+        backfillJobsRepoMock.__reset();
         mockStripe.customers.create.mockReset();
         mockStripe.customers.retrieve.mockReset();
         mockStripe.paymentIntents.create.mockReset();
@@ -51,7 +59,17 @@ describe("PaymentsService.createCheckout", () => {
         billingRepoMock.getByUserId.mockResolvedValue(null);
         billingRepoMock.upsertCustomerId.mockResolvedValue({ user_id: "u1", stripe_customer_id: "cus_1" });
         usersRepoMock.getUserById.mockResolvedValue({ id: "u1", email: "u1@example.com", github_username: "octo" });
-        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: "u1", design_id: "d1" });
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({
+            id: "s1",
+            user_id: "u1",
+            design_id: "d1",
+            year: 2025,
+            start_date: "2025-03-02",
+            custom_range: true,
+            paint_status: "unpainted",
+        });
+        designsRepoMock.getById.mockResolvedValue({ id: "d1", pattern: [0, 1, 0, 0, 0, 0, 0] });
+        backfillJobsRepoMock.createPending.mockResolvedValue({ id: "j1", status: "pending_payment" });
         mockStripe.customers.create.mockResolvedValue({ id: "cus_1" });
         mockStripe.customers.retrieve.mockImplementation(async (id: string) => ({ id }));
         mockStripe.paymentIntents.create.mockResolvedValue({ id: "pi_1", client_secret: "pi_1_secret" });
@@ -74,6 +92,36 @@ describe("PaymentsService.createCheckout", () => {
 
         const res = await new PaymentsService().createCheckout(baseInput());
         expect(res.clientSecret).toBe("pi_1_secret");
+    });
+
+    it("refuses a design that's being painted (locked), without calling Stripe", async () => {
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ id: "s1", paint_status: "locked" });
+
+        const res = await new PaymentsService().createCheckout(baseInput());
+
+        expect(res.locked).toBe(true);
+        expect(res.error).toMatch(/being painted/i);
+        expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
+        expect(backfillJobsRepoMock.createPending).not.toHaveBeenCalled();
+    });
+
+    it("copies what will be painted into a pending job tied to the payment intent", async () => {
+        await new PaymentsService().createCheckout(baseInput());
+
+        expect(backfillJobsRepoMock.createPending).toHaveBeenCalledWith(
+            "s1",
+            { year: 2025, pattern: [0, 1, 0, 0, 0, 0, 0], start_date: "2025-03-02", custom_range: true },
+            "pi_1",
+        );
+    });
+
+    it("makes no paint job for an already-painted, unchanged design - paying again is a donation", async () => {
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ id: "s1", paint_status: "painted" });
+
+        const res = await new PaymentsService().createCheckout(baseInput());
+
+        expect(res.clientSecret).toBe("pi_1_secret");
+        expect(backfillJobsRepoMock.createPending).not.toHaveBeenCalled();
     });
 
     it("rejects a designId the user has no selection for", async () => {

@@ -14,7 +14,7 @@ export interface iDesignsRepo {
     getById: (designId: string) => Promise<any>;
     getAllByUserId: (userId: string) => Promise<any>;
     update: (designId: string, input: iDesignUpdateInput) => Promise<any>;
-    delete: (designId: string, client?: any) => Promise<any>;
+    softDelete: (designId: string, client?: any) => Promise<any>;
 }
 
 // main repo init function to be called in the service factories
@@ -59,7 +59,7 @@ const repo = (): iDesignsRepo => {
 
     const getAllByUserId = async (userId: string) => {
         try {
-            const sqlString = `SELECT * FROM designs WHERE user_id = $1 ORDER BY created_at DESC;`;
+            const sqlString = `SELECT * FROM designs WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC;`;
             const result = await pool.query(sqlString, [userId]);
             return result.rows;
 
@@ -95,9 +95,15 @@ const repo = (): iDesignsRepo => {
         }
     }
 
-    const deleteDesign = async (designId: string, client: any = pool) => {
+    // Can't be newly selected from now on; content stays readable through
+    // any selection that already points at it (getById still returns it).
+    const softDelete = async (designId: string, client: any = pool) => {
         try {
-            const sqlString = `DELETE FROM designs WHERE id = $1 RETURNING id;`;
+            const sqlString = `
+                UPDATE designs SET deleted_at = NOW(), updated_at = NOW()
+                WHERE id = $1 AND deleted_at IS NULL
+                RETURNING id;
+            `;
             const result = await client.query(sqlString, [designId]);
             return result.rows[0];
 
@@ -112,7 +118,7 @@ const repo = (): iDesignsRepo => {
         getById,
         getAllByUserId,
         update,
-        delete: deleteDesign,
+        softDelete,
     }
 };
 

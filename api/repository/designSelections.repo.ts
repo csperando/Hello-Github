@@ -1,15 +1,48 @@
 import pool from "../config/db";
 import { logger } from "../config/logger";
 import { iDesignSelectionCreateInput, iDesignSelectionUpdateInput } from "../models/designs";
+import { LOCKING_JOB_STATUSES } from "../models/backfillJobs";
+
+// A selection's paint status, worked out from its jobs (codes defined in
+// design_paint_statuses): locked while a job locks it; otherwise from its
+// latest done/failed job - painted only while that job's copy still matches
+// the design exactly, so any edit since makes it unpainted again (and undoing
+// the edit makes it painted again). Cancelled jobs never count. Expects the
+// selection aliased as s, its design as d, and the locking statuses as $1.
+const PAINT_STATUS_SELECT = `
+    CASE
+        WHEN locking.id IS NOT NULL THEN 'locked'
+        WHEN latest.status = 'failed' THEN 'error'
+        WHEN latest.status = 'done'
+            AND latest.pattern = d.pattern
+            AND latest.year = s.year
+            AND latest.start_date = s.start_date
+            AND latest.custom_range = s.custom_range
+            THEN 'painted'
+        ELSE 'unpainted'
+    END AS paint_status
+`;
+const PAINT_STATUS_JOINS = `
+    LEFT JOIN LATERAL (
+        SELECT id FROM backfill_jobs
+        WHERE selection_id = s.id AND status = ANY($1::text[])
+        LIMIT 1
+    ) locking ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT status, pattern, year, start_date, custom_range FROM backfill_jobs
+        WHERE selection_id = s.id AND status IN ('done', 'failed')
+        ORDER BY completed_at DESC
+        LIMIT 1
+    ) latest ON TRUE
+`;
 
 // define the type of the return object from the repo() method
 export interface iDesignSelectionsRepo {
     create: (userId: string, designId: string, input: iDesignSelectionCreateInput, client?: any) => Promise<any>;
     getByUserAndDesign: (userId: string, designId: string) => Promise<any>;
+    softDelete: (userId: string, designId: string, client?: any) => Promise<any>;
     getAllForUser: (userId: string) => Promise<any>;
     update: (userId: string, designId: string, input: iDesignSelectionUpdateInput) => Promise<any>;
-    delete: (userId: string, designId: string, client?: any) => Promise<any>;
-    countForDesign: (designId: string, client?: any) => Promise<number>;
     countActiveExcludingUser: (designId: string, excludingUserId: string) => Promise<number>;
     setActiveExclusive: (userId: string, designId: string) => Promise<any>;
     deactivateActiveForUser: (userId: string) => Promise<any[]>;
@@ -58,8 +91,15 @@ const repo = (): iDesignSelectionsRepo => {
 
     const getByUserAndDesign = async (userId: string, designId: string) => {
         try {
-            const sqlString = `SELECT * FROM design_selections WHERE user_id = $1 AND design_id = $2;`;
-            const result = await pool.query(sqlString, [userId, designId]);
+            const sqlString = `
+                SELECT s.*
+                    , ${PAINT_STATUS_SELECT}
+                FROM design_selections s
+                JOIN designs d ON d.id = s.design_id
+                ${PAINT_STATUS_JOINS}
+                WHERE s.user_id = $2 AND s.design_id = $3 AND s.deleted_at IS NULL;
+            `;
+            const result = await pool.query(sqlString, [LOCKING_JOB_STATUSES, userId, designId]);
             return result.rows[0];
 
         } catch(err: any) {
@@ -86,12 +126,14 @@ const repo = (): iDesignSelectionsRepo => {
                     , d.is_public
                     , d.pattern
                     , d.user_id AS design_owner_id
+                    , ${PAINT_STATUS_SELECT}
                 FROM design_selections s
                 JOIN designs d ON d.id = s.design_id
-                WHERE s.user_id = $1
+                ${PAINT_STATUS_JOINS}
+                WHERE s.user_id = $2 AND s.deleted_at IS NULL
                 ORDER BY s.created_at DESC;
             `;
-            const result = await pool.query(sqlString, [userId]);
+            const result = await pool.query(sqlString, [LOCKING_JOB_STATUSES, userId]);
             return result.rows;
 
         } catch(err: any) {
@@ -117,7 +159,7 @@ const repo = (): iDesignSelectionsRepo => {
                     , year = COALESCE($8, year)
                     , custom_range = COALESCE($9, custom_range)
                     , updated_at = NOW()
-                WHERE user_id = $1 AND design_id = $2
+                WHERE user_id = $1 AND design_id = $2 AND deleted_at IS NULL
                 RETURNING *;
             `;
 
@@ -140,23 +182,18 @@ const repo = (): iDesignSelectionsRepo => {
         }
     }
 
-    const deleteSelection = async (userId: string, designId: string, client: any = pool) => {
+    // Hidden from the user from now on, and no longer active - the row (and
+    // any paint jobs under it) stays.
+    const softDelete = async (userId: string, designId: string, client: any = pool) => {
         try {
-            const sqlString = `DELETE FROM design_selections WHERE user_id = $1 AND design_id = $2 RETURNING id;`;
+            const sqlString = `
+                UPDATE design_selections
+                SET deleted_at = NOW(), is_active = FALSE, updated_at = NOW()
+                WHERE user_id = $1 AND design_id = $2 AND deleted_at IS NULL
+                RETURNING id;
+            `;
             const result = await client.query(sqlString, [userId, designId]);
             return result.rows[0];
-
-        } catch(err: any) {
-            logger.error(err);
-            throw(err);
-        }
-    }
-
-    const countForDesign = async (designId: string, client: any = pool) => {
-        try {
-            const sqlString = `SELECT COUNT(*)::int AS count FROM design_selections WHERE design_id = $1;`;
-            const result = await client.query(sqlString, [designId]);
-            return result.rows[0].count as number;
 
         } catch(err: any) {
             logger.error(err);
@@ -169,7 +206,7 @@ const repo = (): iDesignSelectionsRepo => {
             const sqlString = `
                 SELECT COUNT(*)::int AS count
                 FROM design_selections
-                WHERE design_id = $1 AND is_active AND user_id != $2;
+                WHERE design_id = $1 AND is_active AND user_id != $2 AND deleted_at IS NULL;
             `;
             const result = await pool.query(sqlString, [designId, excludingUserId]);
             return result.rows[0].count as number;
@@ -231,10 +268,9 @@ const repo = (): iDesignSelectionsRepo => {
     return {
         create,
         getByUserAndDesign,
+        softDelete,
         getAllForUser,
         update,
-        delete: deleteSelection,
-        countForDesign,
         countActiveExcludingUser,
         setActiveExclusive,
         deactivateActiveForUser,

@@ -3,6 +3,7 @@ import { runMigrations } from "../../data/migrate";
 import UsersRepository from "../../repository/users.repo";
 import UserBillingRepository from "../../repository/userBilling.repo";
 import DesignsRepository from "../../repository/designs.repo";
+import BackfillJobsRepository from "../../repository/backfillJobs.repo";
 import DesignSelectionsRepository from "../../repository/designSelections.repo";
 import { iGitHubUpsertInput } from "../../models/users";
 
@@ -29,8 +30,9 @@ describe("PaymentsService.handleWebhookEvent (concurrent duplicate delivery, rea
     const billingRepo = UserBillingRepository.repo();
     const designsRepo = DesignsRepository.repo();
     const selectionsRepo = DesignSelectionsRepository.repo();
+    const backfillJobsRepo = BackfillJobsRepository.repo();
     // fixed, out-of-range-for-real-GitHub id so this test never collides with real data
-    const testGitHubId = -106;
+    const testGitHubId = -109;
 
     let userId: string;
 
@@ -47,15 +49,18 @@ describe("PaymentsService.handleWebhookEvent (concurrent duplicate delivery, rea
             github_username: "octocat-payments-webhook-test",
             github_email: "octocat-payments-webhook-test@example.com",
             github_noreply_email: `${testGitHubId}+octocat-payments-webhook-test@users.noreply.github.com`,
-            github_node_id: "MDE6VXNlcjEwNg==",
+            github_node_id: "MDE6VXNlcjEwOQ==",
             github_profile_url: "https://github.com/octocat-payments-webhook-test",
-            avatar_url: "https://avatars.githubusercontent.com/u/106?v=4",
+            avatar_url: "https://avatars.githubusercontent.com/u/109?v=4",
         } as iGitHubUpsertInput);
         userId = user.id;
     });
 
     afterEach(async () => {
-        await pool.query("DELETE FROM backfill_jobs WHERE user_id = $1;", [userId]);
+        await pool.query(
+            "DELETE FROM backfill_jobs WHERE selection_id IN (SELECT id FROM design_selections WHERE user_id = $1);",
+            [userId],
+        );
         await pool.query("DELETE FROM design_selections WHERE user_id = $1;", [userId]);
         await pool.query("DELETE FROM designs WHERE user_id = $1;", [userId]);
         await pool.query("DELETE FROM payments WHERE user_id = $1;", [userId]);
@@ -65,11 +70,17 @@ describe("PaymentsService.handleWebhookEvent (concurrent duplicate delivery, rea
 
     it("writes exactly one ledger row and one backfill job when the same payment_intent.succeeded event is delivered concurrently", async () => {
         const design = await designsRepo.create(userId, { pattern: [0, 1, 2, 3, 4, 0, 0] });
-        await selectionsRepo.create(userId, design.id, {
+        const selection = await selectionsRepo.create(userId, design.id, {
             start_date: "2024-12-29",
             year: 2025,
             repeat_indefinitely: false,
         });
+        // checkout made the pending paint job for this payment intent
+        await backfillJobsRepo.createPending(
+            selection.id,
+            { year: 2025, pattern: [0, 1, 2, 3, 4, 0, 0], start_date: "2024-12-29", custom_range: false },
+            "pi_concurrent_1",
+        );
 
         const service = new PaymentsService();
         const event = {
@@ -112,7 +123,7 @@ describe("PaymentsService.handleWebhookEvent (concurrent duplicate delivery, rea
         const paymentsRows = await pool.query("SELECT * FROM payments WHERE user_id = $1;", [userId]);
         expect(paymentsRows.rows).toHaveLength(1);
 
-        const jobs = await pool.query("SELECT year, status FROM backfill_jobs WHERE user_id = $1;", [userId]);
+        const jobs = await pool.query("SELECT year, status FROM backfill_jobs WHERE selection_id = $1;", [selection.id]);
         expect(jobs.rows).toEqual([{ year: 2025, status: "awaiting_issue" }]);
 
         // a purchase no longer opens a paid period

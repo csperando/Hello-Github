@@ -11,6 +11,19 @@ export interface iDesign {
   updated_at?: string
 }
 
+/**
+ * A selection's paint status, worked out by the API from its paint jobs -
+ * see the design_paint_statuses definitions (GET /design/paint-statuses).
+ */
+export type PaintStatusCode = 'unpainted' | 'locked' | 'painted' | 'error'
+
+/** One design_paint_statuses definition: the wording for a PaintStatusCode. */
+export interface iPaintStatusDefinition {
+  code: PaintStatusCode
+  label: string
+  description: string
+}
+
 /** One user's scheduling of one design: when it starts, whether/how it repeats, whether it's live. */
 export interface iDesignSelection {
   id: string
@@ -26,6 +39,8 @@ export interface iDesignSelection {
   /** Reserved for a separate, unimplemented recurrence feature - unused by the editor. */
   repeat_indefinitely: boolean
   recurrence_end_date?: string | null
+  /** locked = a paid paint is in progress, so nothing about the design can change. */
+  paint_status?: PaintStatusCode
   created_at?: string
   updated_at?: string
 }
@@ -114,7 +129,12 @@ export async function updateSelection(designId: string, payload: iDesignSelectio
   })
 }
 
-/** Removes the caller's own selection - the only user-facing "delete" action. */
+/** The paint-status definitions (code/label/description) a selection's paint_status refers to. */
+export async function getPaintStatuses(): Promise<Response> {
+  return apiFetch('/design/paint-statuses')
+}
+
+/** Deletes the caller's own selection (soft) - and the design too, if they own it. 409 while it's being painted. */
 export async function deleteSelection(designId: string): Promise<Response> {
   return apiFetch(`/design/${designId}/select`, { method: 'DELETE' })
 }

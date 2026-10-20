@@ -18,6 +18,7 @@ vi.mock('@/services/api', () => ({
   updateProfile: (...args: unknown[]) => updateProfileMock(...args),
 }))
 
+const getPaintStatusesMock = vi.fn()
 vi.mock('@/services/designs', () => ({
   listSelections: (...args: unknown[]) => listSelectionsMock(...args),
   createDesign: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('@/services/designs', () => ({
   deleteSelection: vi.fn(),
   getSelectionCount: vi.fn(),
   getLastRunStatuses: (...args: unknown[]) => getLastRunStatusesMock(...args),
+  getPaintStatuses: (...args: unknown[]) => getPaintStatusesMock(...args),
 }))
 
 function jsonResponse(body: unknown, ok = true) {
@@ -106,6 +108,29 @@ describe('Dashboard.vue', () => {
     getLastRunStatusesMock.mockReset()
     listSelectionsMock.mockResolvedValue(jsonResponse({ data: [] }))
     getLastRunStatusesMock.mockResolvedValue(jsonResponse({ data: [] }))
+    getPaintStatusesMock.mockReset().mockResolvedValue(
+      jsonResponse({
+        data: [
+          { code: 'unpainted', label: 'not painted', description: '' },
+          { code: 'locked', label: 'painting', description: '' },
+          { code: 'painted', label: 'painted', description: '' },
+          { code: 'error', label: 'paint failed', description: '' },
+        ],
+      }),
+    )
+  })
+
+  it.each([
+    ['unpainted', 'not painted'],
+    ['locked', 'painting'],
+    ['painted', 'painted'],
+    ['error', 'paint failed'],
+  ])("labels a %s design with its defined wording", async (code, label) => {
+    listSelectionsMock.mockResolvedValue(jsonResponse({ data: [buildSelection({ paint_status: code })] }))
+
+    const { wrapper } = await mountDashboard(buildUser())
+
+    expect(wrapper.get('[data-testid="paint-status-d1"]').text()).toBe(label)
   })
 
   it('stacks the stats row and main/sidebar split to a single column on narrow viewports', async () => {

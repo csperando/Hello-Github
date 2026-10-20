@@ -30,21 +30,36 @@ export function toPublicPayment(payment: iPublicPayment): iPublicPayment {
     };
 }
 
-/** What a user sees of their own backfill job. */
+/** What a user sees of one of their own paint (backfill) jobs. */
 export interface iPublicBackfillJob {
     id: string;
-    design_id: string;
     year: number;
     status: string;
     issue_url: string | null;
+    created_at: string;
+    completed_at: string | null;
 }
 
 export function toPublicBackfillJob(job: iPublicBackfillJob): iPublicBackfillJob {
     return {
         id: job.id,
-        design_id: job.design_id,
         year: job.year,
         status: job.status,
         issue_url: job.issue_url,
+        created_at: job.created_at,
+        completed_at: job.completed_at,
+    };
+}
+
+/** A design's worked-out paint status plus its latest paint job - GET /payments/paint-status/:designId's shape. */
+export interface iPublicPaintStatus {
+    paint_status: string;
+    latest_job: iPublicBackfillJob | null;
+}
+
+export function toPublicPaintStatus(status: { paint_status: string; latest_job: iPublicBackfillJob | null }): iPublicPaintStatus {
+    return {
+        paint_status: status.paint_status,
+        latest_job: status.latest_job ? toPublicBackfillJob(status.latest_job) : null,
     };
 }

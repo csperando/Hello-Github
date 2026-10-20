@@ -13,7 +13,7 @@
     import { errorMessage } from "@/services/errors"
     import type { iOrg } from "@/services/api"
     import { getDesign, type iDesign } from "@/services/designs"
-    import { createCheckout, getBackfillJob, type iBackfillJob } from "@/services/payments"
+    import { createCheckout, getPaintStatus, type iPaintStatus } from "@/services/payments"
     import { useAuthStore } from "@/stores/auth"
 
     // suggested platform share; the user can slide it down to $0
@@ -40,9 +40,11 @@
     const preparingPayment = ref(false)
     const paying = ref(false)
     const payError = ref("")
-    // shown instead of the flow when this design was already bought: paying
-    // again is a donation, so the user confirms before continuing
+    // shown instead of the flow when this design is already painted and
+    // unchanged: paying again is a donation, so the user confirms first
     const showRepurchaseWarning = ref(false)
+    // shown instead of the flow while a paid paint of this design is in progress
+    const showLockedNotice = ref(false)
     // one per visit: a retry or "edit amount" round-trip reuses it, so the API
     // doesn't double-create; a later visit gets a new one and a fresh PaymentIntent
     const attemptId = crypto.randomUUID()
@@ -183,10 +185,10 @@
         }
     }
 
-    async function fetchBackfillJob(): Promise<iBackfillJob | null> {
+    async function fetchPaintStatus(): Promise<iPaintStatus | null> {
         if (!designId.value) return null
         try {
-            const res = await getBackfillJob(designId.value)
+            const res = await getPaintStatus(designId.value)
             if (!res.ok) return null
             const body = await res.json()
             return body.data?.[0] ?? null
@@ -195,18 +197,20 @@
         }
     }
 
-    // ----- step 3: wait for the webhook to create the backfill job ----------
+    // ----- step 3: wait for the webhook to move the paint job along ---------
     const POLL_ATTEMPTS = 10
     const POLL_INTERVAL_MS = 2000
-    // "consent": a new job is waiting on the user's one-off GitHub consent;
-    // "active": the job was already past that (a repeat purchase / donation)
+    // "consent": the paid job is waiting on the user's GitHub consent;
+    // "active": nothing new to paint - a donation for an already-painted
+    // design (checkout made no job), or another paint was already running
     const activationState = ref<"pending" | "consent" | "active" | "timeout">("pending")
 
-    async function pollForBackfillJob() {
+    async function pollForPaintJob() {
         activationState.value = "pending"
         for (let i = 0; i < POLL_ATTEMPTS; i++) {
-            const job = await fetchBackfillJob()
-            if (job) {
+            const job = (await fetchPaintStatus())?.latest_job
+            // pending_payment: the webhook hasn't landed yet
+            if (job && job.status !== "pending_payment") {
                 activationState.value = job.status === "awaiting_issue" ? "consent" : "active"
                 return
             }
@@ -216,7 +220,7 @@
     }
 
     watch(step, (value) => {
-        if (value === 3) pollForBackfillJob()
+        if (value === 3) pollForPaintJob()
     })
 
     onMounted(async () => {
@@ -229,8 +233,10 @@
         // is the one just paid for, so no repeat-purchase warning
         if (route.query.paid || route.query.redirect_status === "succeeded") {
             step.value = 3
-        } else if (await fetchBackfillJob()) {
-            showRepurchaseWarning.value = true
+        } else {
+            const status = (await fetchPaintStatus())?.paint_status
+            if (status === "locked") showLockedNotice.value = true
+            else if (status === "painted") showRepurchaseWarning.value = true
         }
 
         const charityId = authStore.user?.default_charity
@@ -266,11 +272,24 @@
 
         <main class="main">
             <!-- Buying a design again won't paint it twice - it's a donation, so confirm first -->
-            <BaseCard v-if="showRepurchaseWarning" padding="clamp(24px,3vw,36px)" class="repurchase-card">
-                <h1 class="step-title">You've already bought this design</h1>
+            <BaseCard v-if="showLockedNotice" padding="clamp(24px,3vw,36px)" class="repurchase-card" data-testid="locked-notice">
+                <h1 class="step-title">This design is being painted</h1>
                 <p class="step-subtitle">
-                    <strong v-if="design">{{ design.name }}</strong><span v-else>This design</span> is already activated
-                    on {{ graphLabel }}. Paying again won't paint it a second time — it goes entirely to the platform
+                    <strong v-if="design">{{ design.name }}</strong><span v-else>This design</span> is being painted on
+                    {{ graphLabel }}. You can check out again once it's finished.
+                </p>
+                <div class="actions-between">
+                    <RouterLink to="/dashboard">
+                        <BaseButton variant="secondary" class="secondary-btn">back to dashboard</BaseButton>
+                    </RouterLink>
+                </div>
+            </BaseCard>
+
+            <BaseCard v-else-if="showRepurchaseWarning" padding="clamp(24px,3vw,36px)" class="repurchase-card">
+                <h1 class="step-title">You've already painted this design</h1>
+                <p class="step-subtitle">
+                    <strong v-if="design">{{ design.name }}</strong><span v-else>This design</span> is already painted
+                    on {{ graphLabel }}, unchanged since. Paying again won't paint it a second time — it goes entirely to the platform
                     and your chosen charity as a donation. Are you sure you want to donate again?
                 </p>
                 <div class="actions-between">

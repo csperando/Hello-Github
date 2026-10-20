@@ -8,6 +8,7 @@ import type { iPaymentsRepo } from "../../repository/payments.repo";
 import type { iDesignSelectionsRepo } from "../../repository/designSelections.repo";
 import type { iUserRepo } from "../../repository/users.repo";
 import type { iBackfillJobsRepo } from "../../repository/backfillJobs.repo";
+import type { iDesignsRepo } from "../../repository/designs.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 
 const billingRepoMock = createMockRepoProxy<iUserBillingRepo>();
@@ -20,6 +21,8 @@ const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
 const backfillJobsRepoMock = createMockRepoProxy<iBackfillJobsRepo>();
 mockRepo("repository/backfillJobs.repo", backfillJobsRepoMock);
+const designsRepoMock = createMockRepoProxy<iDesignsRepo>();
+mockRepo("repository/designs.repo", designsRepoMock);
 
 const mockStripe = {
     customers: { create: jest.fn(), update: jest.fn(), retrieve: jest.fn() },
@@ -51,6 +54,7 @@ beforeEach(() => {
     selectionsRepoMock.__reset();
     usersRepoMock.__reset();
     backfillJobsRepoMock.__reset();
+    designsRepoMock.__reset();
     mockStripe.customers.create.mockReset().mockResolvedValue({ id: "cus_1" });
     mockStripe.customers.update.mockReset();
     mockStripe.customers.retrieve.mockReset().mockImplementation(async (id: string) => ({ id }));
@@ -64,10 +68,29 @@ beforeEach(() => {
     billingRepoMock.upsertCustomerId.mockResolvedValue({ stripe_customer_id: "cus_1" });
     billingRepoMock.updateSubscription.mockResolvedValue({});
     usersRepoMock.getUserById.mockResolvedValue({ id: userId, email: "u@example.com" });
-    selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: userId, design_id: "d1" });
+    selectionsRepoMock.getByUserAndDesign.mockResolvedValue({
+        id: "s1",
+        user_id: userId,
+        design_id: "d1",
+        year: 2025,
+        start_date: "2025-03-02",
+        custom_range: false,
+        paint_status: "unpainted",
+    });
+    designsRepoMock.getById.mockResolvedValue({ id: "d1", pattern: [0, 1, 0, 0, 0, 0, 0] });
+    backfillJobsRepoMock.createPending.mockResolvedValue({ id: "j1", status: "pending_payment" });
 });
 
 describe("POST /payments/checkout", () => {
+    it("409s for a design that's being painted", async () => {
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ id: "s1", user_id: userId, design_id: "d1", paint_status: "locked" });
+
+        const res = await request(server).post("/payments/checkout").set("Cookie", cookie).send(validBody);
+
+        expect(res.status).toBe(409);
+        expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
+    });
+
     it("401s without a session cookie", async () => {
         const res = await request(server).post("/payments/checkout").send(validBody);
         expect(res.status).toBe(401);
@@ -113,32 +136,48 @@ describe("POST /payments/checkout", () => {
     });
 });
 
-describe("GET /payments/backfill/:designId", () => {
+describe("GET /payments/paint-status/:designId", () => {
     it("401s without a session cookie", async () => {
-        const res = await request(server).get("/payments/backfill/d1");
+        const res = await request(server).get("/payments/paint-status/d1");
         expect(res.status).toBe(401);
     });
 
-    it("returns the caller's job for that design", async () => {
-        backfillJobsRepoMock.getByUserAndDesign.mockResolvedValue({
+    it("returns the design's paint status and its latest job", async () => {
+        backfillJobsRepoMock.getLatestForUserAndDesign.mockResolvedValue({
             id: "j1",
-            user_id: userId,
-            design_id: "d1",
+            selection_id: "s1",
             year: 2025,
             status: "awaiting_issue",
             issue_url: null,
+            pattern: [0, 1, 0, 0, 0, 0, 0],
+            created_at: "2026-10-20T00:00:00.000Z",
+            completed_at: null,
         });
 
-        const res = await request(server).get("/payments/backfill/d1").set("Cookie", cookie);
+        const res = await request(server).get("/payments/paint-status/d1").set("Cookie", cookie);
+
         expect(res.status).toBe(200);
         const body: iResponse = JSON.parse(res.text);
-        expect(body.data![0]).toEqual({ id: "j1", design_id: "d1", year: 2025, status: "awaiting_issue", issue_url: null });
-        expect(backfillJobsRepoMock.getByUserAndDesign).toHaveBeenCalledWith(userId, "d1");
+        // the job's copy of the pattern stays server-side
+        expect(body.data![0]).toEqual({
+            paint_status: "unpainted",
+            latest_job: { id: "j1", year: 2025, status: "awaiting_issue", issue_url: null, created_at: "2026-10-20T00:00:00.000Z", completed_at: null },
+        });
+        expect(backfillJobsRepoMock.getLatestForUserAndDesign).toHaveBeenCalledWith(userId, "d1");
     });
 
-    it("404s when the caller has no job for that design", async () => {
-        backfillJobsRepoMock.getByUserAndDesign.mockResolvedValue(undefined);
-        const res = await request(server).get("/payments/backfill/d1").set("Cookie", cookie);
+    it("returns a null latest_job for a design that's never been checked out", async () => {
+        backfillJobsRepoMock.getLatestForUserAndDesign.mockResolvedValue(undefined);
+
+        const res = await request(server).get("/payments/paint-status/d1").set("Cookie", cookie);
+
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.text).data[0]).toEqual({ paint_status: "unpainted", latest_job: null });
+    });
+
+    it("404s when the caller hasn't selected that design", async () => {
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue(undefined);
+        const res = await request(server).get("/payments/paint-status/d1").set("Cookie", cookie);
         expect(res.status).toBe(404);
     });
 });

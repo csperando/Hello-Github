@@ -68,8 +68,8 @@ describe("PaymentsService.handleWebhookEvent", () => {
         billingRepoMock.updateSubscription.mockResolvedValue({});
         paymentsRepoMock.existsByStripeEventId.mockResolvedValue(false);
         paymentsRepoMock.create.mockResolvedValue({ id: "p1" });
-        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: "u1", design_id: "d1", start_date: "2024-12-29", year: 2025 });
-        backfillJobsRepoMock.create.mockResolvedValue({ id: "j1", status: "awaiting_issue" });
+        selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ id: "s1", user_id: "u1", design_id: "d1" });
+        backfillJobsRepoMock.markPaid.mockResolvedValue({ id: "j1", selection_id: "s1", status: "awaiting_issue" });
         selectionsRepoMock.setActiveExclusive.mockResolvedValue({ is_active: true });
         selectionsRepoMock.deactivateActiveForUser.mockResolvedValue([{ design_id: "d1" }]);
     });
@@ -94,17 +94,18 @@ describe("PaymentsService.handleWebhookEvent", () => {
                 }),
                 fakeClient,
             );
-            expect(backfillJobsRepoMock.create).toHaveBeenCalledWith("u1", "d1", 2025, fakeClient);
+            // the paint job checkout made for this payment moves out of
+            // pending_payment in the same transaction as the ledger row
+            expect(backfillJobsRepoMock.markPaid).toHaveBeenCalledWith("pi_1", fakeClient);
         });
 
-        it("paints the selection's stored year, even from a Sunday shared by two years' grids", async () => {
-            // Sun 2025-12-28 starts both 2025's last column and 2026's first -
-            // the old start_date + 6 days guess would have painted 2026
-            selectionsRepoMock.getByUserAndDesign.mockResolvedValue({ user_id: "u1", design_id: "d1", start_date: "2025-12-28", year: 2025 });
+        it("still records the payment when the paint job is cancelled because another paint already has the design locked", async () => {
+            backfillJobsRepoMock.markPaid.mockResolvedValue({ id: "j2", selection_id: "s1", status: "cancelled" });
 
-            await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
+            const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
 
-            expect(backfillJobsRepoMock.create).toHaveBeenCalledWith("u1", "d1", 2025, fakeClient);
+            expect(res.handled).toBe(true);
+            expect(paymentsRepoMock.create).toHaveBeenCalled();
         });
 
         it("no longer opens a paid period or activates the design", async () => {
@@ -132,17 +133,16 @@ describe("PaymentsService.handleWebhookEvent", () => {
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
             expect(res).toEqual({ handled: true, note: "duplicate" });
             expect(paymentsRepoMock.create).not.toHaveBeenCalled();
-            expect(backfillJobsRepoMock.create).not.toHaveBeenCalled();
+            expect(backfillJobsRepoMock.markPaid).not.toHaveBeenCalled();
         });
 
-        // the money still arrived, so the payment is recorded; with no
-        // schedule there's no year to paint, so no job
-        it("records the payment but creates no job when the design is no longer selected", async () => {
-            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(undefined);
+        // the money still arrived, so the payment is recorded even with no
+        // pending paint job to move along
+        it("records the payment when checkout left no pending paint job for it", async () => {
+            backfillJobsRepoMock.markPaid.mockResolvedValue(undefined);
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
             expect(res.handled).toBe(true);
             expect(paymentsRepoMock.create).toHaveBeenCalled();
-            expect(backfillJobsRepoMock.create).not.toHaveBeenCalled();
         });
 
         it("falls back to metadata.user_id when the customer is unknown", async () => {
@@ -157,7 +157,7 @@ describe("PaymentsService.handleWebhookEvent", () => {
             const res = await svc().handleWebhookEvent(evt("payment_intent.succeeded", pi));
 
             expect(res).toEqual({ handled: true, note: "duplicate" });
-            expect(backfillJobsRepoMock.create).not.toHaveBeenCalled();
+            expect(backfillJobsRepoMock.markPaid).not.toHaveBeenCalled();
         });
 
         it("still throws an unrelated DB error from the transaction (so Stripe retries)", async () => {
@@ -172,6 +172,27 @@ describe("PaymentsService.handleWebhookEvent", () => {
                     evt("payment_intent.succeeded", { ...pi, metadata: { ...oneTimeMetadata, user_id: "" } }),
                 ),
             ).rejects.toThrow(/cannot resolve user/);
+        });
+    });
+
+    describe("payment_intent.canceled", () => {
+        it("cancels the abandoned checkout's pending paint job", async () => {
+            backfillJobsRepoMock.cancelByPaymentIntent.mockResolvedValue({ id: "j1", status: "cancelled" });
+
+            const res = await svc().handleWebhookEvent(evt("payment_intent.canceled", { id: "pi_1" }));
+
+            expect(res.handled).toBe(true);
+            expect(backfillJobsRepoMock.cancelByPaymentIntent).toHaveBeenCalledWith("pi_1");
+        });
+    });
+
+    describe("payment_intent.payment_failed", () => {
+        // the same payment intent can still succeed on a retry with another card
+        it("leaves the pending paint job alone", async () => {
+            const res = await svc().handleWebhookEvent(evt("payment_intent.payment_failed", { id: "pi_1" }));
+
+            expect(res.handled).toBe(false);
+            expect(backfillJobsRepoMock.cancelByPaymentIntent).not.toHaveBeenCalled();
         });
     });
 

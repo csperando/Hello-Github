@@ -7,6 +7,7 @@ import {
   updateSelection as apiUpdateSelection,
   deleteSelection as apiDeleteSelection,
   getLastRunStatuses as apiGetLastRunStatuses,
+  getPaintStatuses as apiGetPaintStatuses,
   type iDesign,
   type iDesignSelection,
   type iDesignSelectionWithDesign,
@@ -14,6 +15,8 @@ import {
   type iDesignUpdatePayload,
   type iDesignSelectionUpdatePayload,
   type iDesignRunStatus,
+  type iPaintStatusDefinition,
+  type PaintStatusCode,
 } from '@/services/designs'
 import { errorMessage } from '@/services/errors'
 
@@ -33,6 +36,23 @@ export const useDesignsStore = defineStore('designs', () => {
   // keyed by design_id, for O(1) lookup from a Dashboard card - optional/
   // separable display data, not required for the rest of the store to work.
   const runStatuses = ref<Record<string, iDesignRunStatus>>({})
+  // the wording for each paint_status code, from the API's definition table
+  const paintStatuses = ref<Record<string, iPaintStatusDefinition>>({})
+
+  async function fetchPaintStatuses(): Promise<void> {
+    if (Object.keys(paintStatuses.value).length > 0) return
+    const res = await apiGetPaintStatuses()
+    if (!res.ok) return
+    const body = await res.json()
+    const definitions: iPaintStatusDefinition[] = body.data ?? []
+    paintStatuses.value = Object.fromEntries(definitions.map((d) => [d.code, d]))
+  }
+
+  /** The label for a paint_status code - the code itself until the definitions have loaded. */
+  function paintStatusLabel(code: PaintStatusCode | undefined): string {
+    if (!code) return ''
+    return paintStatuses.value[code]?.label ?? code
+  }
 
   async function fetchRunStatuses(): Promise<void> {
     const res = await apiGetLastRunStatuses()
@@ -125,6 +145,7 @@ export const useDesignsStore = defineStore('designs', () => {
               start_date: updated.start_date,
               year: updated.year,
               custom_range: updated.custom_range,
+              paint_status: updated.paint_status,
               repeat_indefinitely: updated.repeat_indefinitely,
               recurrence_end_date: updated.recurrence_end_date,
             }
@@ -134,18 +155,25 @@ export const useDesignsStore = defineStore('designs', () => {
     return updated
   }
 
-  async function removeSelection(designId: string): Promise<boolean> {
+  /** Deletes the caller's own selection. Returns the server's message on failure (e.g. a 409 while it's being painted). */
+  async function removeSelection(designId: string): Promise<{ ok: true } | { ok: false; error: string }> {
     const res = await apiDeleteSelection(designId)
-    if (!res.ok) return false
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      return { ok: false, error: errorMessage(body, 'Could not delete this design.') }
+    }
 
     selections.value = selections.value.filter((s) => s.design_id !== designId)
-    return true
+    return { ok: true }
   }
 
   return {
     selections,
     isLoading,
     runStatuses,
+    paintStatuses,
+    fetchPaintStatuses,
+    paintStatusLabel,
     fetchSelections,
     fetchRunStatuses,
     createDesign,

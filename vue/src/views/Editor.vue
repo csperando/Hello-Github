@@ -153,6 +153,7 @@
     }
 
     function toggleCustomRange() {
+        if (locked.value) return
         customRangeEnabled.value = !customRangeEnabled.value
         if (customRangeEnabled.value) repeatEveryYear.value = false
     }
@@ -209,16 +210,18 @@
     // }
 
     function toggleCell(idx: number) {
-        if (!inYear.value[idx]) return
+        if (locked.value || !inYear.value[idx]) return
         grid.value[idx] = (grid.value[idx] ?? 0) > 0 ? 0 : BRUSH_LEVEL
     }
 
     function onClear() {
+        if (locked.value) return
         grid.value = emptyGrid()
         // selectedTemplate.value = "blank"
     }
 
     function onRandomize() {
+        if (locked.value) return
         grid.value = emptyGrid().map((_, idx) => (inYear.value[idx] && Math.random() < 0.35 ? BRUSH_LEVEL : 0))
         // selectedTemplate.value = "blank"
     }
@@ -237,9 +240,14 @@
     // Content (name/is_public/pattern) and scheduling (year/start_date/
     // custom_range) come from two different resources now - loadedDesign is
     // content-only, loadedSelection carries the schedule.
-    type LoadedSchedule = Pick<iDesignSelection, "year" | "start_date" | "custom_range">
+    type LoadedSchedule = Pick<iDesignSelection, "year" | "start_date" | "custom_range" | "paint_status">
     const loadedDesign = ref<iDesign | null>(null)
     const loadedSelection = ref<LoadedSchedule | null>(null)
+
+    // A paid paint of this design is in progress: nothing about it can change
+    // until it finishes (the API refuses edits too - this keeps the UI honest).
+    const locked = computed(() => loadedSelection.value?.paint_status === "locked")
+    const paintStatusLabel = computed(() => designsStore.paintStatusLabel(loadedSelection.value?.paint_status))
 
     // The grid's first column is always the most recent Sunday on/before Jan 1
     // of the selected year, matching GitHub's own year layout - including for a
@@ -270,7 +278,7 @@
 
     function selectYear(value: string) {
         const year = Number(value)
-        if (year === selectedYear.value) return
+        if (locked.value || year === selectedYear.value) return
         if (painted.value > 0) {
             pendingYear.value = year
             return
@@ -335,6 +343,8 @@
     const route = useRoute()
 
     onMounted(async () => {
+        designsStore.fetchPaintStatuses()
+
         const designId = route.params.designId
         if (typeof designId !== "string") return
 
@@ -375,11 +385,13 @@
             }
 
             const date = cellDates.value[idx]!
-            // Paintable only if both this cell and the cell it writes through to
-            // (itself, or its in-range source for a ghost cell) are in the year.
+            // Shown only if both this cell and the cell it writes through to
+            // (itself, or its in-range source for a ghost cell) are in the
+            // year; paintable only if shown and the design isn't locked.
             const outside = !inYear.value[idx]
-            const paintable = !outside && !beforeRange && !!inYear.value[paintIdx]
-            const displayLevel = paintable ? (customRangeEnabled.value ? (grid.value[paintIdx] ?? 0) : level) : 0
+            const shown = !outside && !beforeRange && !!inYear.value[paintIdx]
+            const paintable = shown && !locked.value
+            const displayLevel = shown ? (customRangeEnabled.value ? (grid.value[paintIdx] ?? 0) : level) : 0
             return {
                 idx,
                 paintIdx,
@@ -552,6 +564,29 @@
     // "continue to checkout" saves the design first, then goes to checkout
     // carrying the design id (the webhook creates its backfill job once
     // payment settles) and its year (for the checkout copy)
+    // ----- delete ---------------------------------------------------------
+    const showDeleteConfirm = ref(false)
+    const isDeleting = ref(false)
+    const deleteError = ref("")
+
+    async function confirmDelete() {
+        const designId = loadedDesign.value?.id
+        showDeleteConfirm.value = false
+        if (!designId) return
+        deleteError.value = ""
+        isDeleting.value = true
+        try {
+            const result = await designsStore.removeSelection(designId)
+            if (!result.ok) {
+                deleteError.value = result.error
+                return
+            }
+            router.push({ name: "Dashboard" })
+        } finally {
+            isDeleting.value = false
+        }
+    }
+
     async function onContinueToCheckout() {
         const saved = await saveDesign()
         if (!saved) return
@@ -574,6 +609,10 @@
                 <span>editor</span>
                 <span class="divider"></span>
                 <span class="draft-label">saved as draft</span>
+                <template v-if="loadedSelection?.paint_status">
+                    <span class="divider"></span>
+                    <span class="paint-status" :class="`paint-status--${loadedSelection.paint_status}`" data-testid="paint-status">{{ paintStatusLabel }}</span>
+                </template>
             </div>
 
             <label class="year-picker">
@@ -582,6 +621,7 @@
                     id="editor-year"
                     :model-value="String(pendingYear ?? selectedYear)"
                     :options="yearOptions"
+                    :disabled="locked"
                     @update:model-value="selectYear"
                 />
             </label>
@@ -592,10 +632,10 @@
                     variant="secondary"
                     @click="saveDesign"
                     :loading="isSaving"
-                    :disabled="isSaving"
+                    :disabled="isSaving || locked"
                     class="save-btn"
                 >{{ loadedDesign ? "save changes" : "save as draft" }}</BaseButton>
-                <BaseButton @click="onContinueToCheckout" :loading="isSaving" :disabled="isSaving">continue to checkout →</BaseButton>
+                <BaseButton @click="onContinueToCheckout" :loading="isSaving" :disabled="isSaving || locked">continue to checkout →</BaseButton>
             </div>
         </div>
 
@@ -638,8 +678,8 @@
 
                 <div class="panel-label">actions</div>
                 <div class="action-list">
-                    <BaseButton variant="secondary" @click="onClear" class="sidebar-action-btn">clear grid</BaseButton>
-                    <BaseButton variant="secondary" @click="onRandomize" class="sidebar-action-btn">randomize noise</BaseButton>
+                    <BaseButton variant="secondary" @click="onClear" :disabled="locked" class="sidebar-action-btn">clear grid</BaseButton>
+                    <BaseButton variant="secondary" @click="onRandomize" :disabled="locked" class="sidebar-action-btn">randomize noise</BaseButton>
                 </div>
             </aside>
 
@@ -650,6 +690,9 @@
                         <div class="canvas-title">{{ selectedYear }} contribution graph · starts Jan 1, {{ selectedYear }}</div>
                         <!-- <div class="canvas-hint">drag to paint · click to cycle intensity</div> -->
                     </div>
+                    <p v-if="locked" class="locked-note" data-testid="locked-note">
+                        This design is being painted. You can edit it again once the paint finishes.
+                    </p>
                     <BaseCard padding="28px 26px 24px">
                         <div class="grid-scroll-wrap">
                             <div class="grid-inner" :style="{ '--weeks': weeks }">
@@ -695,7 +738,7 @@
                             </div>
                         </div>
                         <div v-if="customRangeEnabled" class="range-note-wrap">
-                            <CustomRangeSlider v-model:start="rangeStart" v-model:end="rangeEnd" :max="weeks - 1" />
+                            <CustomRangeSlider v-model:start="rangeStart" v-model:end="rangeEnd" :max="weeks - 1" :disabled="locked" />
                             <div class="range-hint">columns after the range show a dimmed preview of the pattern repeating through the end of the year — paint there and it maps back into your selection. columns before the range stay empty.</div>
                         </div>
                         <GridLegend :swatch-size="11" />
@@ -705,8 +748,9 @@
 
             <!-- RIGHT SIDEBAR: STATS + CHARITY PREVIEW -->
             <aside class="sidebar-right order-3 md:col-span-2 lg:col-span-1">
+                <div class="sidebar-right-content">
                 <label class="panel-label panel-label--tight" for="editor-design-name">design name</label>
-                <BaseTextInput id="editor-design-name" v-model="designName" placeholder="untitled design" variant="compact" />
+                <BaseTextInput id="editor-design-name" v-model="designName" placeholder="untitled design" variant="compact" :disabled="locked" />
 
                 <div class="panel-label panel-label--stats">design stats</div>
                 <div class="stats-box">
@@ -714,6 +758,8 @@
                     <!-- <div class="stats-row"><span class="stats-label">estimated commits</span><span class="stats-value">{{ commitCount }}</span></div> -->
                 </div>
 
+                <!-- "supporting" and "visibility" are hidden for now: public designs don't exist yet,
+                     and the charity is confirmed at checkout anyway. The script code behind them stays.
                 <div class="panel-label panel-label--stats">supporting</div>
                 <div class="charity-box">
                     <div class="charity-avatar">{{ defaultCharityLetter }}</div>
@@ -738,6 +784,7 @@
                         <BaseButton @click="confirmMakePrivate" class="warning-confirm">make private</BaseButton>
                     </div>
                 </div>
+                -->
 
                 <!-- "repeat every year" (forward painting) is hidden while designs paint a past year only
                 <div class="panel-label panel-label--section">recurrence</div>
@@ -771,15 +818,38 @@
                         <div class="toggle-title">select custom range</div>
                         <div class="toggle-sub">paint a short pattern, repeat it across the grid</div>
                     </div>
-                    <ToggleSwitch :checked="customRangeEnabled" @click="toggleCustomRange" />
+                    <ToggleSwitch :checked="customRangeEnabled" :disabled="locked" @click="toggleCustomRange" />
                 </div>
                 <div v-if="customRangeEnabled" class="recurrence-detail">
                     <div class="duration-indefinite">
                         <span>↻</span><span>repeats through {{ yearEndLabel }}</span>
                     </div>
                 </div>
+                </div>
+
+                <div v-if="loadedDesign" class="sidebar-right-footer">
+                    <BaseButton
+                        variant="secondary"
+                        class="delete-btn"
+                        :disabled="locked || isDeleting"
+                        :loading="isDeleting"
+                        @click="showDeleteConfirm = true"
+                    >delete design</BaseButton>
+                    <p v-if="deleteError" class="delete-error" role="alert">{{ deleteError }}</p>
+                </div>
             </aside>
         </div>
+
+        <ConfirmDialog
+            :open="showDeleteConfirm"
+            title="delete this design?"
+            confirm-label="delete design"
+            cancel-label="keep it"
+            @confirm="confirmDelete"
+            @cancel="showDeleteConfirm = false"
+        >
+            It'll be removed from your designs. This can't be undone.
+        </ConfirmDialog>
 
         <ConfirmDialog
             :open="pendingYear !== null"
@@ -1101,6 +1171,48 @@
         border-left: 1px solid var(--color-border);
         padding: 22px 20px;
         overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* pinned to the bottom of the sidebar, below everything else */
+    .sidebar-right-footer {
+        margin-top: auto;
+        padding-top: 24px;
+    }
+
+    .delete-btn {
+        width: 100%;
+        color: var(--color-danger);
+        border: 1px solid var(--color-danger);
+    }
+
+    .delete-error {
+        font-size: 12px;
+        color: var(--color-danger);
+        margin: 8px 0 0;
+    }
+
+    .paint-status {
+        font-family: var(--font-mono);
+    }
+
+    .paint-status--locked {
+        color: var(--color-warning);
+    }
+
+    .paint-status--painted {
+        color: var(--color-accent-bright);
+    }
+
+    .paint-status--error {
+        color: var(--color-danger);
+    }
+
+    .locked-note {
+        font-size: 12.5px;
+        color: var(--color-warning);
+        margin: 0 0 10px;
     }
 
     .stats-box {

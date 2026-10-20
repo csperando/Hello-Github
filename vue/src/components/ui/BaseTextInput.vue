@@ -10,6 +10,7 @@
             clearLabel?: string
             /** "compact" matches Editor.vue's denser sidebar inputs (mono font, tighter padding). */
             variant?: "default" | "compact"
+            disabled?: boolean
         }>(),
         {
             clearLabel: "Clear",
@@ -24,7 +25,7 @@
 
     const slots = useSlots()
     const hasLeadingIcon = computed(() => !!slots["leading-icon"])
-    const showClear = computed(() => props.modelValue.length > 0)
+    const showClear = computed(() => props.modelValue.length > 0 && !props.disabled)
 
     const inputEl = ref<HTMLInputElement | null>(null)
 
@@ -56,6 +57,7 @@
             }"
             :placeholder="placeholder"
             :value="modelValue"
+            :disabled="disabled"
             @input="onInput"
         />
         <button
@@ -127,6 +129,11 @@
     .text-input:focus {
         outline: none;
         border-color: var(--color-accent) !important;
+    }
+
+    .text-input:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
     }
 
     .leading-icon {

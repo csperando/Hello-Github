@@ -19,6 +19,7 @@
     onMounted(() => {
         designsStore.fetchSelections()
         designsStore.fetchRunStatuses()
+        designsStore.fetchPaintStatuses()
     })
 
     /** "last painted 2 hours ago" / "last painted 3 days ago" / "last attempt failed" - optional/separable display, not required for anything else to work. */
@@ -122,6 +123,8 @@
                 weeks: available ? s.pattern.length / DAYS : 0,
                 previewCells: available ? s.pattern.map((level) => ({ bg: LEVEL_COLORS[level] ?? LEVEL_COLORS[0]! })) : [],
                 runStatusLabel: formatRunStatusLabel(s.design_id),
+                paintStatus: s.paint_status,
+                paintStatusLabel: designsStore.paintStatusLabel(s.paint_status),
             }
         }),
     )
@@ -191,7 +194,10 @@
                                         }"
                                     >{{ d.isPublic ? 'public' : 'private' }}</span>
                                 </div>
-                                <div class="design-meta">{{ d.startDateLabel }} · {{ d.painted }} squares</div>
+                                <div class="design-meta">
+                                    {{ d.startDateLabel }} · {{ d.painted }} squares<template v-if="d.paintStatusLabel">
+                                        · <span :class="`paint-status paint-status--${d.paintStatus}`" :data-testid="'paint-status-' + d.id">{{ d.paintStatusLabel }}</span></template>
+                                </div>
                                 <div
                                     v-if="d.runStatusLabel"
                                     class="run-status-label"
@@ -339,6 +345,18 @@
         font-family: var(--font-mono);
         font-size: 13px;
         color: var(--color-text-muted-4);
+    }
+
+    .paint-status--locked {
+        color: var(--color-warning);
+    }
+
+    .paint-status--painted {
+        color: var(--color-accent-bright);
+    }
+
+    .paint-status--error {
+        color: var(--color-danger);
     }
 
     .design-card {

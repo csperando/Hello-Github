@@ -52,7 +52,7 @@ describe("0002_create_designs / 0004_create_design_selections migrations", () =>
         );
 
         expect(Object.keys(byName).sort()).toEqual(
-            ["id", "user_id", "name", "is_public", "pattern", "created_at", "updated_at"].sort(),
+            ["id", "user_id", "name", "is_public", "pattern", "deleted_at", "created_at", "updated_at"].sort(),
         );
         expect(byName.is_public?.is_nullable).toBe("NO");
         expect(byName.is_public?.column_default).toContain("false");
@@ -119,7 +119,7 @@ describe("0002_create_designs / 0004_create_design_selections migrations", () =>
 
             expect(Object.keys(byName).sort()).toEqual(
                 [
-                    "id", "user_id", "design_id", "is_active", "start_date", "year", "custom_range",
+                    "id", "user_id", "design_id", "is_active", "start_date", "year", "custom_range", "deleted_at",
                     "repeat_indefinitely", "recurrence_end_date", "created_at", "updated_at",
                 ].sort(),
             );

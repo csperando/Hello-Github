@@ -2,6 +2,7 @@ import pool from "../config/db";
 import DesignsRepository from "../repository/designs.repo";
 import DesignSelectionsRepository from "../repository/designSelections.repo";
 import RunLogRepository from "../repository/runLog.repo";
+import DesignPaintStatusesRepository from "../repository/designPaintStatuses.repo";
 import UserBillingRepository from "../repository/userBilling.repo";
 import {
     iDesignCreateInput,
@@ -24,17 +25,46 @@ export class PaymentRequiredError extends Error {
     }
 }
 
+/**
+ * Thrown when a change is attempted on a design selection while a paid paint
+ * is in progress (paint_status "locked"). The design routes map
+ * err.code === "DESIGN_LOCKED" to a 409 with this message.
+ */
+export class DesignLockedError extends Error {
+    public code = "DESIGN_LOCKED";
+    constructor(message = "This design is being painted - it can't be changed until the paint finishes.") {
+        super(message);
+        this.name = "DesignLockedError";
+    }
+}
+
+// The selection fields that say what gets painted - locked while a paint is in progress.
+const SCHEDULE_FIELDS = ["start_date", "year", "custom_range", "repeat_indefinitely", "recurrence_end_date"] as const;
+
 export class DesignService {
     public repo: any;
     public selectionsRepo: any;
     public runLogRepo: any;
     public billingRepo: any;
+    public paintStatusesRepo: any;
 
     constructor() {
         this.repo = DesignsRepository.repo();
         this.selectionsRepo = DesignSelectionsRepository.repo();
         this.runLogRepo = RunLogRepository.repo();
         this.billingRepo = UserBillingRepository.repo();
+        this.paintStatusesRepo = DesignPaintStatusesRepository.repo();
+    }
+
+    /** The paint-status definitions (code/label/description) a selection's paint_status refers to. */
+    public async getPaintStatuses() {
+        try {
+            return await this.paintStatusesRepo.getAll();
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
     }
 
     // Activation (is_active -> true) is only allowed while the user has an
@@ -75,7 +105,9 @@ export class DesignService {
             );
 
             await client.query("COMMIT");
-            return { design, selection };
+            // re-read so the selection carries its worked-out paint_status
+            const withStatus = await this.selectionsRepo.getByUserAndDesign(userId, design.id);
+            return { design, selection: withStatus ?? selection };
 
         } catch(err: any) {
             await client.query("ROLLBACK");
@@ -108,8 +140,20 @@ export class DesignService {
         }
     }
 
-    public async updateDesign(designId: string, input: iDesignUpdateInput) {
+    private async assertNotLocked(userId: string, designId: string): Promise<void> {
+        const selection = await this.selectionsRepo.getByUserAndDesign(userId, designId);
+        if (selection?.paint_status === "locked") throw new DesignLockedError();
+    }
+
+    /**
+     * Content edits are blocked while the design's *owner* has a paint in
+     * progress - name/is_public included, so a locked design reads as
+     * entirely frozen. (Other users' paints are unaffected either way: every
+     * job paints its own copy.)
+     */
+    public async updateDesign(designId: string, ownerId: string, input: iDesignUpdateInput) {
         try {
+            await this.assertNotLocked(ownerId, designId);
             const design = await this.repo.update(designId, input);
             return design;
 
@@ -167,7 +211,8 @@ export class DesignService {
         try {
             await this.assertCoveredForActivation(userId, input.is_active);
             const selection = await this.selectionsRepo.create(userId, designId, input);
-            return selection;
+            // re-read so the selection carries its worked-out paint_status
+            return (await this.selectionsRepo.getByUserAndDesign(userId, designId)) ?? selection;
 
         } catch(err: any) {
             logger.error(err);
@@ -175,11 +220,15 @@ export class DesignService {
         }
     }
 
+    /** Returns the updated selection with its (re-worked-out) paint_status. */
     public async updateSelection(userId: string, designId: string, input: iDesignSelectionUpdateInput) {
         try {
+            if (SCHEDULE_FIELDS.some((field) => field in input)) {
+                await this.assertNotLocked(userId, designId);
+            }
             await this.assertCoveredForActivation(userId, input.is_active);
-            const selection = await this.selectionsRepo.update(userId, designId, input);
-            return selection;
+            await this.selectionsRepo.update(userId, designId, input);
+            return await this.selectionsRepo.getByUserAndDesign(userId, designId);
 
         } catch(err: any) {
             logger.error(err);
@@ -188,23 +237,24 @@ export class DesignService {
     }
 
     /**
-     * Removes the user's selection - the only user-facing "delete" action -
-     * and, in the same transaction, deletes the design's content too if
-     * zero other selections reference it (application-level cleanup, not a
-     * literal FK ON DELETE CASCADE, which would run the wrong direction).
+     * The only user-facing "delete" - soft, so paid history and any paint
+     * jobs stay. The user's selection is hidden and deactivated; if they own
+     * the design it's soft-deleted too, so nobody can newly select it - but
+     * other users' existing selections of it keep working. Refused while a
+     * paint is in progress.
      */
     public async deleteSelection(userId: string, designId: string) {
+        await this.assertNotLocked(userId, designId);
+
         const client = await pool.connect();
         try {
             await client.query("BEGIN");
 
-            const selection = await this.selectionsRepo.delete(userId, designId, client);
-            const remaining = await this.selectionsRepo.countForDesign(designId, client);
-
-            let designDeleted = false;
-            if (remaining === 0) {
-                await this.repo.delete(designId, client);
-                designDeleted = true;
+            const selection = await this.selectionsRepo.softDelete(userId, designId, client);
+            const design = await this.repo.getById(designId);
+            const designDeleted = !!selection && design?.user_id === userId;
+            if (designDeleted) {
+                await this.repo.softDelete(designId, client);
             }
 
             await client.query("COMMIT");

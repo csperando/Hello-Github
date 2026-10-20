@@ -1,4 +1,5 @@
 import { apiFetch } from '@/services/api'
+import type { PaintStatusCode } from '@/services/designs'
 
 export interface iPayment {
   id: string
@@ -32,15 +33,22 @@ export interface iCheckoutResult {
   amount_charity_cents: number
 }
 
-export type BackfillJobStatus = 'awaiting_issue' | 'ready' | 'painting' | 'done' | 'failed'
+export type BackfillJobStatus = 'pending_payment' | 'awaiting_issue' | 'ready' | 'painting' | 'done' | 'failed' | 'cancelled'
 
-/** A bought design's backfill job, created by the payment webhook. */
+/** One paint (backfill) job: created as pending_payment at checkout, moved along by the payment webhook. */
 export interface iBackfillJob {
   id: string
-  design_id: string
   year: number
   status: BackfillJobStatus
   issue_url: string | null
+  created_at: string
+  completed_at: string | null
+}
+
+/** A design's worked-out paint status plus its latest paint job (null if never checked out). */
+export interface iPaintStatus {
+  paint_status: PaintStatusCode
+  latest_job: iBackfillJob | null
 }
 
 /**
@@ -51,9 +59,9 @@ export async function createCheckout(payload: iCheckoutPayload): Promise<Respons
   return apiFetch('/payments/checkout', { method: 'POST', body: JSON.stringify(payload) })
 }
 
-/** The caller's backfill job for a design (data[0] is an iBackfillJob); 404 until the webhook creates it. */
-export async function getBackfillJob(designId: string): Promise<Response> {
-  return apiFetch(`/payments/backfill/${designId}`)
+/** The caller's design's paint status and latest paint job (data[0] is an iPaintStatus); 404 if they haven't selected it. */
+export async function getPaintStatus(designId: string): Promise<Response> {
+  return apiFetch(`/payments/paint-status/${designId}`)
 }
 
 /** The authenticated user's payment history, newest first. */

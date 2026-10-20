@@ -32,7 +32,7 @@
 </script>
 
 <template>
-    <button :class="['base flex flex-row items-center justify-center px-[30px]', variant == 'primary' ? 'primary' : 'secondary', $attrs.class]">
+    <button :disabled="disabled" :class="['base flex flex-row items-center justify-center px-[30px]', variant == 'primary' ? 'primary' : 'secondary', $attrs.class]">
         <div class="absolute flex justify-center items-center left-[5px] top-[calc(50% - 7.5px)] w-[15px] h-[15px]">
             <span v-if="loading" class="loading-icon"></span>
         </div>
@@ -66,6 +66,11 @@
     button.base:hover {
         text-decoration: none;
         cursor: pointer;
+    }
+
+    button.base:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
     }
 
     .primary {

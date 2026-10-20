@@ -2,12 +2,23 @@ import type { PoolClient } from "pg";
 import pool from "../config/db";
 import { logger } from "../config/logger";
 
-export type iBackfillJobStatus = "awaiting_issue" | "ready" | "painting" | "done" | "failed";
+import { iBackfillJobStatus, LOCKING_JOB_STATUSES } from "../models/backfillJobs";
+
+/** What a job paints - copied from the selection + design when checkout starts. */
+export interface iPaintSnapshot {
+    year: number;
+    pattern: number[];
+    start_date: string;
+    custom_range: boolean;
+}
 
 // define the type of the return object from the repo() method
 export interface iBackfillJobsRepo {
-    create: (userId: string, designId: string, year: number, client?: PoolClient) => Promise<any>;
-    getByUserAndDesign: (userId: string, designId: string) => Promise<any>;
+    createPending: (selectionId: string, snapshot: iPaintSnapshot, paymentIntentId: string, client?: PoolClient) => Promise<any>;
+    markPaid: (paymentIntentId: string, client?: PoolClient) => Promise<any>;
+    cancelByPaymentIntent: (paymentIntentId: string) => Promise<any>;
+    getLatestForUserAndDesign: (userId: string, designId: string) => Promise<any>;
+    getLockingForUserAndDesign: (userId: string, designId: string) => Promise<any>;
     markIssueOpened: (id: string, issueUrl: string) => Promise<any>;
     claimReady: () => Promise<any[]>;
     setStatus: (id: string, status: iBackfillJobStatus) => Promise<any>;
@@ -16,19 +27,26 @@ export interface iBackfillJobsRepo {
 
 // main repo init function to be called in the service factories
 const repo = (): iBackfillJobsRepo => {
-    // a redelivered payment webhook must not create a second job - the
-    // no-op DO UPDATE makes RETURNING hand back the existing row. `client`
-    // lets the payment webhook create it inside its ledger transaction.
-    const create = async (userId: string, designId: string, year: number, client?: PoolClient) => {
+    // One job per payment intent: checkout re-uses its payment intent for a
+    // retried attempt, so a repeat call hands back the job (and copy) it
+    // already made rather than making another.
+    const createPending = async (selectionId: string, snapshot: iPaintSnapshot, paymentIntentId: string, client?: PoolClient) => {
         try {
             const sqlString = `
-                INSERT INTO backfill_jobs (user_id, design_id, year)
-                VALUES ($1, $2, $3)
-                ON CONFLICT ON CONSTRAINT backfill_jobs_user_design_unique
-                DO UPDATE SET user_id = backfill_jobs.user_id
+                INSERT INTO backfill_jobs (selection_id, status, year, pattern, start_date, custom_range, stripe_payment_intent_id)
+                VALUES ($1, 'pending_payment', $2, $3, $4, $5, $6)
+                ON CONFLICT ON CONSTRAINT backfill_jobs_stripe_payment_intent_id_unique
+                DO UPDATE SET stripe_payment_intent_id = backfill_jobs.stripe_payment_intent_id
                 RETURNING *;
             `;
-            const result = await (client ?? pool).query(sqlString, [userId, designId, year]);
+            const result = await (client ?? pool).query(sqlString, [
+                selectionId,
+                snapshot.year,
+                snapshot.pattern,
+                snapshot.start_date,
+                snapshot.custom_range,
+                paymentIntentId,
+            ]);
             return result.rows[0];
 
         } catch(err: any) {
@@ -37,10 +55,90 @@ const repo = (): iBackfillJobsRepo => {
         }
     }
 
-    const getByUserAndDesign = async (userId: string, designId: string) => {
+    // pending_payment -> awaiting_issue (the design locks), unless another
+    // job already has this selection locked - then this paid job is
+    // cancelled instead (the payment stands, as a donation, like any repeat
+    // purchase). The unique locking index backs this up against two
+    // deliveries racing: the loser errors, and Stripe's redelivery then
+    // lands in the cancelled branch. Returns undefined if there's no
+    // pending job for the payment (already handled, or unknown).
+    const markPaid = async (paymentIntentId: string, client?: PoolClient) => {
         try {
-            const sqlString = `SELECT * FROM backfill_jobs WHERE user_id = $1 AND design_id = $2;`;
+            const sqlString = `
+                UPDATE backfill_jobs bj
+                SET status = CASE WHEN target.blocked THEN 'cancelled' ELSE 'awaiting_issue' END
+                    , completed_at = CASE WHEN target.blocked THEN NOW() END
+                    , updated_at = NOW()
+                FROM (
+                    SELECT pending.id
+                        , EXISTS (
+                            SELECT 1 FROM backfill_jobs other
+                            WHERE other.selection_id = pending.selection_id
+                              AND other.id <> pending.id
+                              AND other.status = ANY($2::text[])
+                        ) AS blocked
+                    FROM backfill_jobs pending
+                    WHERE pending.stripe_payment_intent_id = $1 AND pending.status = 'pending_payment'
+                ) target
+                WHERE bj.id = target.id
+                RETURNING bj.*;
+            `;
+            const result = await (client ?? pool).query(sqlString, [paymentIntentId, LOCKING_JOB_STATUSES]);
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    const cancelByPaymentIntent = async (paymentIntentId: string) => {
+        try {
+            const sqlString = `
+                UPDATE backfill_jobs
+                SET status = 'cancelled', completed_at = NOW(), updated_at = NOW()
+                WHERE stripe_payment_intent_id = $1 AND status = 'pending_payment'
+                RETURNING *;
+            `;
+            const result = await pool.query(sqlString, [paymentIntentId]);
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    // the user's most recent job for a design, whatever its status
+    const getLatestForUserAndDesign = async (userId: string, designId: string) => {
+        try {
+            const sqlString = `
+                SELECT bj.*
+                FROM backfill_jobs bj
+                JOIN design_selections ds ON ds.id = bj.selection_id
+                WHERE ds.user_id = $1 AND ds.design_id = $2
+                ORDER BY bj.created_at DESC
+                LIMIT 1;
+            `;
             const result = await pool.query(sqlString, [userId, designId]);
+            return result.rows[0];
+
+        } catch(err: any) {
+            logger.error(err);
+            throw(err);
+        }
+    }
+
+    // the job currently locking the user's selection of a design, if any
+    const getLockingForUserAndDesign = async (userId: string, designId: string) => {
+        try {
+            const sqlString = `
+                SELECT bj.*
+                FROM backfill_jobs bj
+                JOIN design_selections ds ON ds.id = bj.selection_id
+                WHERE ds.user_id = $1 AND ds.design_id = $2 AND bj.status = ANY($3::text[]);
+            `;
+            const result = await pool.query(sqlString, [userId, designId, LOCKING_JOB_STATUSES]);
             return result.rows[0];
 
         } catch(err: any) {
@@ -90,13 +188,17 @@ const repo = (): iBackfillJobsRepo => {
         }
     }
 
+    // finished statuses also stamp completed_at
     const setStatus = async (id: string, status: iBackfillJobStatus) => {
         try {
             const sqlString = `
-                UPDATE backfill_jobs
-                SET status = $2, updated_at = NOW()
-                WHERE id = $1
-                RETURNING *;
+                UPDATE backfill_jobs bj
+                SET status = $2
+                    , completed_at = CASE WHEN s.is_finished THEN NOW() ELSE NULL END
+                    , updated_at = NOW()
+                FROM backfill_job_statuses s
+                WHERE bj.id = $1 AND s.code = $2
+                RETURNING bj.*;
             `;
             const result = await pool.query(sqlString, [id, status]);
             return result.rows[0];
@@ -108,14 +210,17 @@ const repo = (): iBackfillJobsRepo => {
     }
 
     // everything needed to expand a claimed job into commits: who to author
-    // as, which timezone to stamp in, and the design + its schedule. A job
-    // whose selection has since been deleted has no row here.
+    // as, which timezone to stamp in, and the job's own copy of what to
+    // paint - never the live design, which may have been edited since.
     const getPaintDetails = async (jobIds: string[]) => {
         if (jobIds.length === 0) return [];
         try {
             const sqlString = `
                 SELECT bj.id AS job_id
                     , bj.year
+                    , bj.pattern
+                    , bj.start_date
+                    , bj.custom_range
                     , u.id AS user_id
                     , u.github_id
                     , u.github_username
@@ -123,17 +228,11 @@ const repo = (): iBackfillJobsRepo => {
                     , u.email
                     , COALESCE(up.use_real_email, FALSE) AS use_real_email
                     , COALESCE(up.timezone, 'UTC') AS timezone
-                    , bj.design_id
-                    , ds.start_date
-                    , ds.repeat_indefinitely
-                    , ds.recurrence_end_date
-                    , ds.custom_range
-                    , d.pattern
+                    , ds.design_id
                 FROM backfill_jobs bj
-                JOIN users u ON u.id = bj.user_id
+                JOIN design_selections ds ON ds.id = bj.selection_id
+                JOIN users u ON u.id = ds.user_id
                 LEFT JOIN user_profiles up ON up.user_id = u.id
-                JOIN design_selections ds ON ds.user_id = bj.user_id AND ds.design_id = bj.design_id
-                JOIN designs d ON d.id = bj.design_id
                 WHERE bj.id = ANY($1::uuid[]);
             `;
             const result = await pool.query(sqlString, [jobIds]);
@@ -146,8 +245,11 @@ const repo = (): iBackfillJobsRepo => {
     }
 
     return {
-        create,
-        getByUserAndDesign,
+        createPending,
+        markPaid,
+        cancelByPaymentIntent,
+        getLatestForUserAndDesign,
+        getLockingForUserAndDesign,
         markIssueOpened,
         claimReady,
         setStatus,

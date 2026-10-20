@@ -5,7 +5,7 @@ vi.mock('@/services/api', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }))
 
-import { createCheckout, getBackfillJob, listPayments, setAutoRenew } from '@/services/payments'
+import { createCheckout, getPaintStatus, listPayments, setAutoRenew } from '@/services/payments'
 
 beforeEach(() => {
   apiFetchMock.mockReset().mockResolvedValue({ ok: true, json: async () => ({}) })
@@ -22,9 +22,9 @@ describe('payments service', () => {
     })
   })
 
-  it('getBackfillJob GETs /payments/backfill/:designId', async () => {
-    await getBackfillJob('d1')
-    expect(apiFetchMock).toHaveBeenCalledWith('/payments/backfill/d1')
+  it('getPaintStatus GETs /payments/paint-status/:designId', async () => {
+    await getPaintStatus('d1')
+    expect(apiFetchMock).toHaveBeenCalledWith('/payments/paint-status/d1')
   })
 
   it('listPayments GETs /payments', async () => {

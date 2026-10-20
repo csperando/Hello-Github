@@ -36,6 +36,7 @@ import type { iDesignSelectionsRepo } from "../../repository/designSelections.re
 import type { iRunLogRepo } from "../../repository/runLog.repo";
 import type { iUserRepo } from "../../repository/users.repo";
 import type { iUserBillingRepo } from "../../repository/userBilling.repo";
+import type { iDesignPaintStatusesRepo } from "../../repository/designPaintStatuses.repo";
 import { createMockRepoProxy, mockRepo } from "../setup.mock.repo";
 const designsRepoMock = createMockRepoProxy<iDesignsRepo>();
 mockRepo("repository/designs.repo", designsRepoMock);
@@ -47,6 +48,8 @@ const usersRepoMock = createMockRepoProxy<iUserRepo>();
 mockRepo("repository/users.repo", usersRepoMock);
 const billingRepoMock = createMockRepoProxy<iUserBillingRepo>();
 mockRepo("repository/userBilling.repo", billingRepoMock);
+const paintStatusesRepoMock = createMockRepoProxy<iDesignPaintStatusesRepo>();
+mockRepo("repository/designPaintStatuses.repo", paintStatusesRepoMock);
 
 // DesignService.createDesign/deleteSelection wrap their (fully-mocked) repo
 // calls in a real pg transaction (BEGIN/COMMIT/ROLLBACK via pool.connect()) -
@@ -572,31 +575,42 @@ describe("Design routes", () => {
     });
 
     describe("DELETE /design/:designId/select", () => {
-        it("removes the user's own selection", async () => {
-            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow());
-            selectionsRepoMock.delete.mockResolvedValue({ id: "s1" });
-            selectionsRepoMock.countForDesign.mockResolvedValue(1);
+        it("soft-deletes the owner's selection and their design", async () => {
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow({ paint_status: "unpainted" }));
+            selectionsRepoMock.softDelete.mockResolvedValue({ id: "s1" });
+            designsRepoMock.getById.mockResolvedValue(mockDesignRow());
+            designsRepoMock.softDelete.mockResolvedValue({ id: "d1" });
 
             const res = await request(server).delete("/design/d1/select").set("Cookie", ownerCookie);
             const body: iResponse = JSON.parse(res.text);
 
             expect(res.status).toBe(200);
-            expect(selectionsRepoMock.delete).toHaveBeenCalledWith(owner.id, "d1", expect.anything());
-            expect((body.data![0] as any).design_deleted).toBe(false);
+            expect(selectionsRepoMock.softDelete).toHaveBeenCalledWith(owner.id, "d1", expect.anything());
+            expect(designsRepoMock.softDelete).toHaveBeenCalledWith("d1", expect.anything());
+            expect((body.data![0] as any).design_deleted).toBe(true);
         });
 
-        it("reports the design as deleted when it was the last selection", async () => {
-            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow());
-            selectionsRepoMock.delete.mockResolvedValue({ id: "s1" });
-            selectionsRepoMock.countForDesign.mockResolvedValue(0);
-            designsRepoMock.delete.mockResolvedValue({ id: "d1" });
+        it("only soft-deletes a non-owner's own selection, never the design", async () => {
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow({ user_id: otherUser.id, paint_status: "unpainted" }));
+            selectionsRepoMock.softDelete.mockResolvedValue({ id: "s2" });
+            designsRepoMock.getById.mockResolvedValue(mockDesignRow({ is_public: true }));
 
-            const res = await request(server).delete("/design/d1/select").set("Cookie", ownerCookie);
-            const body: iResponse = JSON.parse(res.text);
+            const res = await request(server).delete("/design/d1/select").set("Cookie", otherUserCookie);
 
             expect(res.status).toBe(200);
-            expect(designsRepoMock.delete).toHaveBeenCalledWith("d1", expect.anything());
-            expect((body.data![0] as any).design_deleted).toBe(true);
+            expect(selectionsRepoMock.softDelete).toHaveBeenCalledWith(otherUser.id, "d1", expect.anything());
+            expect(designsRepoMock.softDelete).not.toHaveBeenCalled();
+            expect((JSON.parse(res.text).data[0] as any).design_deleted).toBe(false);
+        });
+
+        it("409s while the design is being painted, deleting nothing", async () => {
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow({ paint_status: "locked" }));
+
+            const res = await request(server).delete("/design/d1/select").set("Cookie", ownerCookie);
+
+            expect(res.status).toBe(409);
+            expect(selectionsRepoMock.softDelete).not.toHaveBeenCalled();
+            expect(designsRepoMock.softDelete).not.toHaveBeenCalled();
         });
 
         it("returns 404 when the user has no selection for this design", async () => {
@@ -605,13 +619,102 @@ describe("Design routes", () => {
             const res = await request(server).delete("/design/d1/select").set("Cookie", ownerCookie);
 
             expect(res.status).toBe(404);
-            expect(selectionsRepoMock.delete).not.toHaveBeenCalled();
+            expect(selectionsRepoMock.softDelete).not.toHaveBeenCalled();
         });
 
         it("rejects an unauthenticated request with 401", async () => {
             const res = await request(server).delete("/design/d1/select");
             expect(res.status).toBe(401);
-            expect(selectionsRepoMock.delete).not.toHaveBeenCalled();
+            expect(selectionsRepoMock.softDelete).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("deleted designs", () => {
+        const deleted = () => mockDesignRow({ is_public: true, deleted_at: "2026-10-20T00:00:00.000Z" });
+
+        it("404s GET for the owner who deleted it (their selection is gone too)", async () => {
+            designsRepoMock.getById.mockResolvedValue(deleted());
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(undefined);
+            usersRepoMock.getUserById.mockResolvedValue(owner);
+
+            const res = await request(server).get("/design/d1").set("Cookie", ownerCookie);
+
+            expect(res.status).toBe(404);
+        });
+
+        it("stays readable to another user who already selected it", async () => {
+            designsRepoMock.getById.mockResolvedValue(deleted());
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow({ user_id: otherUser.id }));
+
+            const res = await request(server).get("/design/d1").set("Cookie", otherUserCookie);
+
+            expect(res.status).toBe(200);
+        });
+
+        it("can't be newly selected", async () => {
+            designsRepoMock.getById.mockResolvedValue(deleted());
+
+            const res = await request(server)
+                .post("/design/d1/select")
+                .set("Cookie", otherUserCookie)
+                .send({ year: 2025, start_date: "2025-01-05" });
+
+            expect(res.status).toBe(404);
+            expect(selectionsRepoMock.create).not.toHaveBeenCalled();
+        });
+
+        it("can't be edited", async () => {
+            designsRepoMock.getById.mockResolvedValue(deleted());
+
+            const res = await request(server).patch("/design/d1").set("Cookie", ownerCookie).send({ name: "x" });
+
+            expect(res.status).toBe(404);
+            expect(designsRepoMock.update).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("while a paint is in progress (locked)", () => {
+        beforeEach(() => {
+            designsRepoMock.getById.mockResolvedValue(mockDesignRow());
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow({ paint_status: "locked" }));
+        });
+
+        it("409s a content edit", async () => {
+            const res = await request(server).patch("/design/d1").set("Cookie", ownerCookie).send({ pattern: [1, 1, 1, 1, 1, 1, 1] });
+
+            expect(res.status).toBe(409);
+            expect(designsRepoMock.update).not.toHaveBeenCalled();
+        });
+
+        it("409s a schedule edit", async () => {
+            const res = await request(server).patch("/design/d1/select").set("Cookie", ownerCookie).send({ year: 2024, start_date: "2024-01-07" });
+
+            expect(res.status).toBe(409);
+            expect(selectionsRepoMock.update).not.toHaveBeenCalled();
+        });
+
+        it("allows edits again once the paint finishes", async () => {
+            selectionsRepoMock.getByUserAndDesign.mockResolvedValue(mockSelectionRow({ paint_status: "painted" }));
+            designsRepoMock.update.mockResolvedValue(mockDesignRow({ name: "x" }));
+
+            const res = await request(server).patch("/design/d1").set("Cookie", ownerCookie).send({ name: "x" });
+
+            expect(res.status).toBe(200);
+        });
+    });
+
+    describe("GET /design/paint-statuses", () => {
+        it("returns the paint-status definitions", async () => {
+            const definitions = [
+                { code: "unpainted", label: "not painted", description: "..." },
+                { code: "locked", label: "painting", description: "..." },
+            ];
+            paintStatusesRepoMock.getAll.mockResolvedValue(definitions);
+
+            const res = await request(server).get("/design/paint-statuses").set("Cookie", ownerCookie);
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.text).data).toEqual(definitions);
         });
     });
 });

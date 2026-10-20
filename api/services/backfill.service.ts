@@ -59,10 +59,10 @@ export class BackfillService {
         this.usersRepo = UserRepository.repo();
     }
 
-    /** The user's job for a design, or undefined. */
+    /** The paid job currently in progress for the user's design (awaiting its issue, queued, or painting), or undefined. */
     public async getJob(userId: string, designId: string): Promise<any> {
         try {
-            return await this.backfillJobsRepo.getByUserAndDesign(userId, designId);
+            return await this.backfillJobsRepo.getLockingForUserAndDesign(userId, designId);
         } catch (err: any) {
             logger.error(err);
             throw err;
@@ -76,7 +76,7 @@ export class BackfillService {
      * failure, leaving the job awaiting its issue so the user can retry.
      */
     public async openCanvasIssue(userId: string, designId: string, accessToken: string): Promise<void> {
-        const job = await this.backfillJobsRepo.getByUserAndDesign(userId, designId);
+        const job = await this.backfillJobsRepo.getLockingForUserAndDesign(userId, designId);
         if (!job || job.status !== "awaiting_issue") {
             throw new Error(`paint consent: user ${userId} has no job awaiting its issue for design ${designId}`);
         }
@@ -100,9 +100,10 @@ export class BackfillService {
 
     /**
      * Claims every ready job (ready -> painting, each handed out once) and
-     * expands it into one commit per painted day of its year. A job whose
-     * selection is gone is failed; one with nothing to paint is done - so a
-     * claimed job never sits in painting without the Action knowing of it.
+     * expands it into one commit per painted day of its year - from the job's
+     * own copy of the design, never the live one. A job with no paint details
+     * is failed; one with nothing to paint is done - so a claimed job never
+     * sits in painting without the Action knowing of it.
      */
     public async claimPaintCommits(): Promise<iBackfillCommit[]> {
         try {
@@ -118,7 +119,7 @@ export class BackfillService {
             for (const jobId of jobIds) {
                 const details = detailsByJob.get(jobId);
                 if (!details) {
-                    logger.error(`backfill: job ${jobId} has no design selection to paint from - marking failed`);
+                    logger.error(`backfill: job ${jobId} has no paint details - marking failed`);
                     await this.backfillJobsRepo.setStatus(jobId, "failed");
                     continue;
                 }
@@ -127,8 +128,7 @@ export class BackfillService {
 
                 const schedule = {
                     start_date: details.start_date,
-                    repeat_indefinitely: details.repeat_indefinitely,
-                    recurrence_end_date: details.recurrence_end_date,
+                    repeat_indefinitely: false,
                     custom_range: details.custom_range,
                     year: details.year,
                 };

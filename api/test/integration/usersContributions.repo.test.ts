@@ -174,7 +174,7 @@ describe("UsersContributionsRepository", () => {
 
             expect(active).toContainEqual({ user_id: userId, github_username: "octocat-userscontrib-repo-test" });
 
-            await designSelectionsRepo.delete(userId, design.id);
+            await pool.query("DELETE FROM design_selections WHERE user_id = $1 AND design_id = $2;", [userId, design.id]);
             await pool.query("DELETE FROM designs WHERE id = $1;", [design.id]);
         });
 
@@ -187,7 +187,7 @@ describe("UsersContributionsRepository", () => {
 
             expect(active).not.toContainEqual(expect.objectContaining({ user_id: userId }));
 
-            await designSelectionsRepo.delete(userId, design.id);
+            await pool.query("DELETE FROM design_selections WHERE user_id = $1 AND design_id = $2;", [userId, design.id]);
             await pool.query("DELETE FROM designs WHERE id = $1;", [design.id]);
         });
 
@@ -199,7 +199,7 @@ describe("UsersContributionsRepository", () => {
 
             expect(active).not.toContainEqual(expect.objectContaining({ user_id: userId }));
 
-            await designSelectionsRepo.delete(userId, design.id);
+            await pool.query("DELETE FROM design_selections WHERE user_id = $1 AND design_id = $2;", [userId, design.id]);
             await pool.query("DELETE FROM designs WHERE id = $1;", [design.id]);
         });
 

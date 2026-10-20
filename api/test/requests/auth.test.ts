@@ -389,7 +389,7 @@ describe("Auth routes", () => {
         };
 
         beforeEach(() => {
-            backfillJobsRepoMock.getByUserAndDesign.mockResolvedValue(awaitingJob);
+            backfillJobsRepoMock.getLockingForUserAndDesign.mockResolvedValue(awaitingJob);
             backfillJobsRepoMock.markIssueOpened.mockResolvedValue({ ...awaitingJob, status: "ready" });
             usersRepoMock.getUserById.mockResolvedValue(mockUser);
             (githubService.exchangeCodeForToken as jest.Mock).mockResolvedValue("gho_paint");
@@ -417,11 +417,11 @@ describe("Auth routes", () => {
                 const setCookie = res.headers["set-cookie"] as unknown as string[];
                 const paintCookie = setCookie.find((c) => c.startsWith("gh_paint_state="))!;
                 expect(paintCookie).toMatch(/HttpOnly/i);
-                expect(backfillJobsRepoMock.getByUserAndDesign).toHaveBeenCalledWith(mockUser.id, "d1");
+                expect(backfillJobsRepoMock.getLockingForUserAndDesign).toHaveBeenCalledWith(mockUser.id, "d1");
             });
 
             it("sends the user to the dashboard when the job is already past the issue step", async () => {
-                backfillJobsRepoMock.getByUserAndDesign.mockResolvedValue({ ...awaitingJob, status: "ready" });
+                backfillJobsRepoMock.getLockingForUserAndDesign.mockResolvedValue({ ...awaitingJob, status: "ready" });
 
                 const res = await startPaint();
                 expect(res.status).toBe(302);
@@ -429,7 +429,7 @@ describe("Auth routes", () => {
             });
 
             it("sends the user to the error page when they have no job for that design", async () => {
-                backfillJobsRepoMock.getByUserAndDesign.mockResolvedValue(undefined);
+                backfillJobsRepoMock.getLockingForUserAndDesign.mockResolvedValue(undefined);
 
                 const res = await startPaint();
                 expect(res.headers.location).toBe(failedUrl);

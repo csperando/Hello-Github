@@ -23,10 +23,10 @@ vi.mock('@/services/designs', () => ({
 }))
 
 const createCheckoutMock = vi.fn()
-const getBackfillJobMock = vi.fn()
+const getPaintStatusMock = vi.fn()
 vi.mock('@/services/payments', () => ({
   createCheckout: (...a: unknown[]) => createCheckoutMock(...a),
-  getBackfillJob: (...a: unknown[]) => getBackfillJobMock(...a),
+  getPaintStatus: (...a: unknown[]) => getPaintStatusMock(...a),
 }))
 
 const paymentElementMountMock = vi.fn()
@@ -52,8 +52,11 @@ function jsonResponse(body: unknown, ok = true) {
 
 const charity = { id: 7, ein: '12-3456789', name: 'GiveDirectly', street: '', city: 'NYC', state: 'NY', zip: '' }
 
-const noJob = () => ({ ok: false, status: 404, json: async () => ({}) }) as Response
-const job = (status: string) => jsonResponse({ data: [{ id: 'j1', design_id: 'd1', year: 2025, status }] })
+/** GET /payments/paint-status's response: the design's paint status and its latest job (if any). */
+const paintStatus = (code: string, jobStatus: string | null = null) =>
+  jsonResponse({
+    data: [{ paint_status: code, latest_job: jobStatus ? { id: 'j1', year: 2025, status: jobStatus, issue_url: null } : null }],
+  })
 
 async function mountCheckout(query: Record<string, string> = { designId: 'd1' }, user: Record<string, unknown> = { id: 'u1', github_username: 'octo' }) {
   setActivePinia(createPinia())
@@ -84,7 +87,7 @@ beforeEach(() => {
   createCheckoutMock.mockReset().mockResolvedValue(
     jsonResponse({ data: [{ client_secret: 'cs_1', amount_total_cents: 1000 }] }),
   )
-  getBackfillJobMock.mockReset().mockResolvedValue(noJob())
+  getPaintStatusMock.mockReset().mockResolvedValue(paintStatus('unpainted'))
   confirmPaymentMock.mockReset().mockResolvedValue({ paymentIntent: { status: 'succeeded' } })
   paymentElementMountMock.mockReset()
   readyCb = undefined
@@ -199,16 +202,34 @@ describe('Checkout.vue - charity + amount', () => {
     expect(wrapper.text()).toContain('your 2025 contribution graph')
   })
 
-  it('warns before buying a design again, and only continues once the user confirms', async () => {
-    getBackfillJobMock.mockResolvedValue(job('done'))
+  it('warns before buying an already-painted, unchanged design again, and only continues once the user confirms', async () => {
+    getPaintStatusMock.mockResolvedValue(paintStatus('painted', 'done'))
     const wrapper = await mountCheckout()
 
-    expect(getBackfillJobMock).toHaveBeenCalledWith('d1')
-    expect(wrapper.text()).toContain("You've already bought this design")
+    expect(getPaintStatusMock).toHaveBeenCalledWith('d1')
+    expect(wrapper.text()).toContain("You've already painted this design")
     expect(wrapper.find('.step-card').exists()).toBe(false)
 
     await wrapper.get('[data-testid="donate-again"]').trigger('click')
     expect(wrapper.find('.step-card').exists()).toBe(true)
+  })
+
+  it('goes straight to checkout for a painted design that has been edited since (unpainted)', async () => {
+    getPaintStatusMock.mockResolvedValue(paintStatus('unpainted', 'done'))
+    const wrapper = await mountCheckout()
+
+    expect(wrapper.text()).not.toContain("You've already painted this design")
+    expect(wrapper.find('.step-card').exists()).toBe(true)
+  })
+
+  it("won't check out a design that's being painted", async () => {
+    getPaintStatusMock.mockResolvedValue(paintStatus('locked', 'painting'))
+    const wrapper = await mountCheckout()
+
+    expect(wrapper.find('[data-testid="locked-notice"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('This design is being painted')
+    expect(wrapper.find('.step-card').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="donate-again"]').exists()).toBe(false)
   })
 
   it('loads the originating design named in ?designId as order context', async () => {
@@ -280,8 +301,9 @@ describe('Checkout.vue - Stripe Payment Element', () => {
 
   it('confirms the payment, then polls for the backfill job and sends the user to grant consent', async () => {
     getDesignMock.mockResolvedValue(jsonResponse({ data: [{ id: 'd1', name: 'my heart', pattern: [0, 1, 2, 3, 4, 0, 0] }] }))
-    // no job at mount (first purchase); the webhook has created it by the first poll
-    getBackfillJobMock.mockResolvedValueOnce(noJob()).mockResolvedValue(job('awaiting_issue'))
+    // unpainted at mount (first purchase); by the first poll the webhook has
+    // moved the paid job out of pending_payment
+    getPaintStatusMock.mockResolvedValueOnce(paintStatus('unpainted')).mockResolvedValue(paintStatus('locked', 'awaiting_issue'))
     const wrapper = await mountCheckout({ designId: 'd1' })
     await toCardPhase(wrapper)
     readyCb?.()
@@ -301,16 +323,19 @@ describe('Checkout.vue - Stripe Payment Element', () => {
   })
 
   it('on return from a redirect, skips the repeat-purchase warning and goes straight to the consent step', async () => {
-    getBackfillJobMock.mockResolvedValue(job('awaiting_issue'))
+    getPaintStatusMock.mockResolvedValue(paintStatus('locked', 'awaiting_issue'))
     const wrapper = await mountCheckout({ designId: 'd1', paid: '1' })
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain("You've already bought this design")
+    expect(wrapper.text()).not.toContain("You've already painted this design")
+    expect(wrapper.find('[data-testid="locked-notice"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('One more step')
   })
 
+  // paying again for a painted, unchanged design makes no new job - the
+  // latest is still the finished one
   it('thanks a repeat purchaser without asking for consent again', async () => {
-    getBackfillJobMock.mockResolvedValue(job('done'))
+    getPaintStatusMock.mockResolvedValue(paintStatus('painted', 'done'))
     const wrapper = await mountCheckout({ designId: 'd1', paid: '1' })
     await flushPromises()
 
@@ -318,9 +343,25 @@ describe('Checkout.vue - Stripe Payment Element', () => {
     expect(wrapper.find('a[data-testid="paint-consent"]').exists()).toBe(false)
   })
 
-  it('falls back to a "refresh in a minute" message if the job never appears', async () => {
+  it('keeps waiting while the paid job is still pending_payment, then asks for consent', async () => {
     vi.useFakeTimers()
-    getBackfillJobMock.mockResolvedValue(noJob())
+    getPaintStatusMock
+      .mockResolvedValueOnce(paintStatus('unpainted', 'pending_payment'))
+      .mockResolvedValue(paintStatus('locked', 'awaiting_issue'))
+
+    const wrapper = await mountCheckout({ designId: 'd1', paid: '1' })
+    expect(wrapper.text()).toContain('Activating your commits')
+
+    await vi.advanceTimersByTimeAsync(2000)
+    vi.useRealTimers()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('One more step')
+  })
+
+  it('falls back to a "refresh in a minute" message if the webhook never lands', async () => {
+    vi.useFakeTimers()
+    getPaintStatusMock.mockResolvedValue(paintStatus('unpainted', 'pending_payment'))
 
     const wrapper = await mountCheckout({ designId: 'd1', paid: '1' })
     await vi.runAllTimersAsync()

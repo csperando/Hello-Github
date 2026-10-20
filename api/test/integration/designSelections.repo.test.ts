@@ -175,14 +175,33 @@ describe("DesignSelectionsRepository", () => {
         });
     });
 
-    describe("delete / countForDesign", () => {
-        it("removes the selection", async () => {
+    describe("softDelete / countActiveExcludingUser", () => {
+        it("hides the selection from the user's reads and deactivates it, but keeps the row", async () => {
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026, is_active: true });
+
+            await selectionsRepo.softDelete(userId, designId);
+
+            expect(await selectionsRepo.getByUserAndDesign(userId, designId)).toBeUndefined();
+            expect(await selectionsRepo.getAllForUser(userId)).toEqual([]);
+            const raw = await pool.query("SELECT is_active, deleted_at FROM design_selections WHERE user_id = $1 AND design_id = $2;", [userId, designId]);
+            expect(raw.rows[0].is_active).toBe(false);
+            expect(raw.rows[0].deleted_at).not.toBeNull();
+        });
+
+        it("can't be updated once deleted", async () => {
             await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026 });
+            await selectionsRepo.softDelete(userId, designId);
 
-            await selectionsRepo.delete(userId, designId);
+            expect(await selectionsRepo.update(userId, designId, { is_active: true })).toBeUndefined();
+        });
 
-            const fetched = await selectionsRepo.getByUserAndDesign(userId, designId);
-            expect(fetched).toBeUndefined();
+        it("leaves another user's selection of the same design alone", async () => {
+            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026 });
+            await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04", year: 2026 });
+
+            await selectionsRepo.softDelete(userId, designId);
+
+            expect(await selectionsRepo.getByUserAndDesign(otherUserId, designId)).toBeDefined();
         });
 
         it("countActiveExcludingUser counts only other users' active selections", async () => {
@@ -199,17 +218,13 @@ describe("DesignSelectionsRepository", () => {
             expect(await selectionsRepo.countActiveExcludingUser(designId, otherUserId)).toBe(1);
         });
 
-        it("countForDesign reflects the number of remaining selections across all users", async () => {
-            await selectionsRepo.create(userId, designId, { start_date: "2026-01-04", year: 2026 });
-            await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04", year: 2026 });
+        it("countActiveExcludingUser doesn't count a deleted selection", async () => {
+            await selectionsRepo.create(otherUserId, designId, { start_date: "2026-01-04", year: 2026, is_active: true });
+            expect(await selectionsRepo.countActiveExcludingUser(designId, userId)).toBe(1);
 
-            expect(await selectionsRepo.countForDesign(designId)).toBe(2);
+            await selectionsRepo.softDelete(otherUserId, designId);
 
-            await selectionsRepo.delete(userId, designId);
-            expect(await selectionsRepo.countForDesign(designId)).toBe(1);
-
-            await selectionsRepo.delete(otherUserId, designId);
-            expect(await selectionsRepo.countForDesign(designId)).toBe(0);
+            expect(await selectionsRepo.countActiveExcludingUser(designId, userId)).toBe(0);
         });
     });
 
@@ -225,7 +240,7 @@ describe("DesignSelectionsRepository", () => {
             expect((await selectionsRepo.getByUserAndDesign(userId, designId)).is_active).toBe(false);
             expect((await selectionsRepo.getByUserAndDesign(userId, otherDesign.id)).is_active).toBe(true);
 
-            await selectionsRepo.delete(userId, otherDesign.id);
+            await pool.query("DELETE FROM design_selections WHERE user_id = $1 AND design_id = $2;", [userId, otherDesign.id]);
             await pool.query("DELETE FROM designs WHERE id = $1;", [otherDesign.id]);
         });
 

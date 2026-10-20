@@ -20,6 +20,8 @@ const getDesignMock = vi.fn()
 const updateDesignMock = vi.fn()
 const updateSelectionMock = vi.fn()
 const getSelectionCountMock = vi.fn()
+const deleteSelectionMock = vi.fn()
+const getPaintStatusesMock = vi.fn()
 
 vi.mock('@/services/designs', () => ({
   createDesign: (...args: unknown[]) => createDesignMock(...args),
@@ -28,8 +30,9 @@ vi.mock('@/services/designs', () => ({
   updateDesign: (...args: unknown[]) => updateDesignMock(...args),
   selectDesign: vi.fn(),
   updateSelection: (...args: unknown[]) => updateSelectionMock(...args),
-  deleteSelection: vi.fn(),
+  deleteSelection: (...args: unknown[]) => deleteSelectionMock(...args),
   getSelectionCount: (...args: unknown[]) => getSelectionCountMock(...args),
+  getPaintStatuses: (...args: unknown[]) => getPaintStatusesMock(...args),
 }))
 
 function jsonResponse(body: unknown, ok = true) {
@@ -133,6 +136,17 @@ describe('Editor.vue', () => {
     updateDesignMock.mockReset()
     updateSelectionMock.mockReset()
     getSelectionCountMock.mockReset()
+    deleteSelectionMock.mockReset()
+    getPaintStatusesMock.mockReset().mockResolvedValue(
+      jsonResponse({
+        data: [
+          { code: 'unpainted', label: 'not painted', description: '' },
+          { code: 'locked', label: 'painting', description: '' },
+          { code: 'painted', label: 'painted', description: '' },
+          { code: 'error', label: 'paint failed', description: '' },
+        ],
+      }),
+    )
   })
 
   afterEach(() => {
@@ -314,7 +328,8 @@ describe('Editor.vue', () => {
     )
   })
 
-  it('warns before making a design private when other users have it active, and does not flip until confirmed', async () => {
+  // the visibility section is commented out in Editor.vue for now
+  it.skip('warns before making a design private when other users have it active, and does not flip until confirmed', async () => {
     getDesignMock.mockResolvedValue(jsonResponse({ data: [loadedDesignContent] }))
     listSelectionsMock.mockResolvedValue(jsonResponse({ data: [loadedSelectionRow] }))
     getSelectionCountMock.mockResolvedValue(jsonResponse({ data: [{ count: 3 }] }))
@@ -336,7 +351,7 @@ describe('Editor.vue', () => {
     expect(wrapper.get('[data-testid="visibility-toggle"]').attributes('aria-checked')).toBe('false')
   })
 
-  it('flips visibility immediately when no other users have the design active', async () => {
+  it.skip('flips visibility immediately when no other users have the design active', async () => {
     getDesignMock.mockResolvedValue(jsonResponse({ data: [loadedDesignContent] }))
     listSelectionsMock.mockResolvedValue(jsonResponse({ data: [loadedSelectionRow] }))
     getSelectionCountMock.mockResolvedValue(jsonResponse({ data: [{ count: 0 }] }))
@@ -727,6 +742,133 @@ describe('Editor.vue', () => {
 
         expect(backfilledDates(createDesignMock.mock.calls[0]![0])).toEqual(['2028-01-01', '2028-12-31'])
       })
+    })
+  })
+
+  it('hides the "supporting" and "visibility" sections', async () => {
+    const { wrapper } = await mountEditor('/editor')
+
+    expect(wrapper.text()).not.toContain('supporting')
+    expect(wrapper.text()).not.toContain('share to gallery')
+    expect(wrapper.find('[data-testid="visibility-toggle"]').exists()).toBe(false)
+  })
+
+  describe('paint status', () => {
+    async function mountLoaded(paint_status: string) {
+      getDesignMock.mockResolvedValue(jsonResponse({ data: [loadedDesignContent] }))
+      listSelectionsMock.mockResolvedValue(jsonResponse({ data: [{ ...loadedSelectionRow, paint_status }] }))
+      return mountEditor('/editor/d1')
+    }
+
+    it.each([
+      ['unpainted', 'not painted'],
+      ['painted', 'painted'],
+      ['error', 'paint failed'],
+      ['locked', 'painting'],
+    ])('shows a %s design with its defined label', async (code, label) => {
+      const { wrapper } = await mountLoaded(code)
+
+      expect(wrapper.get('[data-testid="paint-status"]').text()).toBe(label)
+    })
+
+    it('shows no status for a design that has never been saved', async () => {
+      const { wrapper } = await mountEditor('/editor')
+
+      expect(wrapper.find('[data-testid="paint-status"]').exists()).toBe(false)
+    })
+
+    describe('while locked (a paid paint is in progress)', () => {
+      it('explains why it can\'t be edited', async () => {
+        const { wrapper } = await mountLoaded('locked')
+
+        expect(wrapper.find('[data-testid="locked-note"]').exists()).toBe(true)
+      })
+
+      it("can't be painted, cleared or randomized", async () => {
+        const { wrapper } = await mountLoaded('locked')
+        const before = wrapper.get('[role="group"]').attributes('aria-label')
+
+        await paint(wrapper, '2025-06-16')
+        await findButton(wrapper, 'clear grid').trigger('click')
+        await findButton(wrapper, 'randomize noise').trigger('click')
+
+        expect(wrapper.get('[role="group"]').attributes('aria-label')).toBe(before)
+        expect(cellOn(wrapper, '2025-03-03').attributes('data-level')).toBe('1') // the loaded paint is untouched
+        expect(findButton(wrapper, 'clear grid').attributes('disabled')).toBeDefined()
+        expect(findButton(wrapper, 'randomize noise').attributes('disabled')).toBeDefined()
+      })
+
+      it('disables every other editing control', async () => {
+        const { wrapper } = await mountLoaded('locked')
+
+        expect(wrapper.get('select#editor-year').attributes('disabled')).toBeDefined()
+        expect(wrapper.get('input[placeholder="untitled design"]').attributes('disabled')).toBeDefined()
+        expect(findButton(wrapper, 'save changes').attributes('disabled')).toBeDefined()
+        expect(findButton(wrapper, 'continue to checkout').attributes('disabled')).toBeDefined()
+        expect(findButton(wrapper, 'delete design').attributes('disabled')).toBeDefined()
+        expect(findClickableDiv(wrapper, 'select custom range').find('button').attributes('disabled')).toBeDefined()
+      })
+
+      it('is editable again once the paint finishes', async () => {
+        const { wrapper } = await mountLoaded('painted')
+
+        expect(wrapper.find('[data-testid="locked-note"]').exists()).toBe(false)
+        expect(findButton(wrapper, 'save changes').attributes('disabled')).toBeUndefined()
+        await paint(wrapper, '2025-06-16')
+        expect(cellOn(wrapper, '2025-06-16').attributes('data-level')).toBe('1')
+      })
+    })
+  })
+
+  describe('delete design', () => {
+    async function mountSaved() {
+      getDesignMock.mockResolvedValue(jsonResponse({ data: [loadedDesignContent] }))
+      listSelectionsMock.mockResolvedValue(jsonResponse({ data: [{ ...loadedSelectionRow, paint_status: 'unpainted' }] }))
+      return mountEditor('/editor/d1')
+    }
+
+    it("isn't offered for a design that has never been saved", async () => {
+      const { wrapper } = await mountEditor('/editor')
+
+      expect(wrapper.findAll('button').some((b) => b.text().includes('delete design'))).toBe(false)
+    })
+
+    it('asks first, and cancelling deletes nothing', async () => {
+      const { wrapper } = await mountSaved()
+
+      await findButton(wrapper, 'delete design').trigger('click')
+      expect(wrapper.get('[role="alertdialog"]').text()).toContain('delete this design?')
+
+      await findButton(wrapper, 'keep it').trigger('click')
+
+      expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false)
+      expect(deleteSelectionMock).not.toHaveBeenCalled()
+    })
+
+    it('deletes once confirmed, then goes to the dashboard', async () => {
+      deleteSelectionMock.mockResolvedValue(jsonResponse({ data: [{ design_deleted: true }] }))
+      const { wrapper, router } = await mountSaved()
+
+      await findButton(wrapper, 'delete design').trigger('click')
+      const dialogButtons = wrapper.get('[role="alertdialog"]').findAll('button')
+      await dialogButtons.find((b) => b.text().includes('delete design'))!.trigger('click')
+      await flushPromises()
+
+      expect(deleteSelectionMock).toHaveBeenCalledWith('d1')
+      expect(router.currentRoute.value.path).toBe('/dashboard')
+    })
+
+    it("shows the server's message and stays put when the delete fails", async () => {
+      deleteSelectionMock.mockResolvedValue(jsonResponse({ error: "This design is being painted - it can't be changed until the paint finishes." }, false))
+      const { wrapper, router } = await mountSaved()
+
+      await findButton(wrapper, 'delete design').trigger('click')
+      const dialogButtons = wrapper.get('[role="alertdialog"]').findAll('button')
+      await dialogButtons.find((b) => b.text().includes('delete design'))!.trigger('click')
+      await flushPromises()
+
+      expect(wrapper.get('[role="alert"]').text()).toContain('being painted')
+      expect(router.currentRoute.value.path).toBe('/editor/d1')
     })
   })
 

@@ -173,20 +173,20 @@ describe('designs store', () => {
 
     const store = useDesignsStore()
     store.selections = [joinedRow1, joinedRow2]
-    const ok = await store.removeSelection('d1')
+    const result = await store.removeSelection('d1')
 
-    expect(ok).toBe(true)
+    expect(result).toEqual({ ok: true })
     expect(store.selections).toEqual([joinedRow2])
   })
 
-  it('removeSelection leaves the list untouched on failure', async () => {
-    deleteSelectionMock.mockResolvedValue(jsonResponse({}, false))
+  it("removeSelection leaves the list untouched on failure, passing on the server's message", async () => {
+    deleteSelectionMock.mockResolvedValue(jsonResponse({ error: 'This design is being painted.' }, false))
 
     const store = useDesignsStore()
     store.selections = [joinedRow1]
-    const ok = await store.removeSelection('d1')
+    const result = await store.removeSelection('d1')
 
-    expect(ok).toBe(false)
+    expect(result).toEqual({ ok: false, error: 'This design is being painted.' })
     expect(store.selections).toEqual([joinedRow1])
   })
 

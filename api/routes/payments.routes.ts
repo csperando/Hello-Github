@@ -1,6 +1,6 @@
 import { Router, NextFunction, Request, Response } from "express";
 import { iResponse } from "../models/response";
-import { toPublicPayment, toPublicBackfillJob } from "../models/payments";
+import { toPublicPayment, toPublicPaintStatus } from "../models/payments";
 import { PaymentsService } from "../services/payments.service";
 import { extractCheckoutInput, extractSubscriptionPatch } from "../services/payments.validation";
 import { requireAuth } from "../middleware/auth.middleware";
@@ -39,7 +39,8 @@ router.post("/checkout", requireAuth, async (req: Request, res: Response, next: 
         });
 
         if (result.error) {
-            res.status(400).json({ status: 400, success: false, error: result.error } as iResponse);
+            const status = result.locked ? 409 : 400;
+            res.status(status).json({ status, success: false, error: result.error } as iResponse);
             return;
         }
 
@@ -68,17 +69,19 @@ router.get("/", requireAuth, async (req: Request, res: Response, next: NextFunct
 });
 
 /**
- * The authenticated user's backfill job for a design they bought - the
- * checkout confirmation step polls this until the webhook has created it.
+ * The authenticated user's design's paint status and latest paint job.
+ * Checkout uses it to warn about buying an already-painted design, refuse
+ * one that's mid-paint, and wait for the payment webhook to move a just-paid
+ * job out of pending_payment.
  */
-router.get("/backfill/:designId", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+router.get("/paint-status/:designId", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const job = await paymentsService.getBackfillJob(req.user!.id, req.params.designId as string);
-        if (!job) {
-            res.status(404).json({ status: 404, success: false, error: "No backfill job for that design." } as iResponse);
+        const status = await paymentsService.getPaintStatus(req.user!.id, req.params.designId as string);
+        if (!status) {
+            res.status(404).json({ status: 404, success: false, error: "You haven't selected that design." } as iResponse);
             return;
         }
-        res.status(200).json({ status: 200, success: true, data: [toPublicBackfillJob(job)] } as iResponse);
+        res.status(200).json({ status: 200, success: true, data: [toPublicPaintStatus(status)] } as iResponse);
 
     } catch (err) {
         logger.error(err);

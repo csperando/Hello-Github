@@ -117,6 +117,8 @@ export interface iPublicSelection {
     custom_range: Boolean;
     repeat_indefinitely: Boolean;
     recurrence_end_date: String | null;
+    // worked out from the selection's paint jobs - a design_paint_statuses code
+    paint_status: String;
     created_at: String;
     updated_at: String;
 }
@@ -132,6 +134,7 @@ export function toPublicSelection(selection: iPublicSelection): iPublicSelection
         custom_range: selection.custom_range,
         repeat_indefinitely: selection.repeat_indefinitely,
         recurrence_end_date: selection.recurrence_end_date,
+        paint_status: selection.paint_status,
         created_at: selection.created_at,
         updated_at: selection.updated_at,
     };
@@ -152,6 +155,21 @@ export function toPublicSelectionWithDesign(row: iPublicSelectionWithDesign): iP
         is_public: row.is_public,
         pattern: row.pattern,
         design_owner_id: row.design_owner_id,
+    };
+}
+
+/** One design_paint_statuses definition - GET /design/paint-statuses' shape. */
+export interface iPublicPaintStatus {
+    code: String;
+    label: String;
+    description: String;
+}
+
+export function toPublicPaintStatus(status: iPublicPaintStatus): iPublicPaintStatus {
+    return {
+        code: status.code,
+        label: status.label,
+        description: status.description,
     };
 }
 

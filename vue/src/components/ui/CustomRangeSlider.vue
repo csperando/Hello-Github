@@ -7,6 +7,7 @@
             end: number
             /** Inclusive upper bound for end (0-indexed), e.g. 52 for a 53-week grid. */
             max?: number
+            disabled?: boolean
         }>(),
         {
             max: 52,
@@ -43,8 +44,8 @@
         <div class="dual-range">
             <div class="dual-range-track"></div>
             <div class="dual-range-fill" :style="{ left: fillLeftPct + '%', width: fillWidthPct + '%' }"></div>
-            <input type="range" class="range-yellow" :min="0" :max="max" step="1" :value="start" @input="onStartInput" />
-            <input type="range" class="range-yellow" :min="0" :max="max" step="1" :value="end" @input="onEndInput" />
+            <input type="range" class="range-yellow" :min="0" :max="max" step="1" :value="start" :disabled="disabled" @input="onStartInput" />
+            <input type="range" class="range-yellow" :min="0" :max="max" step="1" :value="end" :disabled="disabled" @input="onEndInput" />
         </div>
     </div>
 </template>
@@ -118,6 +119,16 @@
         border: 3px solid var(--color-warning);
         cursor: pointer;
         margin-top: 2.5px;
+    }
+
+    .dual-range input[type="range"]:disabled::-webkit-slider-thumb {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+
+    .dual-range input[type="range"]:disabled::-moz-range-thumb {
+        cursor: not-allowed;
+        opacity: 0.5;
     }
 
     .dual-range input[type="range"]::-moz-range-thumb {

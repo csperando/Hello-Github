@@ -43,6 +43,10 @@ describe("DesignService (transactional methods, real DB)", () => {
     });
 
     afterEach(async () => {
+        await pool.query(
+            "DELETE FROM backfill_jobs WHERE selection_id IN (SELECT id FROM design_selections WHERE user_id = ANY($1));",
+            [[userId, otherUserId]],
+        );
         await pool.query("DELETE FROM design_selections WHERE user_id = ANY($1);", [[userId, otherUserId]]);
         await pool.query("DELETE FROM designs WHERE user_id = ANY($1);", [[userId, otherUserId]]);
         await pool.query("DELETE FROM users WHERE github_id = ANY($1);", [[testGitHubId, otherTestGitHubId]]);
@@ -84,32 +88,70 @@ describe("DesignService (transactional methods, real DB)", () => {
         });
     });
 
-    describe("deleteSelection", () => {
-        it("deletes the design too when it was the last selection referencing it", async () => {
+    describe("deleteSelection (soft)", () => {
+        async function createOwned() {
             const { design } = await service.createDesign(userId, {
                 pattern: [0, 1, 2, 3, 4, 0, 0],
                 start_date: "2026-01-04",
                 year: 2026,
             } as any);
+            return design;
+        }
+
+        it("hides the owner's selection and design, but deletes no rows", async () => {
+            const design = await createOwned();
 
             const result = await service.deleteSelection(userId, design.id);
 
             expect(result.designDeleted).toBe(true);
-            expect(await service.getDesignById(design.id)).toBeUndefined();
+            expect(await service.getSelection(userId, design.id)).toBeUndefined();
+            expect(await service.getSelectionsByUserId(userId)).toEqual([]);
+            expect((await service.getDesignById(design.id)).deleted_at).not.toBeNull();
+            const rows = await pool.query("SELECT COUNT(*)::int AS n FROM design_selections WHERE design_id = $1;", [design.id]);
+            expect(rows.rows[0].n).toBe(1);
         });
 
-        it("keeps the design when other selections still reference it", async () => {
-            const { design } = await service.createDesign(userId, {
-                pattern: [0, 1, 2, 3, 4, 0, 0],
-                start_date: "2026-01-04",
-                year: 2026,
-            } as any);
+        it("leaves another user's existing selection of the design working", async () => {
+            const design = await createOwned();
             await service.selectDesign(otherUserId, design.id, { start_date: "2026-01-11", year: 2026 } as any);
 
-            const result = await service.deleteSelection(userId, design.id);
+            await service.deleteSelection(userId, design.id);
+
+            const theirs = await service.getSelection(otherUserId, design.id);
+            expect(theirs).toBeDefined();
+            expect(theirs.paint_status).toBe("unpainted");
+        });
+
+        it("only hides a non-owner's own selection, never the design", async () => {
+            const design = await createOwned();
+            await service.selectDesign(otherUserId, design.id, { start_date: "2026-01-11", year: 2026 } as any);
+
+            const result = await service.deleteSelection(otherUserId, design.id);
 
             expect(result.designDeleted).toBe(false);
-            expect(await service.getDesignById(design.id)).toBeDefined();
+            expect((await service.getDesignById(design.id)).deleted_at).toBeNull();
+            expect(await service.getSelection(userId, design.id)).toBeDefined();
+        });
+
+        it("is refused while a paint is in progress, and keeps a finished paint's job", async () => {
+            const design = await createOwned();
+            const selection = await service.getSelection(userId, design.id);
+            const insertJob = (status: string) =>
+                pool.query(
+                    `INSERT INTO backfill_jobs (selection_id, status, year, pattern, start_date, custom_range)
+                     VALUES ($1, $2, 2026, '{0,1,2,3,4,0,0}', '2026-01-04', FALSE) RETURNING id;`,
+                    [selection.id, status],
+                );
+            const locking = await insertJob("painting");
+
+            await expect(service.deleteSelection(userId, design.id)).rejects.toMatchObject({ code: "DESIGN_LOCKED" });
+            expect(await service.getSelection(userId, design.id)).toBeDefined();
+
+            await pool.query("UPDATE backfill_jobs SET status = 'done', completed_at = NOW() WHERE id = $1;", [locking.rows[0].id]);
+            await service.deleteSelection(userId, design.id);
+
+            const job = await pool.query("SELECT status FROM backfill_jobs WHERE id = $1;", [locking.rows[0].id]);
+            expect(job.rows[0].status).toBe("done");
         });
     });
 });
